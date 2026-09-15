@@ -1,0 +1,36 @@
+# Purpose zones inside an environment CIDR pool
+#
+# SOURCE OF TRUTH. See capabilities.yaml for the generation contract.
+#
+# Zones do two jobs: they keep a pod range from fragmenting the
+# infrastructure space, and they give firewall rules written by one
+# archetype a stable destination surface for the rare cases that
+# genuinely need a CIDR rather than a workload selector.
+#
+# Fractions are of the environment CIDR. For a /17 environment:
+#   infra /20 · data /20 · edge /20 · growth /20 · pods /18
+
+zones:
+  - name: infra
+    fraction: /20
+    allocatable: true
+    purposes: [nodes, tasks, endpoints]
+
+  - name: data
+    fraction: /20
+    allocatable: true
+    purposes: [psa, db-subnet, private-endpoint, kafka-storage-subnet]
+
+  - name: edge
+    fraction: /20
+    allocatable: true
+    purposes: [services, serverless-egress, public]
+
+  - name: growth
+    fraction: /20
+    allocatable: false        # never allocated; reserved for expansion
+
+  - name: pods
+    fraction: /18
+    allocatable: true
+    purposes: [pods]
