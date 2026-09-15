@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://acme.com/schemas/environment-binding.schema.json",
+  "title": "Environment Binding",
+  "description": "Names the single concrete provider satisfying each capability in one environment.",
+  "type": "object",
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "bindings",
+    "network"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "archetype/v1"
+    },
+    "kind": {
+      "const": "EnvironmentBinding"
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "name",
+        "model",
+        "cloud",
+        "region"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{1,30}$"
+        },
+        "model": {
+          "enum": [
+            "shared",
+            "dedicated"
+          ]
+        },
+        "cloud": {
+          "enum": [
+            "gcp",
+            "aws",
+            "azure"
+          ]
+        },
+        "region": {
+          "type": "string"
+        },
+        "ephemeral": {
+          "type": "boolean",
+          "default": false
+        },
+        "expiresOn": {
+          "type": "string",
+          "format": "date"
+        },
+        "owners": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "platform": {
+      "type": "object",
+      "required": [
+        "landing_zone"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "landing_zone": {
+          "type": "string"
+        },
+        "account_id": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "subscription_id": {
+          "type": "string"
+        }
+      }
+    },
+    "bindings": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "archetype",
+          "version",
+          "stack_id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "archetype": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,62}$"
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+          },
+          "stack_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,80}$"
+          }
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "required": [
+        "cidr",
+        "dns_suffix"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cidr": {
+          "type": "string",
+          "pattern": "^\\d{1,3}(\\.\\d{1,3}){3}/\\d{1,2}$"
+        },
+        "dns_zone": {
+          "type": "string"
+        },
+        "dns_suffix": {
+          "type": "string"
+        },
+        "hub_peering": {
+          "type": "string"
+        },
+        "zones": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "pool": {
+          "type": "string"
+        }
+      }
+    },
+    "capacity": {
+      "description": "Total budget available to all tenants of this environment.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enforce_namespace_quota": {
+          "type": "boolean"
+        },
+        "enforce_network_policy": {
+          "type": "boolean"
+        },
+        "require_permission_boundary": {
+          "type": "boolean"
+        },
+        "max_instances_per_tenant": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "demo_archetypes_allowed": {
+          "type": "boolean",
+          "default": false
+        },
+        "default_expiry_days": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "gatekeeper_enforcement": {
+          "enum": [
+            "warn",
+            "deny",
+            "dryrun"
+          ],
+          "default": "warn"
+        },
+        "gatekeeper_failure_policy": {
+          "enum": [
+            "Ignore",
+            "Fail"
+          ],
+          "default": "Ignore"
+        }
+      }
+    },
+    "cluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_nodes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_pods_per_node": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 256,
+          "default": 64,
+          "description": "Platform default 64 (32 GB nodes) \u2192 /25 per node. IMMUTABLE after cluster creation."
+        },
+        "node_machine_type": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

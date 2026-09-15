@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://acme.com/schemas/cmdb-stack.schema.json",
+  "title": "CMDB Stack CI",
+  "description": "One file per stack. Level 0 of the CMDB; the system of record.",
+  "type": "object",
+  "required": [
+    "apiVersion",
+    "kind",
+    "id",
+    "path",
+    "cloud",
+    "environment",
+    "capability"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "archetype/v1"
+    },
+    "kind": {
+      "const": "Stack"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,80}$"
+    },
+    "path": {
+      "type": "string",
+      "pattern": "^/"
+    },
+    "name": {
+      "type": "string"
+    },
+    "cloud": {
+      "enum": [
+        "gcp",
+        "aws",
+        "azure"
+      ]
+    },
+    "environment": {
+      "type": "string"
+    },
+    "capability": {
+      "type": "string"
+    },
+    "archetype": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "catalog",
+            "demo"
+          ]
+        },
+        "component": {
+          "type": "string",
+          "description": "Set when this stack came from stacks[].use."
+        }
+      }
+    },
+    "instance": {
+      "type": "string",
+      "description": "Absent for platform stacks."
+    },
+    "model": {
+      "enum": [
+        "shared",
+        "dedicated"
+      ]
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "protected": {
+      "type": "boolean",
+      "default": false
+    },
+    "produces": {
+      "description": "Output contract keys published by this stack.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "consumes": {
+      "description": "Derived statically from input blocks. Forms the DEPENDS_ON edges.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "from_stack_id",
+          "output"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "from_stack_id": {
+            "type": "string"
+          },
+          "output": {
+            "type": "string"
+          },
+          "mocked": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "value"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "pool": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "lastApply": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "ok",
+            "failed",
+            "drifted"
+          ]
+        }
+      }
+    },
+    "resourceCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "expiresOn": {
+      "type": "string",
+      "format": "date"
+    },
+    "createsTenantResources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "provider",
+          "kind"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  }
+}

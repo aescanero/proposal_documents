@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://acme.com/schemas/component.schema.json",
+  "title": "Component",
+  "description": "Reusable parameterised stack template. Composed into archetypes via stacks[].use.",
+  "type": "object",
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "archetype/v1"
+    },
+    "kind": {
+      "const": "Component"
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{1,62}$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "description": {
+          "type": "string"
+        },
+        "owners": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "chart": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "values": {
+      "description": "Parameter schema. Keys are value names an archetype may set.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "enum": [
+              "string",
+              "integer",
+              "boolean"
+            ]
+          },
+          "enum": {
+            "type": "array"
+          },
+          "default": {},
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "capacity": {
+      "description": "Draw on the environment budget. Values may be a number or a map keyed by a values enum.",
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "firewall": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "requires": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}
