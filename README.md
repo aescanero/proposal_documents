@@ -12,6 +12,7 @@ GCP, AWS and Azure at parity; designed so a fourth cloud touches only layers 0�
 | [`docs/platform-overview.md`](docs/platform-overview.md) | Diagram-led map of everything. **Start here** |
 | [`docs/archetype-model.md`](docs/archetype-model.md) | What may be composed with what — manifests, capabilities, traits, pools, CMDB, resolution |
 | [`docs/terramate-outputs-sharing-architecture.md`](docs/terramate-outputs-sharing-architecture.md) | How it is generated and applied — generators, outputs sharing, IAM, policy, CI/CD, five runtime guides |
+| [`docs/developer-guide.md`](docs/developer-guide.md) | For application developers — branching, versioning, build, rollback, and the three languages |
 | [`docs/risk-register.md`](docs/risk-register.md) | 37 risks by domain, reviewed at each phase gate |
 | [`CLAUDE.md`](CLAUDE.md) | Decision log: what is settled, what is open, and the traps |
 

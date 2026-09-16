@@ -15,7 +15,7 @@ A multi-cloud infrastructure platform built on **Terramate CLI + OpenTofu**, wit
 | **Resolve** | `docs/archetype-model.md` | What may be composed with what — manifests, capabilities, traits, pools, CMDB, resolution |
 | **Generate** | `docs/terramate-outputs-sharing-architecture.md` | How it is generated and applied — generators, outputs sharing, IAM, policy, CI/CD, per-cloud guides |
 
-Plus `docs/platform-overview.md` (diagram-led map, read first) and `docs/risk-register.md` (37 risks by domain).
+Plus `docs/platform-overview.md` (diagram-led map, read first), `docs/risk-register.md` (37 risks by domain) and `docs/developer-guide.md` (the application developer's half — branching, versioning, build, rollback).
 
 **The seam between the halves is `binding.tm.hcl`.** The resolver writes globals; the generators consume them. Neither knows the other's internals.
 
@@ -70,7 +70,7 @@ The same technology can be both. `postgres-operator` (archetype, provides `datab
 3. **Kafka partition ceiling** on the intended broker count. The 4000 budget in the `demos` binding is a placeholder.
 4. **Where does resolution run** — a CLI in the repo, or a reusable workflow? Determines whether the project office can validate a demo locally.
 5. **How much Rego is genuinely shared** between conftest and `ConstraintTemplate`s. Measure before planning a single policy codebase.
-6. **Developer guide** — in progress. GitFlow, Python and Java first. See "Next up" below.
+6. **Developer guide open questions** — scaffolding tool vs template repository, where the version bump is computed, ephemeral environments opt-in or automatic. Listed in `docs/developer-guide.md` §13.
 
 ---
 
@@ -182,22 +182,27 @@ These are an afternoon's work and they gate everything else.
 
 ---
 
-## Next up: developer guide
+## The developer guide
 
-In progress, not yet written. Settled so far:
+Written: `docs/developer-guide.md`. Java, Python and Node/React; GitFlow; `archetypectl new-app` scaffolding still deferred.
 
-- **Python and Java** in the first version
-- **GitFlow** for application branching
-- `archetypectl new-app` scaffolding — later, but it is the thing that stops teams copy-pasting from another app and inheriting its mistakes
-- Build and deploy specs are an **extension of `manifest.yaml`**, not new files. A parallel `build.yaml`/`deploy.yaml` would create a third place to declare the same dependency
+Settled there, do not reopen:
 
-Three things a developer must be able to answer after reading it: which branch deploys where, which version bump a given change requires, and what can and cannot be rolled back.
+| Decision | Rationale |
+|---|---|
+| **Monorepo per application** | One version, one PR, one CI run for a change crossing two services |
+| **One version per application, not per service** | Otherwise "what was running together on Tuesday" has no answer and a rollback has no target. The version is the Git tag; `metadata.version` is generated and a CI gate fails a hand edit |
+| **Image promoted between environments, never rebuilt** | A rebuild is a different digest, so "prod runs what qa tested" becomes uncheckable. Promotion is a registry-side re-tag — 200–500 ms, zero bytes, digest and signatures intact. Deploy by digest; the tag is an alias |
+| **Every service carries the release tag, rebuilt or not** | Otherwise a release leaves unmodified services on an old tag and the application has three versions at once. `release.lock.json` records service → digest |
+| **Frontend is nginx in the cluster, not bucket + CDN** | Same Gateway, hostname, certificate, `HTTPRoute`, `SecurityPolicy` and observability. A bucket needs a second edge path and a second identity model |
+| **Platform review to raise `capacity` in a shared environment** | The resolver is the only thing that sees every tenant's draw |
+| **Build and deploy specs extend `manifest.yaml`** | A parallel `build.yaml`/`deploy.yaml` is a third place to declare the same dependency, and it drifts. Note `additionalProperties: false` — the schema must be extended from `registry/`, never by hand |
 
-**Rollback is the part that will hurt.** Only redeploying a previous image tag is cheap. A Helm rollback is harder, a `tofu apply` of an earlier commit can destroy resources, and a database migration has no rollback at all. Migrations are separated from deployment and follow expand-contract. Say this loudly, or someone will revert a merge to undo a migration.
+**Rollback is the part that hurts, and the guide says so in §6.** Only redeploying a previous image digest is cheap. A Helm rollback re-runs hooks and cannot revert immutable fields. A `tofu apply` of an earlier commit plans `destroy` for anything the reverted commit added. A migration has no rollback at all — hence expand-contract and migrations separated from deployment. **Reverting a merge does not undo a migration**, and someone will try.
 
-**JVM memory needs concrete numbers, not a footnote.** Without `-XX:MaxRAMPercentage`, the JVM does not see the cgroup limit and the pod is OOMKilled with nothing in the application logs.
+**JVM memory has concrete numbers in §8.3, not a footnote.** Three distinct OOMKill paths, all exit 137 with nothing in the application log: a pre-8u372/11.0.16 JVM on a cgroups v2 node reading the *host's* memory; the 25% default with no flag; and `-Xmx` set to the whole limit leaving nothing for the 250–400 MiB of non-heap.
 
-Open questions for the guide: one repo per application or monorepo; who approves a manifest change that raises `capacity` in a shared environment; and whether the image is promoted between environments or rebuilt.
+**The frontend has four details, all found on the first deployment, two of which block it outright** (§10): `nginxinc/nginx-unprivileged` against PSS `restricted` and `readOnlyRootFilesystem`; runtime `env.js` instead of a build-time `VITE_API_URL`, which would produce one image per environment and kill promotion; asymmetric `Cache-Control`; and `try_files $uri /index.html`. The last two deploy successfully and are broken anyway — the worse failure mode.
 
 ---
 
