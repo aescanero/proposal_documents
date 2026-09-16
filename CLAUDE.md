@@ -112,8 +112,11 @@ These are the failure modes that have already been identified. Do not rediscover
 
 ```
 docs/                   reference documents — the specification
-schemas/                JSON Schema, GENERATED from registry/
+schemas/                JSON Schema, enums GENERATED from registry/
 registry/               SOURCE OF TRUTH for capabilities, traits, zones, labels
+                        registry.json is GENERATED and committed
+tools/                  registry-generate and its tests
+charts/                 Helm values GENERATED from registry/
 policy/                 Rego for conftest, plus *_test.rego
 .github/workflows/
 ```
@@ -140,13 +143,21 @@ cmdb-data/              level 0 CMDB, one file per stack
 
 | Generated | Consumer |
 |---|---|
-| `enum` blocks in `schemas/*.schema.json` | `check-jsonschema` |
-| `registry/*.json` bundle | `conftest --data` |
-| Gatekeeper chart `values.yaml` | `ConstraintTemplate` parameters |
+| `$defs.capability.enum` and `$defs.trait.enum` in `schemas/archetype-manifest.schema.json` | `check-jsonschema` |
+| `registry/registry.json` bundle | `conftest --data registry/` → `data.registry` |
+| `charts/policy-gatekeeper/values.registry.yaml` | `ConstraintTemplate` parameters |
 
 **Never hand-edit an `enum` in `schemas/`.** That is a bug. The failure mode of drift is nasty: a label the generator stopped emitting while the admission `Constraint` still demands it blocks legitimate deployments at admission. Risk R34.
 
-The generator (`registry-generate`) is **not yet written**. It is the first task of roadmap phase 2c.
+The generator is `tools/registry-generate` (Python, PyYAML the only dependency). `--check` fails on drift and writes nothing; it is a **blocking** step in `.github/workflows/validate.yml`. Settled while writing it:
+
+| Decision | Rationale |
+|---|---|
+| **The schema is edited as text, not re-serialised** | Only the two enum arrays are replaced. Key order, indentation, the `—` escapes and the absent trailing newline survive, so a regeneration diff shows the enum and nothing else |
+| **Enum members are sorted; the YAML source is not** | The source groups capabilities by layer and traits by domain, which is how humans read it. Sorting the output makes adding one entry a one-line diff wherever it lands in the source |
+| **`registry/registry.json` is committed** | `--check` needs something to compare against, and `conftest --data registry/` needs it on a fresh checkout. `.gitignore` used to cover it under "resolver intermediates"; it is not one. Named `registry.json` because policies address it as `data.registry.traits` (architecture doc §13.3) |
+| **Gatekeeper values are a separate `values.registry.yaml`, not the chart's `values.yaml`** | The chart's own values (replicas, `failurePolicy`, `exemptNamespaces`, `enforcementAction`) are hand-written and must not be clobbered by a generator. Merged with a second `-f`. The chart itself arrives in phase 2c.6 |
+| **A bad registry is exit 2, drift is exit 1** | "Your YAML is wrong" and "you forgot to regenerate" need different reactions from whoever reads the CI log |
 
 ---
 

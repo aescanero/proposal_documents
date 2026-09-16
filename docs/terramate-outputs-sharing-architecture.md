@@ -3108,11 +3108,11 @@ Everything else is **generated** from these:
 
 | Generated artefact | Consumer |
 |---|---|
-| `enum` blocks in `schemas/*.schema.json` | `check-jsonschema` |
-| `registry/*.json` bundle | `conftest --data` |
-| Gatekeeper chart `values.yaml` | `ConstraintTemplate` parameters |
+| `$defs.capability.enum`, `$defs.trait.enum` in `schemas/archetype-manifest.schema.json` | `check-jsonschema` |
+| `registry/registry.json` bundle | `conftest --data registry/` → `data.registry` |
+| `charts/policy-gatekeeper/values.registry.yaml` | `ConstraintTemplate` parameters |
 
-Guard it with a `registry-generate --check` gate in CI, exactly like `terramate generate --check`. The YAML is the source; a schema edited by hand is a bug.
+Guard it with a `registry-generate --check` gate in CI, exactly like `terramate generate --check`. The YAML is the source; a schema edited by hand is a bug. Implemented as `tools/registry-generate`: `--check` fails on drift and writes nothing. The schema is edited as text rather than re-serialised, so only the two `enum` arrays move; the bundle is committed, because `--check` needs something to compare against and `conftest --data registry/` needs it on a fresh checkout.
 
 ---
 
@@ -3275,7 +3275,7 @@ The ordering invariant that previously relied on a shell script is now a Rego po
 ```yaml
 - name: Build policy inputs
   run: |
-    registry-generate --check                 # registry is the source of truth
+    python tools/registry-generate --check    # registry is the source of truth
     archetypectl resolve --dry-run > resolution.json
     terramate list --json > stacks.json
     archetypectl enrich stacks.json           # adds consumes[] and after_ids[]
@@ -3384,7 +3384,7 @@ Sequenced so that nothing blocks a real deployment until it has been observed in
 
 **Exit criteria, all required:**
 
-- [ ] `registry-generate --check` blocking; no hand-edited `enum` remains
+- [x] `registry-generate --check` blocking; no hand-edited `enum` remains
 - [ ] G1 blocking; shell lint deleted
 - [ ] Every Rego rule has a passing and a failing fixture
 - [ ] Gatekeeper running in an ephemeral environment with a clean audit for five working days
@@ -3440,8 +3440,8 @@ Sequenced so that nothing blocks a real deployment until it has been observed in
 | Deploy one instance | `terramate run --tags instance:alpha --enable-sharing -- tofu apply -auto-approve` |
 | Destroy one instance | `terramate run --tags instance:alpha --reverse --enable-sharing -- tofu destroy -auto-approve` |
 | Drift check | `terramate run --tags prod --enable-sharing -- tofu plan -detailed-exitcode` |
-| Regenerate the registry | `registry-generate` |
-| Verify registry is current | `registry-generate --check` |
+| Regenerate the registry | `python tools/registry-generate` |
+| Verify registry is current | `python tools/registry-generate --check` |
 | Run policy tests | `conftest verify --policy policy/` |
 | Run policy gate | `conftest test --policy policy/ --data registry/ resolution.json stacks.json` |
 | Gatekeeper audit results | `kubectl get constraints -o json \| jq '.items[].status.violations'` |

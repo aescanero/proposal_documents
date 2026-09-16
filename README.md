@@ -25,12 +25,15 @@ consume them.
 |---|---|
 | `docs/` | Reference documents — the specification |
 | `registry/` | **Source of truth** for capabilities, traits, zones, labels |
-| `schemas/` | JSON Schema — **generated** from `registry/`, never hand-edited |
+| `schemas/` | JSON Schema — enums **generated** from `registry/`, never hand-edited |
+| `tools/` | `registry-generate` and its tests |
+| `charts/` | Helm values generated from `registry/` |
 | `policy/` | Rego for conftest, plus `*_test.rego` |
 
 ## Status
 
-Documentation complete. **Nothing built yet.**
+Documentation complete. First tooling landed: `tools/registry-generate` (roadmap
+phase 2c.1). **No infrastructure built yet.**
 
 Next step is Phase 0 of the roadmap (architecture document §16): confirm the Terramate
 assumptions in a throwaway repository before writing any generators. It is an
@@ -39,6 +42,9 @@ afternoon's work and it gates everything else.
 ## Validating
 
 ```bash
+python tools/registry-generate            # regenerate the three artefacts
+python tools/registry-generate --check    # CI gate: fail on drift, write nothing
+
 check-jsonschema --schemafile schemas/archetype-manifest.schema.json archetypes/*/manifest.yaml
 check-jsonschema --schemafile schemas/environment-binding.schema.json environments/*/binding.yaml
 check-jsonschema --schemafile schemas/pool-ledger.schema.json cmdb-data/pools/*.json

@@ -22,7 +22,11 @@ override.tf.json
 # Resolver intermediates — regenerate, never commit
 resolution.json
 stacks.json
-registry/*.json
+
+# registry/registry.json is NOT an intermediate: it is generated from
+# registry/*.yaml by tools/registry-generate and IS committed, the way generated
+# .tf is. `registry-generate --check` has to have something to compare against,
+# and `conftest --data registry/` has to find it on a fresh checkout.
 
 # Credentials — never
 *.pem

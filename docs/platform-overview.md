@@ -406,9 +406,9 @@ The resolver **computes**; OPA **asserts**. They must not implement the same rul
 ```mermaid
 flowchart TD
     REG["<b>registry/*.yaml</b><br/>capabilities · traits · zones · labels"]
-    REG -->|generate| S["schemas/*.schema.json<br/>enum blocks"]
-    REG -->|generate| D["registry/*.json<br/>conftest --data"]
-    REG -->|generate| V["Gatekeeper chart values<br/>ConstraintTemplate params"]
+    REG -->|tools/registry-generate| S["archetype-manifest.schema.json<br/>capability · trait enums"]
+    REG -->|tools/registry-generate| D["registry/registry.json<br/>conftest --data"]
+    REG -->|tools/registry-generate| V["values.registry.yaml<br/>ConstraintTemplate params"]
     S --> CK["check-jsonschema"]
     D --> CF["conftest"]
     V --> GK["Gatekeeper"]

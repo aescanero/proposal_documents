@@ -36,16 +36,16 @@ jobs:
             echo "ok  $f"
           done
 
-      # Once registry-generate exists (roadmap phase 2c.1), this becomes blocking
-      # and replaces the two checks above. Schemas are GENERATED from registry/:
-      # a hand-edited enum is a bug. See CLAUDE.md, "The registry is load-bearing".
+      # Blocking. The schema enums, the conftest bundle and the Gatekeeper values
+      # are GENERATED from registry/: a hand-edited enum is a bug, and drift
+      # between the three blocks legitimate deployments at admission (risk R34).
+      # See CLAUDE.md, "The registry is load-bearing".
       - name: Registry is the source of truth
-        run: |
-          if command -v registry-generate >/dev/null 2>&1; then
-            registry-generate --check
-          else
-            echo "::notice::registry-generate not yet implemented (roadmap phase 2c.1)"
-          fi
+        run: python tools/registry-generate --check
+
+      # A gate that cannot fail is not a gate. Risk R36.
+      - name: Generator unit tests
+        run: python -m unittest discover -s tools -t tools -v
 
       - name: Validate manifests
         run: |

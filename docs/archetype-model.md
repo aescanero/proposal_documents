@@ -189,9 +189,9 @@ registry/
 
 | Generated artefact | Consumer |
 |---|---|
-| `enum` blocks in `schemas/*.schema.json` | `check-jsonschema` |
-| `registry/*.json` bundle | `conftest --data` |
-| Gatekeeper chart `values.yaml` | `ConstraintTemplate` parameters |
+| `$defs.capability.enum`, `$defs.trait.enum` in `schemas/archetype-manifest.schema.json` | `check-jsonschema` |
+| `registry/registry.json` bundle | `conftest --data registry/` → `data.registry` |
+| `charts/policy-gatekeeper/values.registry.yaml` | `ConstraintTemplate` parameters |
 
 The YAML is the source. A schema edited by hand is a bug, guarded by a `registry-generate --check` gate in CI exactly like `terramate generate --check`.
 

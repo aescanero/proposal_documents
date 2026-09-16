@@ -1,0 +1,166 @@
+{
+  "_generated": "by tools/registry-generate from registry/*.yaml — do not edit by hand",
+  "capabilities": [
+    "cache",
+    "cert",
+    "certs",
+    "cidr-pool",
+    "cloud-observability",
+    "cluster",
+    "database",
+    "database-platform",
+    "dns",
+    "dns-zone",
+    "edge-ip",
+    "env-edge",
+    "event-bus",
+    "hub",
+    "ingress",
+    "legacy-ingress",
+    "mesh",
+    "monitoring",
+    "network",
+    "object-store",
+    "oidc-idp",
+    "policy",
+    "secrets",
+    "serverless-runtime",
+    "waf"
+  ],
+  "traits": [
+    "acl-authz",
+    "arm64",
+    "audit-api",
+    "cross-namespace-refgrant",
+    "custom-templates",
+    "daemonset-privileged",
+    "gatekeeper",
+    "gateway-api",
+    "global-anycast",
+    "global-rate-limit",
+    "gpu",
+    "grpc-route",
+    "hostpath",
+    "http-route",
+    "iac-owned-edge",
+    "iam-auth",
+    "ingress-api",
+    "irsa",
+    "jwt-auth",
+    "kraft",
+    "local-rate-limit",
+    "managed-cert",
+    "managed-identity",
+    "managed-nodes",
+    "managed-prometheus",
+    "managed-tracing",
+    "mtls-backend",
+    "multi-az",
+    "mutation",
+    "node-agent",
+    "oidc-security-policy",
+    "otlp-native",
+    "overlay-pods",
+    "pod-identity",
+    "private-endpoint",
+    "psa-shared",
+    "referential-constraints",
+    "regional-only",
+    "schema-registry",
+    "self-managed-nodes",
+    "spot",
+    "strimzi",
+    "tcp-route",
+    "tiered-storage",
+    "tls-mtls",
+    "waf",
+    "workload-identity"
+  ],
+  "zones": [
+    {
+      "name": "data",
+      "fraction": "/20",
+      "allocatable": true,
+      "purposes": [
+        "db-subnet",
+        "kafka-storage-subnet",
+        "private-endpoint",
+        "psa"
+      ]
+    },
+    {
+      "name": "edge",
+      "fraction": "/20",
+      "allocatable": true,
+      "purposes": [
+        "public",
+        "serverless-egress",
+        "services"
+      ]
+    },
+    {
+      "name": "growth",
+      "fraction": "/20",
+      "allocatable": false,
+      "purposes": []
+    },
+    {
+      "name": "infra",
+      "fraction": "/20",
+      "allocatable": true,
+      "purposes": [
+        "endpoints",
+        "nodes",
+        "tasks"
+      ]
+    },
+    {
+      "name": "pods",
+      "fraction": "/18",
+      "allocatable": true,
+      "purposes": [
+        "pods"
+      ]
+    }
+  ],
+  "zone_names": [
+    "data",
+    "edge",
+    "growth",
+    "infra",
+    "pods"
+  ],
+  "labels": {
+    "cloud_resource": {
+      "required": [
+        "archetype",
+        "commit-sha",
+        "environment",
+        "instance",
+        "managed-by"
+      ],
+      "optional": [
+        "expires-on"
+      ]
+    },
+    "namespace": {
+      "required": [
+        "archetype",
+        "instance",
+        "pod-security.kubernetes.io/enforce"
+      ],
+      "optional": [
+        "expires-on"
+      ]
+    },
+    "workload": {
+      "required": [
+        "app.kubernetes.io/instance",
+        "app.kubernetes.io/name",
+        "app.kubernetes.io/version",
+        "archetype"
+      ],
+      "optional": []
+    }
+  }
+}
