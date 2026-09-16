@@ -208,6 +208,8 @@ Settled there, do not reopen:
 
 ## Working style
 
+**Everything in `docs/` is written in English**, whatever language the request arrives in. No exceptions — a mixed-language document set is worse than either language alone.
+
 The documents are written plainly and densely: tables over prose, concrete numbers over hedging, and the rationale for a decision recorded alongside it. Keep that. When something is uncertain, say so and say what would settle it — several sections end with a "verify in the PoC" note, and those are load-bearing, not filler.
 
 Push back on ideas that will not work. Several decisions in this file exist because an earlier proposal was wrong and got corrected.
