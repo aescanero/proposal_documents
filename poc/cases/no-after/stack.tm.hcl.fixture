@@ -1,0 +1,15 @@
+// A3 probe — the REAL silent failure: an `input` block with no `after` at all.
+//
+// Since globals in `stack.after` turn out to be a hard parse error (the other
+// two probes), the ordering hazard is not an unresolved expression. It is a
+// consumer whose `after` was simply forgotten. This fixture has a valid
+// `input` pointing at the producer and NO ordering. Terramate accepts it,
+// generates for it, and runs it in arbitrary order — no error, ever.
+//
+// That is risk R2, and it is why the G1 conftest policy has to exist.
+
+stack {
+  id   = "poc-no-after"
+  name = "A3 probe — input with no after"
+  tags = ["poc", "probe"]
+}
