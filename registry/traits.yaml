@@ -1,0 +1,71 @@
+# Trait registry
+#
+# SOURCE OF TRUTH. See capabilities.yaml for the generation contract.
+#
+# A trait is a capability property a consumer may require. An
+# unregistered trait is a RESOLUTION ERROR: a typo that silently
+# matches nothing is worse than no check at all.
+
+traits:
+  # --- compute ---
+  - self-managed-nodes
+  - managed-nodes
+  - daemonset-privileged
+  - hostpath
+  - node-agent
+  - gpu
+  - arm64
+  - spot
+  - overlay-pods
+
+  # --- ingress ---
+  - gateway-api
+  - ingress-api
+  - http-route
+  - grpc-route
+  - tcp-route
+  - cross-namespace-refgrant
+  - oidc-security-policy
+  - jwt-auth
+  - local-rate-limit
+  - global-rate-limit
+  - mtls-backend
+
+  # --- edge ---
+  - iac-owned-edge
+  - managed-cert
+  - waf
+  - global-anycast
+  - regional-only
+
+  # --- identity ---
+  - workload-identity
+  - irsa
+  - pod-identity
+  - managed-identity
+
+  # --- data ---
+  - private-endpoint
+  - iam-auth
+  - multi-az
+  - psa-shared
+
+  # --- messaging ---
+  - strimzi
+  - kraft
+  - acl-authz
+  - tls-mtls
+  - schema-registry
+  - tiered-storage
+
+  # --- policy ---
+  - gatekeeper
+  - custom-templates
+  - audit-api
+  - referential-constraints
+  - mutation
+
+  # --- observability ---
+  - managed-prometheus
+  - otlp-native
+  - managed-tracing

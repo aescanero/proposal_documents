@@ -1,0 +1,50 @@
+# Capability registry
+#
+# SOURCE OF TRUTH. The enum in schemas/archetype-manifest.schema.json,
+# the conftest --data bundle and the Gatekeeper chart values are all
+# GENERATED from this file. Guarded by `registry-generate --check`.
+#
+# Exactly one instance of each capability exists per environment.
+# That is what makes resolution linear rather than NP-complete.
+
+capabilities:
+  # --- landing zone (layer 0) ---
+  - hub
+  - cidr-pool
+  - dns-zone
+  - cert
+  - waf
+  - edge-ip
+
+  # --- environment (layer 1) ---
+  - network
+  - env-edge
+  - cloud-observability
+
+  # --- runtime (layer 2) ---
+  - cluster
+  - serverless-runtime
+
+  # --- policy (layer 2b) ---
+  - policy
+
+  # --- platform services (layer 3) ---
+  - ingress
+  - monitoring
+  - certs
+  - dns
+  - secrets
+  - mesh
+
+  # --- middleware (layer 4) ---
+  - oidc-idp
+  - database-platform
+  - event-bus
+  - cache
+  - object-store
+
+  # --- deprecated ---
+  - legacy-ingress
+
+  # --- unclassified ---
+  - database

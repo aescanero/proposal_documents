@@ -1,0 +1,299 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://acme.com/schemas/pool-ledger.schema.json",
+  "title": "Pool Ledger",
+  "description": "Authoritative record of allocations of one finite resource. Merge conflicts on this file are the concurrency control.",
+  "type": "object",
+  "required": [
+    "apiVersion",
+    "kind",
+    "pool",
+    "kind_of",
+    "allocations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "archetype/v1"
+    },
+    "kind": {
+      "const": "PoolLedger"
+    },
+    "pool": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9.-]{1,62}$"
+    },
+    "kind_of": {
+      "enum": [
+        "cidr",
+        "hostname",
+        "listener_priority",
+        "static_ip"
+      ]
+    },
+    "supernet": {
+      "type": "string",
+      "pattern": "^\\d{1,3}(\\.\\d{1,3}){3}/\\d{1,2}$",
+      "description": "Required when kind_of is cidr."
+    },
+    "allowed_prefixes": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 8,
+        "maximum": 28
+      },
+      "description": "Prefix lengths this pool will allocate. Enables variable-size buddy allocation."
+    },
+    "range": {
+      "type": "object",
+      "description": "Required when kind_of is listener_priority.",
+      "additionalProperties": false,
+      "properties": {
+        "min": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max": {
+          "type": "integer"
+        },
+        "block_size": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 100
+        }
+      }
+    },
+    "quarantine_days": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 7
+    },
+    "reservations": {
+      "description": "Permanently excluded ranges. Never allocatable. Prevents the landing-zone bootstrap cycle.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "cidr": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "range": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "reason": {
+            "type": "string"
+          },
+          "permanent": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      }
+    },
+    "allocations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "owner",
+          "state"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "cidr": {
+            "type": "string",
+            "pattern": "^\\d{1,3}(\\.\\d{1,3}){3}/\\d{1,2}$"
+          },
+          "value": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string",
+            "description": "Environment or archetype instance identifier."
+          },
+          "state": {
+            "enum": [
+              "active",
+              "quarantine",
+              "reserved-pending"
+            ]
+          },
+          "pr": {
+            "type": "integer",
+            "description": "Pull request that allocated it. Enables reclaim of abandoned PRs."
+          },
+          "allocated_at": {
+            "type": "string",
+            "format": "date"
+          },
+          "released_at": {
+            "type": "string",
+            "format": "date"
+          },
+          "reusable_after": {
+            "type": "string",
+            "format": "date"
+          },
+          "zone": {
+            "enum": [
+              "infra",
+              "data",
+              "edge",
+              "pods"
+            ]
+          },
+          "purpose": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,30}$",
+            "description": "Second half of the idempotency key (pool, owner, purpose)."
+          },
+          "range": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "state": {
+                  "const": "quarantine"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "released_at",
+                "reusable_after"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "parent_pool": {
+      "type": "string",
+      "description": "Pool this one was allocated from. Absent for the global pool."
+    },
+    "zones": {
+      "description": "Purpose zones. Claims declare a zone; allocation is first-fit within it.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "cidr"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "enum": [
+              "infra",
+              "data",
+              "edge",
+              "pods",
+              "growth"
+            ]
+          },
+          "cidr": {
+            "type": "string"
+          },
+          "allocatable": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_claim_fraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "require_purpose": {
+          "type": "boolean",
+          "default": true
+        },
+        "prefer_unsplit_runs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable on the global pool so /17 churn does not make a /16 unallocatable."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind_of": {
+            "const": "cidr"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "supernet",
+          "allowed_prefixes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind_of": {
+            "const": "listener_priority"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "range"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind_of": {
+            "const": "cidr"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "allocations": {
+            "items": {
+              "required": [
+                "owner",
+                "state",
+                "purpose"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

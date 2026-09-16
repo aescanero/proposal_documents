@@ -1,0 +1,652 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://acme.com/schemas/archetype-manifest.schema.json",
+  "title": "Archetype Manifest",
+  "type": "object",
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "archetype/v1"
+    },
+    "kind": {
+      "const": "Archetype"
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "name",
+        "version",
+        "layer"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/slug"
+        },
+        "version": {
+          "$ref": "#/$defs/semver"
+        },
+        "layer": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "description": {
+          "type": "string"
+        },
+        "owners": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "deprecated": {
+          "type": "boolean",
+          "default": false
+        },
+        "supersededBy": {
+          "$ref": "#/$defs/slug"
+        },
+        "kind": {
+          "enum": [
+            "catalog",
+            "demo"
+          ],
+          "default": "catalog"
+        },
+        "expiresOn": {
+          "type": "string",
+          "format": "date",
+          "description": "Required when metadata.kind is demo."
+        }
+      }
+    },
+    "runtimes": {
+      "description": "Analogous to Architecture: in Debian. Omit for cloud-agnostic archetypes.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/runtime"
+      },
+      "minItems": 1
+    },
+    "requires": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "capability"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "capability": {
+            "$ref": "#/$defs/capability"
+          },
+          "version": {
+            "$ref": "#/$defs/versionConstraint"
+          },
+          "traits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/trait"
+            }
+          },
+          "optional": {
+            "type": "boolean",
+            "default": false
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "provides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "capability",
+          "version"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "capability": {
+            "$ref": "#/$defs/capability"
+          },
+          "version": {
+            "$ref": "#/$defs/semver"
+          },
+          "traits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/trait"
+            }
+          },
+          "conditionalTraits": {
+            "description": "Traits present only when the named optional requirement is satisfied.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "trait",
+                "whenCapability"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "trait": {
+                  "$ref": "#/$defs/trait"
+                },
+                "whenCapability": {
+                  "$ref": "#/$defs/capability"
+                }
+              }
+            }
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "from"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "from": {
+                  "$ref": "#/$defs/slug",
+                  "description": "Internal stack producing it."
+                }
+              }
+            }
+          },
+          "tenant_resources": {
+            "description": "Kinds a consumer may create in this provider's namespace.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "kind",
+                "namePrefix"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "namePrefix": {
+                  "type": "string"
+                },
+                "maxCount": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "oneOf": [
+          {
+            "required": [
+              "capability"
+            ]
+          },
+          {
+            "required": [
+              "archetype"
+            ]
+          }
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "capability": {
+            "$ref": "#/$defs/capability"
+          },
+          "archetype": {
+            "$ref": "#/$defs/slug"
+          },
+          "trait": {
+            "$ref": "#/$defs/trait"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/claim"
+      }
+    },
+    "capacity": {
+      "description": "Divisible budget consumed from the environment. Keys are normalised across clouds.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "db_connections": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cpu_millicores": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "memory_mib": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pods": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ingress_routes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "workload_identities": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lb_rules": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "subnet_ips": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nat_snat_ports": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "kafka_topics": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "kafka_partitions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "kafka_storage_gib": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "kafka_throughput_mibs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pvc_gib": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "providers": {
+      "description": "Analogous to Build-Depends:. Drives constraint intersection, mirror allowlist and required_providers generation.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "source",
+          "version"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+/[a-z0-9-]+$"
+          },
+          "version": {
+            "type": "string"
+          },
+          "runtimes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/runtime"
+            }
+          }
+        }
+      }
+    },
+    "stacks": {
+      "description": "Stacks this archetype owns. Each becomes one Terramate stack.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "required": [
+              "name"
+            ]
+          },
+          {
+            "required": [
+              "use",
+              "name"
+            ]
+          }
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/$defs/slug"
+          },
+          "use": {
+            "type": "string",
+            "pattern": "^component/[a-z][a-z0-9-]{1,62}$"
+          },
+          "values": {
+            "type": "object"
+          },
+          "after": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/slug"
+            }
+          },
+          "condition": {
+            "type": "string",
+            "description": "Expression over resolved optional capabilities, e.g. !resolved(database-platform)."
+          },
+          "claims": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/claim"
+            }
+          },
+          "creates_tenant_resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/capability"
+            }
+          }
+        }
+      }
+    },
+    "firewall": {
+      "description": "Rules written by whoever claims the range. Prefer workload selectors over CIDR for east-west.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "from",
+          "to"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "$ref": "#/$defs/slug"
+          },
+          "from": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/selector"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/selector"
+                }
+              }
+            ]
+          },
+          "to": {
+            "$ref": "#/$defs/selector"
+          },
+          "ports": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          },
+          "protocol": {
+            "enum": [
+              "tcp",
+              "udp",
+              "icmp"
+            ],
+            "default": "tcp"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,62}$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+    },
+    "versionConstraint": {
+      "type": "string",
+      "description": "npm-style range: ^2.0.0, ~1.4, >=3.0.0 <4.0.0, 2.x",
+      "minLength": 1
+    },
+    "capability": {
+      "enum": [
+        "cache",
+        "cert",
+        "certs",
+        "cidr-pool",
+        "cloud-observability",
+        "cluster",
+        "database",
+        "database-platform",
+        "dns",
+        "dns-zone",
+        "edge-ip",
+        "env-edge",
+        "event-bus",
+        "hub",
+        "ingress",
+        "legacy-ingress",
+        "mesh",
+        "monitoring",
+        "network",
+        "object-store",
+        "oidc-idp",
+        "policy",
+        "secrets",
+        "serverless-runtime",
+        "waf"
+      ],
+      "description": "Generated from registry/capabilities.yaml \u2014 do not edit by hand."
+    },
+    "trait": {
+      "enum": [
+        "acl-authz",
+        "arm64",
+        "audit-api",
+        "cross-namespace-refgrant",
+        "custom-templates",
+        "daemonset-privileged",
+        "gatekeeper",
+        "gateway-api",
+        "global-anycast",
+        "global-rate-limit",
+        "gpu",
+        "grpc-route",
+        "hostpath",
+        "http-route",
+        "iac-owned-edge",
+        "iam-auth",
+        "ingress-api",
+        "irsa",
+        "jwt-auth",
+        "kraft",
+        "local-rate-limit",
+        "managed-cert",
+        "managed-identity",
+        "managed-nodes",
+        "managed-prometheus",
+        "managed-tracing",
+        "mtls-backend",
+        "multi-az",
+        "mutation",
+        "node-agent",
+        "oidc-security-policy",
+        "otlp-native",
+        "overlay-pods",
+        "pod-identity",
+        "private-endpoint",
+        "psa-shared",
+        "referential-constraints",
+        "regional-only",
+        "schema-registry",
+        "self-managed-nodes",
+        "spot",
+        "strimzi",
+        "tcp-route",
+        "tiered-storage",
+        "tls-mtls",
+        "waf",
+        "workload-identity"
+      ],
+      "description": "Generated from registry/traits.yaml \u2014 do not edit by hand."
+    },
+    "runtime": {
+      "enum": [
+        "gke",
+        "gke-autopilot",
+        "eks",
+        "aks",
+        "aks-automatic",
+        "cloudrun",
+        "fargate",
+        "container-apps"
+      ]
+    },
+    "selector": {
+      "type": "string",
+      "pattern": "^(purpose:[a-z0-9-]+|zone:[a-z0-9-]+|cidr:[0-9./]+|self)$"
+    },
+    "claim": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "cidr",
+            "hostname",
+            "static_ip"
+          ]
+        },
+        "pool": {
+          "type": "string"
+        },
+        "zone": {
+          "enum": [
+            "infra",
+            "data",
+            "edge",
+            "pods"
+          ]
+        },
+        "purpose": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{1,30}$"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 28
+        },
+        "computed": {
+          "type": "string",
+          "description": "Expression deriving the prefix from capacity, e.g. from(max_nodes, pods_per_node)."
+        },
+        "value": {
+          "type": "string"
+        },
+        "bindsTo": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "cidr"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "zone",
+              "purpose"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "metadata": {
+            "properties": {
+              "kind": {
+                "const": "demo"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "metadata": {
+            "required": [
+              "name",
+              "version",
+              "layer",
+              "expiresOn",
+              "owners"
+            ]
+          },
+          "provides": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+# Mandatory labels and tags
+#
+# SOURCE OF TRUTH. See capabilities.yaml for the generation contract.
+#
+# The GENERATOR emits these; Gatekeeper VALIDATES them. There is no
+# mutation: one writer, one validator. If this list diverges from what
+# the generator emits, legitimate deployments are blocked at admission --
+# which is why registry-generate --check is a blocking gate (risk R34).
+
+labels:
+  cloud_resource:
+    required:
+      - managed-by          # always "terramate"
+      - environment
+      - archetype
+      - instance
+      - commit-sha
+    optional:
+      - expires-on          # REQUIRED when archetype kind is "demo"
+
+  namespace:
+    required:
+      - archetype
+      - instance
+      - pod-security.kubernetes.io/enforce    # "restricted"
+    optional:
+      - expires-on
+
+  workload:
+    required:
+      - app.kubernetes.io/name
+      - app.kubernetes.io/instance
+      - app.kubernetes.io/version
+      - archetype

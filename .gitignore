@@ -1,0 +1,46 @@
+# OpenTofu / Terraform
+.terraform/
+.tofu/
+*.tfstate
+*.tfstate.*
+*.tfplan
+out.tfplan
+plan.json
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+.terraform.lock.hcl.bak
+
+# Plugin cache (path comes from terramate.tm.hcl run.env)
+.tofu-plugin-cache/
+
+# Terramate
+.terramate/
+.terramate-cache/
+
+# Resolver intermediates — regenerate, never commit
+resolution.json
+stacks.json
+registry/*.json
+
+# Credentials — never
+*.pem
+*.key
+*_rsa
+credentials.json
+service-account*.json
+.env
+.envrc
+
+# Tooling
+.mise/
+node_modules/
+__pycache__/
+.venv/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

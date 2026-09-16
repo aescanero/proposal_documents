@@ -1,0 +1,87 @@
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  schemas:
+    name: Schemas and registry
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install validators
+        run: pip install check-jsonschema pyyaml
+
+      - name: Schemas are well-formed JSON Schema
+        run: |
+          for f in schemas/*.schema.json; do
+            python -c "import json,sys; json.load(open('$f'))"
+            echo "ok  $f"
+          done
+
+      - name: Registry is well-formed YAML
+        run: |
+          for f in registry/*.yaml; do
+            python -c "import yaml,sys; yaml.safe_load(open('$f'))"
+            echo "ok  $f"
+          done
+
+      # Once registry-generate exists (roadmap phase 2c.1), this becomes blocking
+      # and replaces the two checks above. Schemas are GENERATED from registry/:
+      # a hand-edited enum is a bug. See CLAUDE.md, "The registry is load-bearing".
+      - name: Registry is the source of truth
+        run: |
+          if command -v registry-generate >/dev/null 2>&1; then
+            registry-generate --check
+          else
+            echo "::notice::registry-generate not yet implemented (roadmap phase 2c.1)"
+          fi
+
+      - name: Validate manifests
+        run: |
+          shopt -s nullglob
+          for f in archetypes/*/manifest.yaml; do
+            check-jsonschema --schemafile schemas/archetype-manifest.schema.json "$f"
+          done
+          for f in components/*/component.yaml; do
+            check-jsonschema --schemafile schemas/component.schema.json "$f"
+          done
+          for f in environments/*/binding.yaml; do
+            check-jsonschema --schemafile schemas/environment-binding.schema.json "$f"
+          done
+          for f in cmdb-data/pools/*.json; do
+            check-jsonschema --schemafile schemas/pool-ledger.schema.json "$f"
+          done
+        shell: bash
+
+  policy:
+    name: Policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install conftest
+        run: |
+          VERSION=0.56.0
+          curl -sSL "https://github.com/open-policy-agent/conftest/releases/download/v${VERSION}/conftest_${VERSION}_Linux_x86_64.tar.gz" \
+            | tar xz -C /usr/local/bin conftest
+
+      # A rule that never fires gives false confidence. Risk R36.
+      - name: Policy unit tests
+        run: |
+          if compgen -G "policy/*.rego" > /dev/null; then
+            conftest verify --policy policy/
+          else
+            echo "::notice::no policies yet (roadmap phase 2c.3)"
+          fi
+        shell: bash
