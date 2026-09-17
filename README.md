@@ -27,10 +27,12 @@ consume them.
 | `registry/` | **Source of truth** for capabilities, traits, zones, labels |
 | `schemas/` | JSON Schema — **generated** from `registry/`, never hand-edited |
 | `policy/` | Rego for conftest, plus `*_test.rego` |
+| `tools/archetypectl/` | The platform CLI. So far only `enrich`, which feeds the G1 gate |
 
 ## Status
 
-Documentation complete. **Nothing built yet.**
+Documentation complete. The only code is `tools/archetypectl` (roadmap phase 2c.2);
+**nothing is deployed**.
 
 Next step is Phase 0 of the roadmap (architecture document §16): confirm the Terramate
 assumptions in a throwaway repository before writing any generators. It is an
@@ -43,6 +45,11 @@ check-jsonschema --schemafile schemas/archetype-manifest.schema.json archetypes/
 check-jsonschema --schemafile schemas/environment-binding.schema.json environments/*/binding.yaml
 check-jsonschema --schemafile schemas/pool-ledger.schema.json cmdb-data/pools/*.json
 
+terramate list --json > stacks.json
+tools/archetypectl/bin/archetypectl enrich stacks.json   # adds consumes[] and after_ids[]
+
 conftest verify --policy policy/
 conftest test --policy policy/ --data registry/ resolution.json stacks.json
+
+python3 -m unittest discover -s tools/archetypectl/tests -t tools/archetypectl
 ```

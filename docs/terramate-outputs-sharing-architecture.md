@@ -3372,7 +3372,7 @@ Sequenced so that nothing blocks a real deployment until it has been observed in
 
 **2c.1 — Registry (2–3 days).** `registry/{capabilities,traits,zones,labels}.yaml`, the three generators (schema `enum`s, conftest `--data` bundle, Gatekeeper chart values), and the `registry-generate --check` gate. This comes first because everything after it consumes the registry. Retrofitting a single source once three copies exist is materially harder (R34).
 
-**2c.2 — `archetypectl enrich` (2 days).** `terramate list --json` does not expose `input` blocks, so the enricher scans each stack for `from_stack_id` and `after` and emits `consumes[]` and `after_ids[]`. Keep the extraction here, not in Rego, so the policies stay portable and testable against fixtures.
+**2c.2 — `archetypectl enrich` (2 days).** `terramate list --json` does not expose `input` blocks, so the enricher scans each stack for `from_stack_id` and `after` and emits `consumes[]` and `after_ids[]`. Keep the extraction here, not in Rego, so the policies stay portable and testable against fixtures. **Built** — `tools/archetypectl`, with a fixture project covering the passing and the failing case of the ordering rule. Two notes from writing it: the `input` blocks are reached only by following `import`, since contracts live in `imports/contracts/`; and `after` entries are paths or tag filters, so the tool resolves them to IDs before the policy sees them.
 
 **2c.3 — G1 gate, advisory (3 days).** The `input`↔`after` policy plus stack-naming and secret-output rules, running **non-blocking**. Measure the false-positive rate against the existing repository before turning it on.
 

@@ -64,6 +64,28 @@ jobs:
           done
         shell: bash
 
+  tools:
+    name: archetypectl
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Stdlib only — nothing to install. The suite includes the G1 output
+      # contract (tests/test_g1_contract.py): a renamed field fails here rather
+      # than quietly stopping the gate from firing. Risk R36.
+      - name: archetypectl unit tests
+        run: python -m unittest discover -s tools/archetypectl/tests -t tools/archetypectl -v
+
+      - name: enrich runs end to end on the fixture project
+        run: |
+          tools/archetypectl/bin/archetypectl enrich \
+            tools/archetypectl/tests/fixtures/repo/terramate-list.json \
+            --root tools/archetypectl/tests/fixtures/repo -o - > /dev/null
+
   policy:
     name: Policy
     runs-on: ubuntu-latest

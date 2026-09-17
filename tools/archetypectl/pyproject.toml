@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "archetypectl"
+version = "0.1.0"
+description = "Platform tooling for the archetype model — Terramate + OpenTofu"
+requires-python = ">=3.9"
+dependencies = []          # stdlib only, on purpose: CI installs nothing
+
+[project.scripts]
+archetypectl = "archetypectl.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["archetypectl*"]

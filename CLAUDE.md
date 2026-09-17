@@ -78,7 +78,7 @@ The same technology can be both. `postgres-operator` (archetype, provides `datab
 
 These are the failure modes that have already been identified. Do not rediscover them.
 
-**Outputs sharing does not create execution order.** Every `input` block needs a matching `after` in `stack.tm.hcl`. An unresolved ordering applies a stale value with **no error**. This is risk R2, the top risk, and the G1 conftest policy exists specifically to catch it.
+**Outputs sharing does not create execution order.** Every `input` block needs a matching `after` in `stack.tm.hcl`. An unresolved ordering applies a stale value with **no error**. This is risk R2, the top risk, and the G1 conftest policy exists specifically to catch it. The policy compares `consumes[].from_stack_id` against `after_ids[]`, both produced by `archetypectl enrich` — the extraction is in the tool, not in Rego, so the policies stay portable and testable against fixtures.
 
 **`mock_on_fail` must be true in preview and false in deploy.** Separate named `script` blocks so it cannot be got wrong. A deployment that silently falls back to a mock applies nonsense.
 
@@ -115,6 +115,7 @@ docs/                   reference documents — the specification
 schemas/                JSON Schema, GENERATED from registry/
 registry/               SOURCE OF TRUTH for capabilities, traits, zones, labels
 policy/                 Rego for conftest, plus *_test.rego
+tools/archetypectl/     the platform CLI — so far only the `enrich` subcommand
 .github/workflows/
 ```
 
@@ -167,7 +168,9 @@ Generated code **is committed to git**, prefixed with `_`, and covered by `CODEO
 
 ## Where to start
 
-Roadmap is in `docs/terramate-outputs-sharing-architecture.md` §16. Current position: **nothing built yet; documentation complete**.
+Roadmap is in `docs/terramate-outputs-sharing-architecture.md` §16. Current position: **documentation complete; the only code is `tools/archetypectl` (phase 2c.2)**. Phase 0 is still unrun — nothing is deployed.
+
+`archetypectl enrich` exists because `terramate list --json` does not expose `input` blocks and `stack.after` is written in paths and tag filters while the G1 invariant is expressed in stack IDs. It scans each stack — **following `import` blocks, because the contracts live in `imports/contracts/` and not in the stack directory** — and emits `consumes[]`, `produces[]` and `after_ids[]`. It never guesses: an expression it cannot evaluate yields `from_stack_id: null` plus an error, and the G1 rule denies on that anyway. See `tools/archetypectl/README.md`.
 
 **Phase 0 first.** Build a throwaway repository with two stacks and confirm, against a pinned Terramate version:
 

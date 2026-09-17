@@ -1,0 +1,11 @@
+{
+  "stacks": [
+    { "id": "gcp-demos-network",   "name": "GCP demos — network",           "dir": "/stacks/platforms/gcp/demos/network",        "tags": ["gcp", "demos", "network", "platform", "producer"] },
+    { "id": "gcp-demos-gke",       "name": "GCP demos — GKE",               "dir": "/stacks/platforms/gcp/demos/gke",            "tags": ["gcp", "demos", "cluster", "platform", "producer", "consumer"] },
+    { "id": "gcp-demos-services",  "name": "GCP demos — platform services", "dir": "/stacks/platforms/gcp/demos/services",       "tags": ["gcp", "demos", "platform-services", "platform", "consumer"] },
+    { "id": "gcp-demos-edge",      "name": "GCP demos — edge",              "dir": "/stacks/platforms/gcp/demos/edge",           "tags": ["gcp", "demos", "edge", "platform", "consumer"] },
+    { "id": "aws-demos-network",   "name": "AWS demos — network",           "dir": "/stacks/platforms/aws/demos/network",        "tags": ["aws", "demos", "network", "platform", "producer"] },
+    { "id": "aws-demos-eks",       "name": "AWS demos — EKS",               "dir": "/stacks/platforms/aws/demos/eks",            "tags": ["aws", "demos", "cluster", "platform", "producer", "consumer"] },
+    { "id": "gcp-demos-alpha-app", "name": "webapp alpha — app",            "dir": "/stacks/archetypes/webapp/instances/alpha/app", "tags": ["gcp", "demos", "app", "archetype:webapp", "instance:alpha", "consumer"] }
+  ]
+}
