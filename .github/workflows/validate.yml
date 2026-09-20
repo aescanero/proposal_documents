@@ -76,7 +76,8 @@ jobs:
           curl -sSL "https://github.com/open-policy-agent/conftest/releases/download/v${VERSION}/conftest_${VERSION}_Linux_x86_64.tar.gz" \
             | tar xz -C /usr/local/bin conftest
 
-      # A rule that never fires gives false confidence. Risk R36.
+      # G1 unit tests. A rule that never fires gives false confidence
+      # (risk R36), so this gate is blocking: docs/terramate-outputs-sharing-architecture.md §13.3.
       - name: Policy unit tests
         run: |
           if compgen -G "policy/*.rego" > /dev/null; then
@@ -84,4 +85,35 @@ jobs:
           else
             echo "::notice::no policies yet (roadmap phase 2c.3)"
           fi
+        shell: bash
+
+      # G1 structure/composition, evaluated against whatever real
+      # manifests exist in the repository. Advisory only
+      # (continue-on-error) until false positives against the real
+      # repository have been measured — flip to blocking then, per
+      # §14.4. `--all-namespaces` is required: our rules live under
+      # `terramate.*` / `archetype.*`, not `main`, and conftest test
+      # silently evaluates nothing without it — a gap risk R36 exists
+      # to catch.
+      #
+      # The `terramate.stacks` / `terramate.contracts` checks need
+      # `stacks.json` (`terramate list --json` + `archetypectl
+      # enrich`) and `resolution.json` (`archetypectl resolve
+      # --dry-run`); neither tool is built yet (roadmap phase 2c.2),
+      # so only the manifest-level checks (`archetype.composition`)
+      # run for now.
+      - name: G1 — structure and composition (advisory)
+        continue-on-error: true
+        run: |
+          shopt -s nullglob
+          manifests=(archetypes/*/manifest.yaml)
+          if [ ${#manifests[@]} -eq 0 ]; then
+            echo "::notice::no archetype manifests yet — nothing to check"
+            exit 0
+          fi
+          status=0
+          for m in "${manifests[@]}"; do
+            conftest test --all-namespaces --policy policy/ --data registry/ "$m" || status=1
+          done
+          exit $status
         shell: bash
