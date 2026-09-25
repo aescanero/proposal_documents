@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N · revisión 3 (identidad, región y acceso del pipeline confirmados) |
+| **Estado** | Propuesta · etapa 1 de N · revisión 4 (región cerrada, propiedad de Entra ID, claves KMS) |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
@@ -21,7 +21,8 @@ Nada de este documento reabre decisiones de `CLAUDE.md`. Donde SonarQube choca c
 | Entorno | **Nuevo** — no existe nada | SonarQube es el **primer consumidor** y arrastra el cierre completo de la plataforma: landing zone, entorno, GKE, Gatekeeper, secretos, monitorización, CNPG y Keycloak (§6). Lo gobierna la fase 0 del roadmap |
 | Volumen | **200 proyectos**, ≈ 10 M líneas, ≈ 4 merges/día por proyecto | Sizing en §4.12. El cuello de botella no es la memoria sino la **cola del compute engine, de un solo worker** en Community |
 | Identidad de personas | **Entra ID** | Keycloak como broker OIDC hacia Entra ID; grupos por *app roles* (§4.6) |
-| Región | "Irlanda" → **`europe-west1` (Bélgica)** provisional | **GCP no tiene región en Irlanda.** Las más cercanas: `europe-west1` (Bélgica, UE) y `europe-west2` (Londres, fuera de la UE). Se toma `europe-west1` por residencia en la UE; confirmar (Q7) |
+| Región | **`europe-west1`** (Bélgica) | Todo lo regional en la misma región: cluster, discos, buckets, key ring de KMS, Artifact Registry. GCP no tiene región en Irlanda |
+| Entra ID | Lo gestiona el **equipo de identidad** | App registration, app roles y asignación de grupos son suyos; la plataforma solo consume el claim `roles` (§4.6) |
 | Filtrado por IP | **No** en SonarQube | D3 cerrada: SonarQube público tras Cloud Armor sin listas de IP |
 | Acceso del pipeline al cluster | La IP del runner se **abre en las redes autorizadas** de GKE al empezar y se **cierra** al terminar | Procedimiento aceptado; cuatro condiciones para que sea seguro (§4.13) |
 
@@ -83,8 +84,8 @@ Todo se construye de cero. **Registro** indica si la capability existe en `regis
 | 0 | `cert` | Certificate Manager, certificado **wildcard** `*.qa.acme.com` con DNS authorization | cloud | TLS público en el borde | ✓ |
 | 0 | `waf` | Cloud Armor | cloud | Única protección de red posible con runners alojados por GitHub (D3) | ✓ |
 | 0 | `edge-ip` | IP global reservada | cloud | Destino del wildcard | ✓ |
-| 0 | *(KMS)* | Cloud KMS | cloud | Auto-unseal de OpenBao | ✗ — Q5 |
-| 0 | *(registro)* | Artifact Registry: repo remoto de Docker Hub + repo estándar | cloud | Imagen propia con plugins, pull por digest | ✗ — Q5 |
+| 0 | *(KMS)* | Cloud KMS, key ring `qa` en `europe-west1` | cloud | Estado de OpenTofu, secretos de etcd, auto-unseal de OpenBao, firma de imágenes (§4.14) | ✗ — deliberado, §4.14 |
+| 0 | *(registro)* | Artifact Registry: repo remoto de Docker Hub + repo estándar | cloud | Imagen propia con plugins, pull por digest | ✗ — mismo criterio que KMS |
 | 0 | *(identidad CI)* | Workload Identity Federation para GitHub Actions (§11.2) | cloud | Despliegue de la plataforma sin claves | — |
 | 1 | `network` | VPC / subredes de `qa`, Cloud NAT, **Private Google Access** | cloud | Nodos, pods, acceso a GCS sin internet | ✓ |
 | 1 | `env-edge` | Backend service + URL map + proxy + forwarding rule | cloud | Entrada hacia el NEG del Gateway | ✓ |
@@ -161,7 +162,7 @@ Si SonarQube no puede correr con raíz de solo lectura, la salida es una **exenc
 | Tokens de análisis | **Secretos de repositorio en GitHub** (D9) | GitHub Actions | No en OpenBao: exigiría publicar OpenBao a internet para los runners alojados |
 
 - **ESO como interfaz, OpenBao como backend.** Cambiar a Secret Manager es cambiar el `SecretStore`, no el arquetipo.
-- **Auto-unseal con Cloud KMS**, clave en capa 0; la cuenta de servicio de OpenBao tiene `cryptoKeyEncrypterDecrypter` solo sobre esa clave.
+- **Auto-unseal con Cloud KMS**, clave `openbao-unseal` de capa 0 (§4.14); la cuenta de servicio de OpenBao tiene `cryptoKeyEncrypterDecrypter` solo sobre esa clave.
 - **`SecretStore` por namespace**, rol de Kubernetes auth ligado a `ns=sonarqube, sa=eso-sonarqube` exacto (espíritu de R15).
 - **Workloads a OpenBao por Kubernetes auth**, no por OIDC de Keycloak: evita el ciclo de §6.
 - **Por outputs sharing solo viajan rutas**, nunca valores (§11.6, R8).
@@ -351,6 +352,50 @@ Aun así, abrir la IP no autentica a nadie: la API sigue exigiendo IAM. Las rede
 
 La alternativa que haría innecesario todo lo anterior es el **endpoint DNS del plano de control** de GKE, controlado solo por IAM y sin listas de IP. Queda anotada por si el reconciliador o el servicio intermedio resultan más costosos de operar de lo previsto.
 
+### 4.14 Claves de Cloud KMS
+
+**Qué dice la documentación.** KMS aparece como requisito en cuatro sitios, pero **no como capability** ni con dueño asignado:
+
+| Referencia | Qué exige |
+|---|---|
+| Arquitectura §5.7 (línea base GKE) | Cifrado de secretos de Kubernetes en etcd (*application-layer secrets encryption*) con una clave de Cloud KMS propia |
+| Arquitectura §11.5, R17, checklist de fase 0 | Cifrado del estado de OpenTofu (bloque `encryption`, `key_provider "gcp_kms"`), **recomendado**, con **una clave por entorno**, no por stack: el consumidor de outputs sharing necesita la clave del productor. Si el bucket de estado usa CMEK, además `cryptoKeyDecrypter` |
+| Arquitectura §11.6 | El material de clave nunca cruza outputs sharing; se comparte el nombre del recurso |
+| Arquitectura §11.3 (AWS) | SCP que deniega `kms:ScheduleKeyDeletion` sobre las claves de estado. **No tiene equivalente escrito para GCP** |
+
+Lo que la documentación **no** dice: qué stack crea las claves, en qué capa, con qué rotación y cómo se protegen de la destrucción en GCP. Es un hueco, y aparece al construir el primer entorno.
+
+**Propuesta: key ring por entorno en capa 0.**
+
+| Clave | Tipo | Consumidor | Rol IAM, sobre esa clave solamente | Rotación |
+|---|---|---|---|---|
+| `tofu-state` | Simétrica | Todas las identidades de pipeline de `qa` (`tf-plan-qa@`, `tf-apply-qa@`, `tf-destroy-qa@`) | `cryptoKeyEncrypterDecrypter` — también la de *plan*: el bloque `plan { }` **cifra** el fichero de plan | 90 días automática |
+| `gke-secrets` | Simétrica | Agente de servicio de GKE (`service-<n>@container-engine-robot`) | `cryptoKeyEncrypterDecrypter` | 90 días |
+| `openbao-unseal` | Simétrica | SA de OpenBao vía Workload Identity | `cryptoKeyEncrypterDecrypter` | 90 días |
+| `cosign` | Asimétrica de firma (EC P-256) | Identidad del build de imágenes | `signerVerifier` | Manual, con solapamiento |
+| *(opcional)* `gcs-cmek` | Simétrica | Agente de servicio de Cloud Storage | `cryptoKeyEncrypterDecrypter` | 90 días |
+
+**Por qué capa 0 y no capa 1.** La clave de estado debe existir **antes** del primer stack cifrado de `qa`, que es el propio `gcp-qa-network`. Si la creara el stack de entorno, su estado se cifraría con una clave que él mismo crea. La landing zone ya es el singleton que se arranca a mano; su propia clave de estado es la única que se crea fuera del pipeline (bootstrap documentado, una vez).
+
+**Por qué no es una capability.** Los nombres son deterministas (`projects/<p>/locations/europe-west1/keyRings/qa/cryptoKeys/<propósito>`): por el árbol de platform-overview §4, son **globals**, sin permisos de lectura de estado ni aristas de outputs sharing. Una capability solo tendría sentido si hubiera varios proveedores entre los que elegir (Cloud HSM, EKM). Si aparece ese requisito, se añade entonces, con traits como `hsm`. El mismo razonamiento vale para Artifact Registry.
+
+**Restricciones de GCP a tener en cuenta:**
+
+| Restricción | Consecuencia |
+|---|---|
+| La clave de etcd debe estar en la **misma ubicación que el cluster** | Key ring regional en `europe-west1`, no `global` ni `europe` |
+| La clave CMEK de un bucket debe coincidir con la ubicación del bucket | Buckets regionales en `europe-west1` |
+| **Un key ring y una clave no se pueden borrar** en Cloud KMS, solo sus versiones | Nombres definitivos desde el principio; un error de nombre queda para siempre |
+| Destruir una versión es programado (por defecto 30 días) | Es la ventana de rescate. Org policy `constraints/cloudkms.minimumDestroyScheduledDuration` para imponer un mínimo |
+
+**Protección frente a destrucción** — el equivalente GCP que falta de la SCP de AWS:
+
+- Ninguna identidad de pipeline tiene `cloudkms.admin` ni `cryptoKeyVersions.destroy`. Solo el stack de landing zone, con su identidad de destroy separada (§11.4).
+- `lifecycle { prevent_destroy = true }` en las claves.
+- Perder `tofu-state` deja el estado ilegible; perder `openbao-unseal` deja OpenBao sellado para siempre y con él todos los secretos, incluida la clave de cifrado de SonarQube. Las dos son irrecuperables: son el activo más crítico del entorno.
+
+**Recuperación de OpenBao.** Con auto-unseal, OpenBao genera *recovery keys* en su inicialización (no sirven para desellar, sí para operaciones de raíz). Se reparten por Shamir entre varias personas y se guardan fuera de GCP. El procedimiento de inicialización es manual, una vez, y queda documentado.
+
 ---
 
 ## 5. Especificidades de GCP que afectan a SonarQube
@@ -363,7 +408,8 @@ La alternativa que haría innecesario todo lo anterior es el **endpoint DNS del 
 | Workload Identity | Principal exacto por namespace y KSA | R15 |
 | Pipeline de plataforma | WIF de GitHub con `attribute_condition` sobre repo y environment exactos | §11.2, R12 |
 | Acceso a la API de GKE | Redes autorizadas abiertas por job a través del servicio intermedio | §4.13, R18 |
-| Región | `europe-west1` (no existe región GCP en Irlanda) | Q7 |
+| Región | `europe-west1` | Contexto (§0) |
+| KMS | Key ring `qa` regional en capa 0, sin capability, protegido frente a destrucción | §4.14 |
 | Org policies | Sin claves de SA, región confinada, sin IPs públicas en nodos | §11.7 |
 
 ---
@@ -401,6 +447,7 @@ Ciclos y cómo se rompen:
 | Keycloak → secretos → OpenBao → login OIDC → Keycloak | Workloads por Kubernetes auth; el login OIDC de personas a OpenBao se añade después |
 | OpenBao TLS → cert-manager | No es ciclo: cert-manager usa su CA propia, sin secretos de OpenBao |
 | OpenBao → KMS | KMS está en capa 0 |
+| Estado cifrado de `gcp-qa-network` → clave `tofu-state` | La clave la crea la landing zone, no el entorno (§4.14) |
 | SonarQube SAML ↔ Keycloak | No existe: front-channel |
 | Gateway → NEG → `env-edge` (capa 1) | La arista ascendente de §10: `gcp-qa-edge` se aplica tras `gcp-qa-gateway` |
 
@@ -489,7 +536,7 @@ capacity:
 # environments/qa/binding.yaml — borrador
 apiVersion: archetype/v1
 kind: EnvironmentBinding
-metadata: { name: qa, model: dedicated, cloud: gcp, region: europe-west1 }   # GCP no tiene región en Irlanda; confirmar (Q7)
+metadata: { name: qa, model: dedicated, cloud: gcp, region: europe-west1 }
 bindings:
   network:             { archetype: environment,          stack_id: gcp-qa-network }
   cluster:             { archetype: gke,                  stack_id: gcp-qa-gke }
@@ -523,7 +570,7 @@ Se aplicarán en `registry/*.yaml` (nunca en `schemas/`, R34) al aprobar esta et
 | `traits.yaml` · identity | `saml-idp` | El `oidc-idp` también sirve SAML 2.0 |
 | `traits.yaml` · data | `cnpg` | `database-platform` es CloudNativePG y admite `Cluster` como tenant resource |
 | `traits.yaml` · observability | `prometheus-operator-crds` | Existen `PodMonitor` / `PrometheusRule` |
-| `capabilities.yaml` | *(ninguna por ahora)* | KMS y registro: Q5 |
+| `capabilities.yaml` | *(ninguna)* | KMS y registro se resuelven con globals deterministas de la landing zone (§4.14) |
 
 ---
 
@@ -566,6 +613,7 @@ Propuestos para `docs/risk-register.md`; se numerarán al incorporarse.
 | **IP de runner olvidada abierta** | Media | Baja — IAM sigue protegiendo | `if: always()` + reconciliador con caducidad de 60 min |
 | **`container.clusters.update` en la identidad de preview** | Alta si se hace por la vía directa | Crítico — cualquier PR puede reconfigurar el cluster | Servicio intermedio con permiso mínimo (§4.13) |
 | **Usuario dado de baja en Entra ID conserva tokens** en SonarQube | Media | Media | Reconciliación diaria; sin tokens personales en CI |
+| **Destrucción de `tofu-state` u `openbao-unseal`** | Baja | Crítico — estado ilegible o todos los secretos perdidos | Sin permisos de destroy en pipelines, `prevent_destroy`, org policy de duración mínima (§4.14) |
 | **Caducidad de la credencial de Keycloak en Entra ID** | Media | Alta — nadie puede entrar | Certificado en vez de secreto; alerta 30 días antes de la caducidad |
 
 ---
@@ -585,9 +633,8 @@ Propuestos para `docs/risk-register.md`; se numerarán al incorporarse.
 
 Preguntas abiertas:
 
-- **Q5.** ¿KMS y registro de imágenes merecen capability propia o quedan dentro de `landing-zone`?
-- **Q7.** GCP no tiene región en Irlanda. ¿`europe-west1` (Bélgica, UE) o `europe-west2` (Londres, fuera de la UE)? ¿Hay requisito de residencia de datos en la UE?
-- **Q9.** ¿Quién administra la app registration en Entra ID y los app roles? El alta de un equipo pasa por ese equipo.
+- **Q10.** Acuerdo con el equipo de identidad: plazo para crear un app role de equipo y quién rota el certificado de Keycloak en la app registration. El alta de cada equipo en SonarQube depende de ello.
+- **Q11.** ¿Quién custodia las recovery keys de OpenBao y dónde (fuera de GCP)?
 - De `CLAUDE.md`, sigue abierta la nº 2 (Shared VPC), que bloquea la fase A.
 
 ---
