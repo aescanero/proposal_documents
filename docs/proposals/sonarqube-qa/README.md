@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N · revisión 7 (secretos en Secret Manager; OpenBao fuera de `qa`) |
+| **Estado** | Propuesta · etapa 1 de N · revisión 8 (VPC separada; `qa` dedicado) |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
@@ -22,6 +22,8 @@ Nada de este documento reabre decisiones de `CLAUDE.md`. Donde SonarQube choca c
 | Volumen | **200 proyectos**, ≈ 10 M líneas, ≈ 4 merges/día por proyecto | Sizing en §4.12. El cuello de botella no es la memoria sino la **cola del compute engine, de un solo worker** en Community |
 | Identidad de personas | **Entra ID** | Keycloak como broker OIDC hacia Entra ID; grupos por *app roles* (§4.6) |
 | Región | **`europe-west1`** (Bélgica) | Todo lo regional en la misma región: cluster, discos, buckets, key ring de KMS, Artifact Registry. GCP no tiene región en Irlanda |
+| Red | **VPC separada** para `qa`, no Shared VPC | El borde de `qa` vive en su propia VPC; no hay tránsito por el hub (§4.15). Cierra la pregunta abierta nº 2 de `CLAUDE.md` **para `qa`** |
+| Modelo | **Dedicado**, no shared | Una plataforma, una instancia (§12.1). No se generan las salvaguardas multi-tenant de §12.3 (ResourceQuota por tenant, budgets de `capacity`); el aislamiento es la VPC y el cluster |
 | Secretos | **GCP Secret Manager**; **OpenBao no se usa en `qa`** | ESO como interfaz en el cluster, Secret Manager como backend (lo que AM §14.2 ya asigna a GCP). Sin unseal, sin Raft, sin recovery keys (§4.3) |
 | Entra ID | Lo gestiona el **equipo de identidad** | App registration, app roles y asignación de grupos son suyos; la plataforma solo consume el claim `roles` (§4.6) |
 | Filtrado por IP | **No** en SonarQube | D3 cerrada: SonarQube público tras Cloud Armor sin listas de IP |
@@ -88,8 +90,8 @@ Todo se construye de cero. **Registro** indica si la capability existe en `regis
 | 0 | *(KMS)* | Cloud KMS, key ring `qa` en `europe-west1` | cloud | Estado de OpenTofu, secretos de etcd, firma de imágenes (§4.14) | ✗ — deliberado, §4.14 |
 | 0 | *(registro)* | Artifact Registry: repo remoto de Docker Hub + repo estándar | cloud | Imagen propia con plugins, pull por digest | ✗ — mismo criterio que KMS |
 | 0 | *(identidad CI)* | Workload Identity Federation para GitHub Actions (§11.2) | cloud | Despliegue de la plataforma sin claves | — |
-| 1 | `network` | VPC / subredes de `qa`, Cloud NAT, **Private Google Access** | cloud | Nodos, pods, acceso a GCS sin internet | ✓ |
-| 1 | `env-edge` | Backend service + URL map + proxy + forwarding rule | cloud | Entrada hacia el NEG del Gateway | ✓ |
+| 1 | `network` | **VPC propia** de `qa`, subredes, Cloud NAT, **Private Google Access** | cloud | Nodos, pods, acceso a APIs de Google sin internet | ✓ |
+| 1 | `env-edge` | Backend service + URL map + proxy + forwarding rule **del propio entorno**, con el NEG en la VPC de `qa` | cloud | Entrada hacia el NEG del Gateway | ✓ |
 | 1b | `cloud-observability` | Cloud Logging **reducido** a auditoría y plano de control de GKE | cloud | No lo consume SonarQube; auditoría | ✓ |
 | 2 | `cluster` | **GKE Standard** regional, node pools `general` y `sonar` | cloud | Donde corre; `sonar` aporta el sysctl | ✓ (+ trait) |
 | 2b | `policy` | **OPA Gatekeeper** | Apache-2.0 | PSS `restricted`, etiquetas, registros permitidos | ✓ |
@@ -407,6 +409,22 @@ Lo que la documentación **no** dice: qué stack crea las claves, en qué capa, 
 - `lifecycle { prevent_destroy = true }` en las claves.
 - Perder `tofu-state` deja el estado ilegible, y es irrecuperable: es el activo más crítico del entorno. Si se activa `secrets-cmek`, perderla deja ilegibles todos los secretos de `qa`: mismo tratamiento.
 
+### 4.15 Red: VPC separada y borde propio
+
+`qa` es un entorno **dedicado** con **VPC propia** dentro del mismo proyecto que el hub (decisión de `CLAUDE.md`: hub y spokes en un proyecto). R23 describe el problema de esta topología: el peering de VPC no es transitivo y los backends de un balanceador deben estar en su misma VPC, así que un balanceador **en el hub** no alcanza un NEG **en `qa`**. La salida para `qa` es no pasar por el hub:
+
+| Elemento | Dónde | Por qué |
+|---|---|---|
+| Global external Application LB (backend service, URL map, proxy, forwarding rule) | Stack `gcp-qa-edge`, capa 1 de `qa` | El backend service y el NEG de Envoy quedan en la misma VPC. Un LB externo global no necesita subred proxy-only |
+| IP global, política de Cloud Armor, certificado wildcard | Capa 0, mismo proyecto | Se referencian desde el LB de `qa`; al estar en el mismo proyecto no hay restricción de proyecto cruzado |
+| Zona `qa.acme.com` | Capa 0, delegada desde `acme.com` | El wildcard apunta a la IP del LB de `qa` |
+| Plano de control de GKE | Endpoint en la VPC de `qa` | Acceso del pipeline según §4.13 |
+| Egress | Cloud NAT de `qa` | Keycloak → Entra ID; Cloud Armor y el LB no lo usan |
+| APIs de Google (Secret Manager, GCS, Artifact Registry, KMS) | Private Google Access en las subredes de `qa` | Sin NAT ni internet |
+| Peering con el hub | **No se necesita para SonarQube** | Ningún flujo de §4.8 cruza al hub. Si más adelante `qa` necesita on-premise u otro servicio del hub, se añade el peering sabiendo que no es transitivo |
+
+Direccionamiento: una `/17` del bloque permanente `10.2.0.0/15` por resolución (AM §9), con las zonas de `registry/zones.yaml`. La VPC separada no cambia el plan de direcciones; sí obliga a que la `/17` no solape con el hub si algún día se hace el peering, algo que el ledger ya garantiza.
+
 ---
 
 ## 5. Especificidades de GCP que afectan a SonarQube
@@ -414,7 +432,7 @@ Lo que la documentación **no** dice: qué stack crea las claves, en qué capa, 
 | Tema | Decisión | Referencia |
 |---|---|---|
 | NEG fuera del estado de Terraform | Declarado como `data`, nombrado explícitamente | §10.2, R20 |
-| Shared VPC o VPCs separadas | Sigue abierta en `CLAUDE.md` (nº 2); el backend del GLB debe estar en la misma VPC que el NEG | R23 |
+| VPC | **Separada**; el borde de `qa` y su NEG en la misma VPC | §4.15, R23 |
 | Cuenta de servicio de nodos | Dedicada, con `artifactregistry.reader`, logging y monitoring writer | §5.7 |
 | Workload Identity | Principal exacto por namespace y KSA | R15 |
 | Pipeline de plataforma | WIF de GitHub con `attribute_condition` sobre repo y environment exactos | §11.2, R12 |
@@ -434,7 +452,7 @@ Como el entorno es nuevo, el despliegue de SonarQube es el despliegue de la plat
 | Fase | Stacks | Bloqueada por |
 |---|---|---|
 | **0** | Repositorio desechable, verificaciones de `CLAUDE.md` | Nada. Hay que hacerla primero |
-| **A** | Landing zone, red, GKE | Fase 0; decisión Shared VPC |
+| **A** | Landing zone, red, GKE | Fase 0 |
 | **B** | Gatekeeper, cert-manager, monitorización, ESO, buckets, CNPG, Keycloak, Gateway, borde | A |
 | **C** | Los 8 stacks de `gcp-qa-sonarqube-main` | B; V1–V3 |
 
@@ -645,7 +663,6 @@ Propuestos para `docs/risk-register.md`; se numerarán al incorporarse.
 Preguntas abiertas:
 
 - **Q10.** Acuerdo con el equipo de identidad, **estimado** a falta de confirmar: app role de equipo en ≤ 2 días laborables; renovación del certificado de Keycloak en la app registration a cargo de identidad, disparada por la alerta de 30 días de la plataforma. El alta de un equipo en SonarQube hereda ese plazo.
-- De `CLAUDE.md`, sigue abierta la nº 2 (Shared VPC), que bloquea la fase A.
 
 ---
 

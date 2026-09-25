@@ -7,7 +7,7 @@ flowchart LR
 
     ENTRA["Microsoft Entra ID<br/>usuarios · MFA · app roles"]
 
-    subgraph GCP0["GCP · capas 0 y 1 (proyecto hub)"]
+    subgraph GCP0["GCP · borde de qa (VPC propia, capas 0 y 1)"]
         DNS["Cloud DNS<br/>*.qa.acme.com"]
         LB["Global external Application LB<br/>Certificate Manager (wildcard)<br/>Cloud Armor"]
     end
