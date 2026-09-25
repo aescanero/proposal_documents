@@ -1,38 +1,43 @@
 flowchart TD
-    subgraph P["Plataforma qa — despliegue escalonado, mocks OFF"]
+    subgraph Z["Fase A · landing zone y entorno (todo nuevo)"]
         direction TB
-        N["{cloud}-qa-network"] --> C["{cloud}-qa-cluster<br/>incluye node pool 'sonar'"]
-        N --> CM["{cloud}-qa-cloudmon"]
-        C --> PO["{cloud}-qa-policy<br/>Gatekeeper"]
-        PO --> S1["{cloud}-qa-secrets<br/>OpenBao + ESO"]
-        PO --> M["{cloud}-qa-monitoring"]
-        PO --> CE["{cloud}-qa-certs"]
-        PO --> DN["{cloud}-qa-dns"]
-        CE --> GW["{cloud}-qa-gateway"]
-        GW -. "handle de borde" .-> ED["{cloud}-qa-edge<br/>(capa 1, se aplica después)"]
-        S1 --> DB["{cloud}-qa-postgres-operator<br/>CloudNativePG"]
+        LZ["gcp-lz-*<br/>dns-zone · cert · waf · edge-ip<br/>KMS · Artifact Registry · WIF GitHub"] --> N["gcp-qa-network"]
+        N --> CM["gcp-qa-cloudmon"]
+        N --> C["gcp-qa-gke<br/>node pools: general + sonar"]
+    end
+
+    subgraph P["Fase B · plataforma qa"]
+        direction TB
+        C --> PO["gcp-qa-policy<br/>Gatekeeper"]
+        PO --> CE["gcp-qa-certs<br/>cert-manager + CA interna"]
+        PO --> M["gcp-qa-monitoring"]
+        CE --> S1["gcp-qa-secrets<br/>OpenBao + ESO"]
+        CE --> GW["gcp-qa-gateway"]
+        GW -. "NEG" .-> ED["gcp-qa-edge<br/>backend · URL map · DNS wildcard"]
+        S1 --> OB["gcp-qa-objects<br/>buckets GCS"]
+        OB --> DB["gcp-qa-postgres-operator<br/>CloudNativePG"]
         M --> DB
-        DB --> KC["{cloud}-qa-keycloak"]
+        DB --> KC["gcp-qa-keycloak<br/>+ su propio Cluster CNPG"]
         S1 --> KC
         GW --> KC
     end
 
-    subgraph I["Instancia sonarqube-main — una ejecución ordenada"]
+    subgraph I["Fase C · instancia gcp-qa-sonarqube-main"]
         direction TB
-        IAM["iam<br/>SA + identidad de workload<br/>(backup a bucket)"] --> SEC["secrets<br/>ExternalSecrets"]
+        IAM["iam<br/>KSA + IAM en bucket"] --> SEC["secrets<br/>ExternalSecrets"]
         IAM --> DATA["data-tenant<br/>CNPG Cluster + ScheduledBackup"]
         SEC --> DATA
         DATA --> FW["firewall<br/>NetworkPolicies"]
         FW --> APP["app<br/>helm_release sonarqube"]
         SEC --> APP
-        APP --> SSO["sso<br/>cliente SAML en Keycloak"]
-        APP --> FD["frontdoor<br/>HTTPRoute + Certificate"]
-        APP --> OBS["observability<br/>PodMonitor + PrometheusRule<br/>+ dashboard"]
+        APP --> SSO["sso<br/>cliente SAML"]
+        APP --> FD["frontdoor<br/>HTTPRoute"]
+        APP --> OBS["observability<br/>PodMonitor + reglas"]
     end
 
-    KC --> SSO
     S1 --> SEC
     DB --> DATA
+    KC --> SSO
     GW --> FD
     M --> OBS
 

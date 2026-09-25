@@ -1,38 +1,45 @@
 flowchart LR
     subgraph ACT["Actores"]
         DEV(["Desarrolladores<br/>navegador"])
-        CI(["Runners de CI<br/>sonar-scanner + token"])
+        GHA(["GitHub Actions<br/>runners alojados por GitHub<br/>sonarqube-scan-action"])
         OPS(["Equipo de plataforma"])
     end
 
-    subgraph EDGE["Borde del entorno qa (capa 1)"]
-        DNS["DNS<br/>sonar.qa.acme.com"]
-        LB["Balanceador L4/L7 cloud<br/>env-edge"]
+    subgraph GCP0["GCP · capas 0 y 1 (proyecto hub)"]
+        DNS["Cloud DNS<br/>*.qa.acme.com"]
+        LB["Global external Application LB<br/>Certificate Manager (wildcard)<br/>Cloud Armor"]
     end
 
-    subgraph K8S["Cluster Kubernetes qa (capa 2)"]
-        GW["Envoy Gateway<br/>Gateway + HTTPRoute<br/>TLS de cert-manager"]
+    subgraph K8S["GKE Standard · qa (capa 2)"]
+        GW["Envoy Gateway<br/>NEG standalone<br/>TLS interno de cert-manager"]
         SQ["SonarQube Community Build<br/>ns sonarqube"]
         PG[("PostgreSQL<br/>CloudNativePG Cluster")]
         KC["Keycloak<br/>realm qa · IdP SAML"]
         ESO["External Secrets Operator"]
-        BAO[("OpenBao<br/>fuente de verdad de secretos")]
+        BAO[("OpenBao<br/>Raft x3")]
         MON["Prometheus · Alertmanager<br/>Grafana · Loki"]
-        GK["Gatekeeper<br/>admisión"]
+        GK["Gatekeeper"]
     end
 
-    OBJ[("Almacenamiento de objetos<br/>backups PostgreSQL")]
+    subgraph GCPS["Servicios GCP"]
+        GCS[("GCS<br/>backups CNPG · chunks Loki<br/>snapshots OpenBao")]
+        KMS["Cloud KMS<br/>auto-unseal"]
+        AR["Artifact Registry<br/>imagen sonarqube propia"]
+    end
 
     DEV --> DNS --> LB --> GW
-    CI --> DNS
+    GHA -->|"HTTPS + token de proyecto"| LB
     GW -->|"HTTP 9000"| SQ
     SQ -->|"JDBC 5432"| PG
-    DEV -. "redirección SAML<br/>(front-channel)" .-> KC
-    ESO -->|"lee"| BAO
-    ESO -->|"materializa Secret"| SQ
-    ESO -->|"materializa Secret"| PG
-    MON -->|"scrape /api/monitoring/metrics"| SQ
-    MON -->|"scrape :9187"| PG
-    PG -->|"WAL + base backups"| OBJ
-    GK -. "valida todo lo que se admite" .-> SQ
-    OPS --> GW
+    DEV -. "redirección SAML" .-> KC
+    ESO --> BAO
+    ESO -->|"Secrets"| SQ
+    ESO -->|"Secrets"| PG
+    KMS --> BAO
+    MON -->|"scrape"| SQ
+    MON -->|"scrape"| PG
+    PG -->|"WAL + base backups<br/>Workload Identity"| GCS
+    MON --> GCS
+    AR -->|"pull por digest"| SQ
+    GK -. "admisión" .-> SQ
+    OPS --> LB

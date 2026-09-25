@@ -2,31 +2,34 @@ flowchart LR
     subgraph EGW["ns envoy-gateway-system"]
         ENV["Envoy proxy"]
     end
-    subgraph NS["ns sonarqube · NetworkPolicy default-deny ingress + egress"]
-        SQ["SonarQube<br/>app.kubernetes.io/name=sonarqube"]
-        PG["CNPG pods<br/>cnpg.io/cluster=sonarqube-db"]
+    subgraph NS["ns sonarqube · default-deny ingress + egress"]
+        SQ["SonarQube"]
+        PG["CNPG pods"]
     end
     subgraph MON["ns monitoring"]
         P["Prometheus"]
+        BB["Blackbox"]
     end
     subgraph SYS["ns kube-system"]
-        DNS["CoreDNS :53"]
+        DNS["kube-dns :53"]
     end
     subgraph OPS["ns cnpg-system"]
         OPR["operador CNPG"]
     end
-    OBJ[("bucket de backups<br/>vía NAT / private endpoint")]
-    INET(["Internet<br/>update center, plugins"])
+    GFE(["GLB · rangos de health check<br/>35.191.0.0/16 · 130.211.0.0/22"])
+    GAPI[("storage.googleapis.com<br/>Private Google Access")]
+    INET(["Internet"])
 
+    GFE -->|"TCP 8443 (firewall VPC)"| ENV
     ENV -->|"TCP 9000"| SQ
-    P -->|"TCP 9000 métricas"| SQ
+    P -->|"TCP 9000"| SQ
     P -->|"TCP 9187"| PG
     SQ -->|"TCP 5432"| PG
-    SQ -->|"UDP/TCP 53"| DNS
-    PG -->|"UDP/TCP 53"| DNS
-    OPR -->|"TCP 8000 status"| PG
-    PG -->|"TCP 443"| OBJ
     PG <-->|"TCP 5432 replicación"| PG
-    SQ -.-x|"DENEGADO<br/>plugins en la imagen"| INET
+    OPR -->|"TCP 8000"| PG
+    SQ -->|"53"| DNS
+    PG -->|"53"| DNS
+    PG -->|"TCP 443"| GAPI
+    SQ -.-x|"DENEGADO"| INET
 
     style INET fill:#fce8e6

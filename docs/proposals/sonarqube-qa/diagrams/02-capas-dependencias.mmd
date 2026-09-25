@@ -1,64 +1,70 @@
 flowchart BT
-    subgraph L0["Capa 0 · landing-zone"]
-        DZ["dns-zone<br/>acme.com → qa.acme.com"]
+    subgraph L0["Capa 0 · landing-zone GCP (nueva)"]
+        DZ["dns-zone<br/>Cloud DNS acme.com → qa.acme.com"]
         CP["cidr-pool<br/>10.0.0.0/8"]
-        KMS["KMS cloud<br/>auto-unseal OpenBao"]
+        CERT["cert<br/>Certificate Manager"]
+        WAF["waf<br/>Cloud Armor"]
+        EIP["edge-ip<br/>IP global"]
+        KMS["Cloud KMS"]
+        AR["Artifact Registry"]
     end
-    subgraph L1["Capa 1 · environment qa"]
-        NET["network<br/>/17 dedicada"]
-        EE["env-edge<br/>LB + IP estática"]
+    subgraph L1["Capa 1 · environment qa (nuevo)"]
+        NET["network<br/>/17 · Private Google Access"]
+        EE["env-edge<br/>backend service · URL map<br/>*.qa.acme.com"]
     end
     subgraph L1B["Capa 1b"]
-        CO["cloud-observability<br/>solo logs de auditoría cloud"]
+        CO["cloud-observability<br/>solo auditoría"]
     end
     subgraph L2["Capa 2 · runtime"]
-        CL["cluster<br/>gke · eks · aks<br/>node pool con vm.max_map_count"]
+        CL["cluster: gke (Standard)<br/>node pool 'sonar' con sysctl"]
     end
-    subgraph L2B["Capa 2b · policy"]
+    subgraph L2B["Capa 2b"]
         POL["policy-gatekeeper<br/>deny · Ignore"]
     end
     subgraph L3["Capa 3 · platform services"]
-        ING["ingress<br/>Envoy Gateway"]
-        CRT["certs<br/>cert-manager"]
-        DNSX["dns<br/>external-dns"]
+        ING["ingress<br/>gateway-envoy-gke"]
+        CRT["certs<br/>cert-manager · CA interna"]
         SEC["secrets<br/>OpenBao + ESO"]
-        MONI["monitoring<br/>kube-prometheus-stack + Loki"]
+        MONI["monitoring<br/>Prometheus · Grafana · Loki"]
     end
     subgraph L4["Capa 4 · middleware"]
-        IDP["oidc-idp<br/>Keycloak (SAML)"]
         DBP["database-platform<br/>CloudNativePG"]
-        OBJS["object-store<br/>bucket cloud"]
+        IDP["oidc-idp<br/>Keycloak"]
+        OBJS["object-store<br/>GCS"]
     end
-    subgraph L5["Capa 5 · applications"]
-        SQ["sonarqube<br/>kind: catalog"]
+    subgraph L5["Capa 5"]
+        SQ["sonarqube"]
     end
 
     CP --> NET
-    DZ --> EE
-    NET --> EE
     NET --> CO
     NET --> CL
+    DZ --> EE
+    CERT --> EE
+    WAF --> EE
+    EIP --> EE
+    NET --> EE
     CL --> POL
-    POL --> ING & CRT & DNSX & SEC & MONI
+    POL --> ING & CRT & SEC & MONI
     KMS --> SEC
-    DZ --> DNSX
-    DZ --> CRT
     CRT --> ING
-    ING -. "handle de borde<br/>(arista ascendente)" .-> EE
-    SEC --> IDP
-    DBP --> IDP
-    ING --> IDP
+    CRT --> SEC
+    ING -. "nombre del NEG<br/>(arista ascendente)" .-> EE
     SEC --> DBP
     OBJS --> DBP
     MONI --> DBP
+    DBP --> IDP
+    SEC --> IDP
+    ING --> IDP
 
-    ING -->|"traits: gateway-api, http-route"| SQ
-    IDP -->|"trait: saml-idp (nuevo)"| SQ
-    DBP -->|"Cluster CR propio"| SQ
-    SEC -->|"ExternalSecret"| SQ
-    MONI -->|"PodMonitor + reglas"| SQ
-    DNSX --> SQ
-    CL -->|"trait: sysctl-max-map-count (nuevo)"| SQ
+    ING -->|"gateway-api, http-route"| SQ
+    IDP -->|"saml-idp (nuevo)"| SQ
+    DBP -->|"cnpg (nuevo)"| SQ
+    SEC --> SQ
+    MONI -->|"prometheus-operator-crds (nuevo)"| SQ
+    OBJS --> SQ
+    CL -->|"sysctl-max-map-count (nuevo)"| SQ
+    AR --> SQ
 
     style L2B fill:#fff4e5
     style L5 fill:#e8f5e9

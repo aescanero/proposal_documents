@@ -2,32 +2,44 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N |
+| **Estado** | Propuesta · etapa 1 de N · revisión 2 (contexto confirmado) |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
-| **Fuera de alcance** | Código (generadores, contratos, charts), sizing definitivo, integración con pipelines de aplicaciones, procedimiento de upgrade. Son etapas posteriores |
-| **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/risk-register.md` |
+| **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
+| **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
 | **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano |
 
 Nada de este documento reabre decisiones de `CLAUDE.md`. Donde SonarQube choca con una de ellas (PSS `restricted`, OIDC en el Gateway, `database-platform`), se dice y se propone cómo encajar sin cambiarla.
 
 ---
 
-## 1. Lo que SonarQube Community impone al diseño
+## 0. Contexto confirmado
 
-Hechos del producto que condicionan todo lo demás. Cada uno se marca con lo que hay que verificar contra la versión que se fije.
+| Pregunta | Respuesta | Consecuencia principal |
+|---|---|---|
+| Cloud | **GCP** | GKE **Standard** (no Autopilot, §4.1); borde con NEG standalone + Global external Application LB; GCS, Cloud KMS, Cloud DNS, Certificate Manager, Artifact Registry |
+| CI y código | **GitHub** / GitHub Actions | SonarQube se publica a internet detrás de Cloud Armor (D3); tokens de proyecto como secretos de repositorio (D9); en Community solo se analiza `main` (§4.11) |
+| Entorno | **Nuevo** — no existe nada | SonarQube es el **primer consumidor** y arrastra el cierre completo de la plataforma: landing zone, entorno, GKE, Gatekeeper, secretos, monitorización, CNPG y Keycloak (§6). Lo gobierna la fase 0 del roadmap |
+| Volumen | **200 proyectos** | Sizing en §4.12. El cuello de botella no es la memoria sino la **cola del compute engine, de un solo worker** en Community |
+
+Preguntas que siguen abiertas: §10.
+
+---
+
+## 1. Lo que SonarQube Community impone al diseño
 
 | Hecho | Consecuencia en el diseño | Verificar |
 |---|---|---|
-| **Un solo nodo.** La alta disponibilidad es de Data Center Edition (comercial) | `replicas: 1`, StatefulSet. En `qa` se acepta; el RTO lo marca el reinicio (≈2–5 min) más el reindexado si se pierde el PVC | — |
-| **Tres JVM en un contenedor**: web, compute engine y search (Elasticsearch embebido) | El límite de memoria del contenedor debe cubrir **tres heaps más tres non-heap más el mmap de ES**. Es el caso de developer-guide §8.3 multiplicado por tres | Heaps por defecto de la versión fijada |
-| **Elasticsearch exige `vm.max_map_count ≥ 524288` y `fs.file-max ≥ 131072`** en el host | El chart lo resuelve con un init container **privilegiado** (`initSysctl`), incompatible con PSS `restricted` y Gatekeeper. Debe resolverse **a nivel de nodo** (§4.1) | Soporte del sysctl en el node pool de cada cloud |
-| **Base de datos externa obligatoria** fuera de evaluación. PostgreSQL soportado | Dependencia de `database-platform` (CloudNativePG) | Rango de versiones PostgreSQL soportado |
-| **El único estado real es PostgreSQL.** Los índices de ES se reconstruyen desde la BD | Backup solo de PostgreSQL. El PVC de datos no necesita backup; perderlo cuesta un reindexado, no datos | Tiempo de reindexado con el volumen de `qa` |
-| **Sin análisis de ramas ni decoración de PR** en Community | Solo rama principal por proyecto. Decisión D6 | — |
-| **Autenticación integrada: local, SAML, LDAP, GitHub, GitLab**. OIDC genérico solo con plugin de terceros | Keycloak se integra por **SAML**, no por OIDC (§4.6) | SAML disponible en Community en la versión fijada |
-| **Métricas Prometheus en `/api/monitoring/metrics`**, protegidas por passcode o token de sistema | Scrape con cabecera `X-Sonar-Passcode` desde un Secret (§4.7) | — |
-| **Logs a stdout** en la imagen de contenedor | Recogida estándar por DaemonSet; sin sidecar | Formato JSON configurable |
-| **Plugins desde el update center** por defecto (salida a internet) | Plugins **horneados en la imagen**; egress a internet denegado (§4.8, §4.10) | — |
+| **Un solo nodo.** La alta disponibilidad es de Data Center Edition (comercial) | `replicas: 1`, StatefulSet. En `qa` se acepta; RTO ≈ reinicio (2–5 min) más reindexado si se pierde el PVC | — |
+| **Un solo worker de compute engine.** Configurar más es de Enterprise Edition (comercial) | Todos los análisis de los 200 proyectos pasan por una cola FIFO. Es el límite de capacidad real (§4.12) | Límite de workers por edición en la versión fijada |
+| **Tres JVM en un contenedor**: web, compute engine y search (Elasticsearch embebido) | El límite de memoria cubre tres heaps, tres non-heap y el mmap de ES. Es DG §8.3 multiplicado por tres | Heaps por defecto de la versión fijada |
+| **Elasticsearch exige `vm.max_map_count ≥ 524288`** en el host | El chart lo resuelve con un init container **privilegiado**, incompatible con PSS `restricted` y Gatekeeper. Se resuelve **a nivel de nodo** (§4.1) | Que GKE admita el sysctl en el node pool (V1) |
+| **Base de datos externa obligatoria.** PostgreSQL soportado | Dependencia de `database-platform` (CloudNativePG) | Rango de versiones PostgreSQL soportado |
+| **El único estado real es PostgreSQL.** Los índices de ES se reconstruyen desde la BD | Backup solo de PostgreSQL y de la clave de cifrado | Tiempo de reindexado con 200 proyectos |
+| **Sin análisis de ramas ni decoración de PR** en Community | Solo `main`. Un análisis lanzado desde una PR **sobrescribe la historia de `main`** (§4.11) | — |
+| **Autenticación integrada: local, SAML, LDAP, GitHub, GitLab.** OIDC genérico solo con plugin de terceros | Keycloak se integra por **SAML** (§4.6) | SAML y sincronización de grupos en Community (V3) |
+| **Métricas Prometheus en `/api/monitoring/metrics`**, protegidas por passcode | Scrape con `X-Sonar-Passcode` desde un Secret | — |
+| **Logs a stdout** en la imagen de contenedor | Recogida por DaemonSet | — |
+| **Plugins desde el update center** por defecto | Plugins horneados en la imagen; egress a internet denegado | — |
 
 ---
 
@@ -35,11 +47,10 @@ Hechos del producto que condicionan todo lo demás. Cada uno se marca con lo que
 
 | Pregunta | Respuesta | Razón |
 |---|---|---|
-| ¿Arquetipo o componente? | **Arquetipo `sonarqube`**, `kind: catalog`, **capa 5** | No despliega un operador ni impone contrato multi-tenant a otros arquetipos (AM §5.4). Lo consumen pipelines por HTTP, no stacks por outputs sharing, así que no publica `provides` |
-| ¿Modelo de entorno? | `qa` es **dedicado** (§12.1) | Tabla §12.1: `qa` → dedicated. Una instancia de SonarQube por entorno |
-| ¿Instancia? | `sonarqube-main` | Stack IDs `<cloud>-qa-sonarqube-main-<stack>` según la convención |
-| ¿Runtime? | **Kubernetes** (`gke`, `eks`, `aks`). **No** Cloud Run / Fargate / Container Apps | ES necesita disco persistente con baja latencia y sysctl de host; los runtimes serverless no dan ninguno de los dos |
-| ¿Cloud? | **Abierto.** Todo lo de capa 3 hacia arriba es igual en las tres; las diferencias quedan en capas 0–2 y se tabulan en §5 | AM §14.1 |
+| ¿Arquetipo o componente? | **Arquetipo `sonarqube`**, `kind: catalog`, **capa 5** | No despliega un operador ni impone contrato multi-tenant (AM §5.4). Lo consumen pipelines por HTTP, no stacks por outputs sharing; no publica `provides` |
+| ¿Modelo de entorno? | `qa` **dedicado** (§12.1) | Una instancia de SonarQube por entorno |
+| ¿Instancia y stack IDs? | `sonarqube-main` → `gcp-qa-sonarqube-main-<stack>` | Convención `<cloud>-<env>-<capability>[-<instance>]` |
+| ¿Runtime? | **`gke`** (Standard) | ES necesita disco persistente de baja latencia y sysctl de nodo. Cloud Run no da ninguno; Autopilot no da el segundo |
 
 ---
 
@@ -59,77 +70,78 @@ Fuente: [`diagrams/02-capas-dependencias.mmd`](diagrams/02-capas-dependencias.mm
 
 ### 3.3 Tabla de elementos
 
-Todo lo que SonarQube necesita para funcionar en `qa`, con la herramienta open source propuesta. La columna **Registro** indica si la capability ya existe en `registry/capabilities.yaml`.
+Todo se construye de cero. **Registro** indica si la capability existe en `registry/capabilities.yaml`.
 
-| Capa | Capability | Herramienta propuesta | Licencia | Por qué la necesita SonarQube | Registro |
+| Capa | Capability | Implementación en GCP | Licencia | Por qué la necesita SonarQube | Registro |
 |---|---|---|---|---|---|
-| 0 | `dns-zone` | Zona delegada `qa.acme.com` en el DNS cloud | — (cloud) | Hostname `sonar.qa.acme.com`; desafío DNS-01 de cert-manager | ✓ |
-| 0 | `cidr-pool` | Ledger del modelo (AM §9) | — | La `/17` de `qa` | ✓ |
-| 0 | *(KMS)* | KMS cloud | — (cloud) | Auto-unseal de OpenBao. Única dependencia cloud del plano de secretos | ✗ no es capability — ver §7 |
-| 1 | `network` | Arquetipo `environment` | — | VPC/VNet, subredes, NAT, egress controlado | ✓ |
-| 1 | `env-edge` | LB cloud del entorno | — (cloud) | Entrada L4/L7 hacia el Gateway | ✓ |
-| 1b | `cloud-observability` | Nativo cloud, **reducido** a logs de auditoría | — | No lo consume SonarQube; se mantiene para auditoría del plano de control. La observabilidad de workloads es OSS (capa 3) | ✓ |
-| 2 | `cluster` | GKE Standard / EKS / AKS con **node pool dedicado `sonar`** | — | Donde corre; el node pool aporta el sysctl | ✓ (+ trait nuevo) |
-| 2b | `policy` | **OPA Gatekeeper** | Apache-2.0 | Admite o rechaza el pod de SonarQube; fuerza PSS `restricted` y etiquetas obligatorias | ✓ |
-| 3 | `ingress` | **Envoy Gateway** (Gateway API) | Apache-2.0 | Publicación HTTPS, `HTTPRoute` | ✓ |
-| 3 | `certs` | **cert-manager** + ACME (Let's Encrypt) o CA interna | Apache-2.0 | Certificado TLS del listener | ✓ |
-| 3 | `dns` | **external-dns** | Apache-2.0 | Registro A/CNAME de `sonar.qa.acme.com` | ✓ |
-| 3 | `secrets` | **OpenBao** (fuente de verdad) + **External Secrets Operator** (entrega) | MPL-2.0 / Apache-2.0 | Credenciales de BD, passcode, admin, clave de cifrado, material SAML | ✓ |
-| 3 | `monitoring` | **Prometheus Operator** (kube-prometheus-stack), **Alertmanager**, **Grafana**, **Loki**, **Fluent Bit**, **Blackbox exporter** | Apache-2.0 / AGPL-3.0 (Grafana, Loki) | Métricas, logs, alertas, sonda externa | ✓ |
-| 4 | `oidc-idp` | **Keycloak**, realm `qa` | Apache-2.0 | Identidad de personas vía **SAML**; grupos → permisos | ✓ (+ trait nuevo) |
-| 4 | `database-platform` | **CloudNativePG** | Apache-2.0 | Operador de PostgreSQL; SonarQube crea su propio `Cluster` | ✓ |
-| 4 | `object-store` | Bucket cloud (GCS / S3 / Blob) | — (cloud) | Destino de WAL y base backups de CNPG. Fuera del cluster a propósito (§4.9) | ✓ |
+| 0 | `dns-zone` | Cloud DNS, zona delegada `qa.acme.com` | cloud | Registro wildcard `*.qa.acme.com` | ✓ |
+| 0 | `cidr-pool` | Ledger del modelo (AM §9) | — | Una `/17` del bloque permanente `10.2.0.0/15` | ✓ |
+| 0 | `cert` | Certificate Manager, certificado **wildcard** `*.qa.acme.com` con DNS authorization | cloud | TLS público en el borde | ✓ |
+| 0 | `waf` | Cloud Armor | cloud | Única protección de red posible con runners alojados por GitHub (D3) | ✓ |
+| 0 | `edge-ip` | IP global reservada | cloud | Destino del wildcard | ✓ |
+| 0 | *(KMS)* | Cloud KMS | cloud | Auto-unseal de OpenBao | ✗ — Q5 |
+| 0 | *(registro)* | Artifact Registry: repo remoto de Docker Hub + repo estándar | cloud | Imagen propia con plugins, pull por digest | ✗ — Q5 |
+| 0 | *(identidad CI)* | Workload Identity Federation para GitHub Actions (§11.2) | cloud | Despliegue de la plataforma sin claves | — |
+| 1 | `network` | VPC / subredes de `qa`, Cloud NAT, **Private Google Access** | cloud | Nodos, pods, acceso a GCS sin internet | ✓ |
+| 1 | `env-edge` | Backend service + URL map + proxy + forwarding rule | cloud | Entrada hacia el NEG del Gateway | ✓ |
+| 1b | `cloud-observability` | Cloud Logging **reducido** a auditoría y plano de control de GKE | cloud | No lo consume SonarQube; auditoría | ✓ |
+| 2 | `cluster` | **GKE Standard** regional, node pools `general` y `sonar` | cloud | Donde corre; `sonar` aporta el sysctl | ✓ (+ trait) |
+| 2b | `policy` | **OPA Gatekeeper** | Apache-2.0 | PSS `restricted`, etiquetas, registros permitidos | ✓ |
+| 3 | `ingress` | **Envoy Gateway** (`gateway-envoy-gke`) | Apache-2.0 | `HTTPRoute`, políticas de tráfico | ✓ |
+| 3 | `certs` | **cert-manager** con **CA interna** (`ClusterIssuer` CA) | Apache-2.0 | TLS GLB→Envoy y de OpenBao. Sin ACME: el certificado público lo da Certificate Manager | ✓ |
+| 3 | `dns` | **No se enlaza** | — | El wildcard de `env-edge` lo cubre; external-dns no aporta nada con un Gateway y una IP por entorno (igual que `demos`, AM §7) | ✓ sin uso |
+| 3 | `secrets` | **OpenBao** (Raft ×3, auto-unseal Cloud KMS) + **External Secrets Operator** | MPL-2.0 / Apache-2.0 | Credenciales, passcode, clave de cifrado, SAML | ✓ |
+| 3 | `monitoring` | **kube-prometheus-stack**, **Grafana**, **Loki** (sobre GCS), **Fluent Bit**, **Blackbox exporter** | Apache-2.0 / AGPL-3.0 | Métricas, logs, alertas, sonda externa | ✓ (+ trait) |
+| 4 | `object-store` | Buckets GCS por propósito | cloud | Backups CNPG, chunks de Loki, snapshots de OpenBao | ✓ |
+| 4 | `database-platform` | **CloudNativePG** | Apache-2.0 | SonarQube y Keycloak crean su propio `Cluster` | ✓ (+ trait) |
+| 4 | `oidc-idp` | **Keycloak**, realm `qa` | Apache-2.0 | Personas vía **SAML** | ✓ (+ trait) |
 | 5 | — | **SonarQube Community Build**, chart oficial `sonarqube/sonarqube` | LGPL-3.0 | La aplicación | — |
-| — | *(registro de imágenes)* | **Harbor** como proxy-cache + réplica, o el registro cloud | Apache-2.0 | Imagen propia con plugins horneados, firmada y escaneada | ✗ ver §7 |
-| — | *(runners CI)* | **actions-runner-controller** (ARC) self-hosted | Apache-2.0 | Solo si SonarQube no se publica a internet (D3) | ✗ fuera del modelo |
-| — | *(escaneo)* | **Trivy** + **cosign** | Apache-2.0 | Escaneo y firma de la imagen propia | — |
+| CI | — | **GitHub Actions** + `SonarSource/sonarqube-scan-action`, **Trivy**, **cosign** | — / Apache-2.0 | Análisis; build, escaneo y firma de la imagen propia | — |
 
-Herramientas de la plataforma que no cambian: Terramate, OpenTofu, conftest, Checkov (`CLAUDE.md`).
+Herramientas de plataforma sin cambios: Terramate, OpenTofu, conftest, Checkov.
 
-**Nota de licencias.** Grafana y Loki son AGPL-3.0: sin impacto para uso interno sin modificar, pero conviene que lo valide quien gestione licencias. Se descarta MinIO como object store en cluster: desde 2025 su edición comunitaria dejó de distribuir binarios e imágenes, y en cualquier caso un backup dentro del cluster que protege no es un backup.
+**Qué es cloud y qué es OSS.** Todo lo que corre en el cluster es open source. Lo que queda en GCP es lo que no se puede o no conviene operar uno mismo: borde (LB, Cloud Armor, certificado público), KMS, almacenamiento de objetos y registro. Sustituir GCS o Artifact Registry por equivalentes OSS en el propio cluster crearía dependencias circulares (un backup dentro del cluster que protege no es un backup) y más superficie que operar. Se descarta Harbor por el mismo motivo, y MinIO además porque su edición comunitaria dejó de distribuir binarios e imágenes en 2025.
+
+**Licencias.** Grafana y Loki son AGPL-3.0: sin impacto para uso interno sin modificar; que lo confirme quien gestione licencias.
 
 ---
 
 ## 4. Dependencias por dominio
 
-### 4.1 Runtime: cluster y node pool
+### 4.1 Runtime: GKE Standard y node pool `sonar`
 
 | Elemento | Propuesta | Motivo |
 |---|---|---|
-| Node pool dedicado `sonar` | 1–2 nodos, ≥ 4 vCPU / 16 GiB, taint `dedicated=sonar:NoSchedule` | Aísla el sysctl y la presión de memoria de ES del resto de `qa` |
-| `vm.max_map_count=524288`, `fs.file-max=131072` | **Configuración de nodo** del node pool, gestionada por el stack de cluster | Elimina el init container privilegiado; PSS `restricted` se mantiene sin excepción |
-| StorageClass | SSD, `WaitForFirstConsumer`, `allowVolumeExpansion: true` | Latencia de ES; el PVC debe nacer en la zona del nodo |
-| PVC de datos | 30 GiB inicial, expandible | Índices de ES; reconstruibles |
+| Cluster | GKE Standard **regional**, plano de control privado, Workload Identity, release channel `STABLE`, `deletion_protection: true` (§12.6) | Línea base de §5.7 |
+| Pods por nodo | 64 (default de plataforma) | No aplica la pregunta abierta de Autopilot |
+| Node pool `sonar` | 1 nodo **n2-standard-8** (8 vCPU, 32 GB) en **una zona**, taint `dedicated=sonar:NoSchedule` | Aísla sysctl y presión de memoria. Zona única porque el PVC es zonal |
+| Sysctl | `node_config.linux_node_config.sysctls = { "vm.max_map_count" = "524288" }` | Elimina el init container privilegiado |
+| `fs.file-max` | Sin acción: el kernel lo dimensiona con la RAM y en 32 GB supera 131072 de sobra | Verificar en V1 |
+| StorageClass | `hyperdisk-balanced`, `WaitForFirstConsumer`, `allowVolumeExpansion: true` | IOPS configurables sin sobredimensionar disco |
+| Acceso del pipeline al plano de control | **Endpoint DNS del plano de control de GKE** con IAM, o runners self-hosted | Riesgo R18: los runners alojados por GitHub no llegan a un endpoint privado. El endpoint DNS lo resuelve sin abrir redes autorizadas — verificar en fase 0 |
 
-Cómo se fija el sysctl en cada cloud:
+**Por qué no Autopilot.** No permite configurar sysctl de nodo ni contenedores privilegiados. Se propone el trait **`sysctl-max-map-count`** en `cluster`: `gke` lo tiene, `gke-autopilot` no, y un binding equivocado falla en resolución en vez de en el primer arranque con `max virtual memory areas vm.max_map_count [65530] is too low`.
 
-| Cloud | Mecanismo | Estado |
-|---|---|---|
-| GKE Standard | `node_config.linux_node_config.sysctls` | **Verificar** que la versión de GKE admite `vm.max_map_count` en la lista permitida |
-| GKE Autopilot | Sin control de nodo | **Probablemente inviable** sin el init privilegiado → trait ausente, falla la resolución (ver abajo). Liga con la pregunta abierta nº1 de `CLAUDE.md` |
-| EKS | Launch template (`user_data`) o settings de Bottlerocket | Soportado |
-| AKS | `linux_os_config.sysctl_config.vm_max_map_count` | Soportado |
+**Plan B** si V1 falla: `SONAR_SEARCH_JAVAADDITIONALOPTS=-Dnode.store.allow_mmap=false`, a costa de rendimiento de ES. Con 200 proyectos habría que medirlo antes de aceptarlo.
 
-Esto es exactamente para lo que existen los traits: se propone el trait **`sysctl-max-map-count`** en la capability `cluster`. El arquetipo `sonarqube` lo exige; un `qa` enlazado a Autopilot falla en resolución con un diagnóstico claro, no en el primer arranque con `max virtual memory areas vm.max_map_count [65530] is too low`.
-
-**Plan B**, solo si el sysctl no se puede fijar: `SONAR_SEARCH_JAVAADDITIONALOPTS=-Dnode.store.allow_mmap=false`. Evita el requisito a costa de rendimiento de ES. Aceptable en `qa`, a medir.
+**Zona única.** Si cae la zona, SonarQube queda caído hasta que vuelva. Para `qa` se acepta. La alternativa es `hyperdisk-balanced-high-availability` (réplica síncrona entre dos zonas) con el node pool en esas dos zonas: RTO de minutos ante caída de zona, a costa del doble de coste de disco.
 
 ### 4.2 Política de admisión (capa 2b)
 
-`qa` usa `enforcementAction: deny`, `failurePolicy: Ignore` (§13.7). Lo que implica para el chart:
+`qa`: `enforcementAction: deny`, `failurePolicy: Ignore` (§13.7).
 
 ![Pod de SonarQube](diagrams/08-pod-sonarqube.svg)
 
 | Requisito PSS `restricted` / Gatekeeper | Ajuste en el chart |
 |---|---|
-| Sin contenedores privilegiados | `initSysctl.enabled: false` (lo cubre el nodo, §4.1) |
-| Sin ejecución como root | `initFs.enabled: false`; permisos del volumen vía `fsGroup` |
-| `runAsNonRoot`, `seccompProfile: RuntimeDefault`, `capabilities.drop: [ALL]`, `allowPrivilegeEscalation: false` | `securityContext` y `containerSecurityContext` explícitos |
-| Etiquetas obligatorias (`registry/labels.yaml`) | Emitidas por el generador en namespace y workload: `archetype`, `instance`, `app.kubernetes.io/*`, `pod-security.kubernetes.io/enforce: restricted` |
-| `readOnlyRootFilesystem` (si hay constraint) | `emptyDir` en `/opt/sonarqube/temp` y `/opt/sonarqube/logs`; **verificar** qué más escribe la versión fijada |
-| Imágenes solo de registros permitidos | Imagen propia en el registro interno (§4.10) |
+| Sin contenedores privilegiados | `initSysctl.enabled: false` |
+| Sin ejecución como root | `initFs.enabled: false`; permisos vía `fsGroup` |
+| `runAsNonRoot`, `seccompProfile: RuntimeDefault`, `drop: [ALL]`, `allowPrivilegeEscalation: false` | `securityContext` y `containerSecurityContext` explícitos |
+| Etiquetas obligatorias (`registry/labels.yaml`) | Emitidas por el generador en namespace y workload |
+| `readOnlyRootFilesystem` (si hay constraint) | `emptyDir` en `temp` y `logs`; verificar qué más escribe (V2) |
+| Imágenes solo de registros permitidos | `europe-docker.pkg.dev/<proyecto>/…` por digest |
 
-Si la verificación muestra que SonarQube no puede correr con raíz de solo lectura, la salida es una **exención por nombre** del constraint para `sonarqube/sonarqube-0`, registrada en el binding y revisada en PR — nunca relajar el constraint para todo `qa`.
+Si SonarQube no puede correr con raíz de solo lectura, la salida es una **exención por nombre** para `sonarqube/sonarqube-0`, revisada en PR — nunca relajar el constraint para todo `qa`.
 
 ### 4.3 Secretos
 
@@ -137,188 +149,226 @@ Si la verificación muestra que SonarQube no puede correr con raíz de solo lect
 
 | Secreto | Ruta en OpenBao | Consumidor | Notas |
 |---|---|---|---|
-| Usuario y password JDBC | `qa/sonarqube/db` | CNPG (`bootstrap.initdb.secret`) y SonarQube (`SONAR_JDBC_*`) | Un único origen para ambos lados; CNPG no genera la suya |
-| Monitoring passcode | `qa/sonarqube/passcode` | SonarQube (`SONAR_WEB_SYSTEMPASSCODE`) y `PodMonitor` | El `PodMonitor` debe estar en el mismo namespace que el Secret |
-| Password admin inicial | `qa/sonarqube/admin` | Job del chart que cambia `admin/admin` | Tras SAML, la cuenta local `admin` queda como break-glass |
-| Clave de cifrado de settings | `qa/sonarqube/secret-key` | `sonar.secretKeyPath` montado | Si se pierde, los settings cifrados de la BD son irrecuperables: **incluirla en el plan de DR** |
-| Material SAML | `qa/sonarqube/saml` | Certificado del IdP; clave y certificado del SP si se firman las peticiones | El certificado del IdP es público; la clave del SP no |
-| Tokens de análisis de CI | No en OpenBao de `qa` | Secretos del sistema de CI, uno por proyecto | Tokens de proyecto con caducidad; nunca un token global |
+| Usuario y password JDBC | `qa/sonarqube/db` | CNPG (`bootstrap.initdb.secret`) y SonarQube | Un único origen para ambos lados |
+| Monitoring passcode | `qa/sonarqube/passcode` | SonarQube y `PodMonitor` | Mismo namespace que el `PodMonitor` |
+| Password admin | `qa/sonarqube/admin` | Job del chart | Break-glass tras activar SAML |
+| Clave de cifrado de settings | `qa/sonarqube/secret-key` | `sonar.secretKeyPath` | Si se pierde, los settings cifrados son irrecuperables: entra en DR |
+| Material SAML | `qa/sonarqube/saml` | Certificado del IdP; clave del SP si se firman peticiones | — |
+| Tokens de análisis | **Secretos de repositorio en GitHub** (D9) | GitHub Actions | No en OpenBao: exigiría publicar OpenBao a internet para los runners alojados |
 
-Decisiones en este dominio:
-
-- **ESO siempre como interfaz**; el backend es intercambiable. OpenBao es la opción 100 % OSS; Secret Manager / Secrets Manager / Key Vault (AM §14.2) entran cambiando el `SecretStore`, sin tocar el arquetipo.
-- **`SecretStore` por namespace, no `ClusterSecretStore`.** El rol de OpenBao queda ligado a `ns=sonarqube, sa=eso-sonarqube` con `StringEquals` literal. El equivalente en Kubernetes auth de la regla R15: nada de comodines.
-- **Autenticación de workloads a OpenBao por Kubernetes auth**, no por OIDC de Keycloak. Si no, aparece el ciclo Keycloak → secretos → OpenBao → login → Keycloak (§6).
-- **Por outputs sharing solo viajan rutas** (`qa/sonarqube/db`), nunca valores (§11.6, R8).
+- **ESO como interfaz, OpenBao como backend.** Cambiar a Secret Manager es cambiar el `SecretStore`, no el arquetipo.
+- **Auto-unseal con Cloud KMS**, clave en capa 0; la cuenta de servicio de OpenBao tiene `cryptoKeyEncrypterDecrypter` solo sobre esa clave.
+- **`SecretStore` por namespace**, rol de Kubernetes auth ligado a `ns=sonarqube, sa=eso-sonarqube` exacto (espíritu de R15).
+- **Workloads a OpenBao por Kubernetes auth**, no por OIDC de Keycloak: evita el ciclo de §6.
+- **Por outputs sharing solo viajan rutas**, nunca valores (§11.6, R8).
 
 ### 4.4 Datos: PostgreSQL con CloudNativePG
 
-`CLAUDE.md` deja `database-platform` **sin enlazar en `demos`** por aislamiento. En `qa` se propone **enlazarlo** a `postgres-operator` (CloudNativePG): `qa` es un entorno dedicado de cargas de confianza, y un operador compartido evita un Cloud SQL / RDS por aplicación sin perder aislamiento, porque:
+`database-platform` sin enlazar es la decisión de `demos`. En `qa` se propone **enlazarlo** a CloudNativePG, con una instancia **propia** por consumidor:
 
-| Opción | Qué crea SonarQube | Aislamiento | Recomendación |
-|---|---|---|---|
-| A. `Database` + `Role` en un `Cluster` CNPG compartido | Una BD lógica | Proceso PostgreSQL compartido con otras apps | No: SonarQube es intensivo en BD y un vecino ruidoso afecta a ambos |
-| **B. `Cluster` CNPG propio en el namespace `sonarqube`** | Instancia PostgreSQL dedicada gestionada por el operador compartido | Proceso, almacenamiento y backups propios | **Sí**: operador compartido, datos separados — la misma idea que Kafka (bus común, datos separados) |
-| C. Servicio gestionado cloud (`data` condicional) | Cloud SQL / RDS / Flexible Server | Máximo | Solo si se abandona el requisito de OSS |
+| Opción | Qué crea SonarQube | Recomendación |
+|---|---|---|
+| A. `Database` + `Role` en un `Cluster` compartido | BD lógica | No: SonarQube es intensivo en BD; vecino ruidoso en ambos sentidos |
+| **B. `Cluster` CNPG propio en `sonarqube`** | Instancia dedicada, operador compartido | **Sí** — bus común, datos separados, como Kafka |
+| C. Cloud SQL (`data` condicional) | Servicio gestionado | Solo si se abandona el requisito OSS para datos |
 
-La opción B requiere que `postgres-operator` autorice el tipo `Cluster` (y `ScheduledBackup`) en `tenant_resources` además de `Database` y `Role` (AM §10.4). Es un cambio del manifiesto de `postgres-operator`, no del modelo.
+Requiere que `postgres-operator` autorice `Cluster` y `ScheduledBackup` en `tenant_resources` (AM §10.4). Keycloak usa el mismo patrón: es el segundo `Cluster` del entorno.
 
-Parámetros de partida: 2 instancias (primaria + réplica síncrona) en nodos distintos, 20 GiB, PostgreSQL en la versión mayor más alta que soporte la versión fijada de SonarQube, `backup_retention_days: 14` (§12.6, columna `qa`).
+Backups a GCS con **Workload Identity**: IAM `roles/storage.objectAdmin` sobre el bucket para el principal exacto `principal://iam.googleapis.com/projects/<n>/locations/global/workloadIdentityPools/<proyecto>.svc.id.goog/subject/ns/sonarqube/sa/sonarqube-db`. Sin clave JSON; sin comodín.
 
 ### 4.5 Publicación
 
 | Elemento | Propuesta |
 |---|---|
-| Hostname | `sonar.qa.acme.com` — **claim** de hostname en el ledger (AM §8.1) |
-| DNS | external-dns crea el registro desde el `HTTPRoute` |
-| TLS | cert-manager, `Certificate` en el listener HTTPS del Gateway del entorno. DNS-01 contra la zona de capa 0 con identidad de workload, sin claves |
-| Gateway | **Uno por entorno**, `allowedRoutes.namespaces.from: Selector` (§10.6). SonarQube solo aporta su `HTTPRoute` |
-| Borde cloud | El `env-edge` de capa 1 (NEG / target group / AGFC según cloud, §10) |
-| Tamaño de subida | `ClientTrafficPolicy` con límite de cuerpo ≥ 50 MiB: los informes del scanner de proyectos grandes superan los límites por defecto |
-| Timeouts | `BackendTrafficPolicy` con timeout de petición ≥ 60 s para `/api/ce/submit` |
-| WAF | El `waf` de capa 0 si la exposición es pública (D3) |
+| Hostname | `sonar.qa.acme.com` — **claim** en el ledger aunque el DNS sea wildcard: la unicidad del nombre sigue siendo escasa |
+| DNS | Registro wildcard `*.qa.acme.com` → IP global, creado una vez por `gcp-qa-edge` |
+| TLS público | Certificate Manager, wildcard, en el GLB |
+| TLS interno | GLB → Envoy por HTTPS con certificado de la CA interna de cert-manager |
+| Gateway | Uno por entorno, `allowedRoutes.namespaces.from: Selector` (§10.6); NEG standalone `eg-qa-neg` (§10.2, R20) |
+| Timeout del backend service | **120 s** (por defecto 30 s): la subida del informe de un proyecto grande los supera |
+| Envoy | `BackendTrafficPolicy` con timeout ≥ 120 s; `ClientTrafficPolicy` con límite de cuerpo ≥ 100 MiB |
+| Firewall VPC | Rangos de health check del GLB (`35.191.0.0/16`, `130.211.0.0/22`) hacia los pods de Envoy — selector `cidr:` legítimo (AM §6.3) |
 
-Recursos Gateway API empaquetados en el chart del arquetipo y desplegados con `helm_release`, **nunca `kubernetes_manifest`** (R24).
+Recursos Gateway API empaquetados en el chart y desplegados con `helm_release`, nunca `kubernetes_manifest` (R24).
 
 ### 4.6 Autenticación y autorización
 
 ![Autenticación](diagrams/05-autenticacion.svg)
 
-El choque con el diseño existente: la plataforma prevé OIDC en el Gateway mediante `SecurityPolicy`. **No sirve para SonarQube**, porque la misma ruta la usan personas y máquinas: el scanner envía `Authorization: Bearer <token de SonarQube>` a `/api/*`, y una `SecurityPolicy` OIDC en la ruta lo redirigiría a Keycloak. Partir la ruta por paths (UI con OIDC, `/api` sin él) duplica la autenticación y deja la API igualmente expuesta.
+La plataforma prevé OIDC en el Gateway con `SecurityPolicy`. **No sirve para SonarQube**: la misma ruta la usan personas y GitHub Actions, y el scanner envía `Authorization: Bearer <token de SonarQube>` a `/api/*`. Una `SecurityPolicy` OIDC lo redirigiría a Keycloak y todos los análisis fallarían.
 
 | Quién | Mecanismo | Dónde se valida |
 |---|---|---|
-| Personas | **SAML 2.0** SP-initiated contra Keycloak (realm `qa`, cliente `sonarqube`) | SonarQube |
-| Pipelines | **Token de análisis de proyecto** de SonarQube | SonarQube |
-| Break-glass | Cuenta local `admin`, password en OpenBao | SonarQube |
+| Personas | **SAML 2.0** contra Keycloak (realm `qa`, cliente `sonarqube`) | SonarQube |
+| GitHub Actions | **Token de análisis de proyecto** (D9) | SonarQube |
+| Break-glass | Cuenta local `admin` | SonarQube |
 | Anónimos | Prohibidos: `sonar.forceAuthentication=true` | SonarQube |
 
-Propuesta: `HTTPRoute` de SonarQube **sin `SecurityPolicy` OIDC**, igual que la de Keycloak; la autenticación es responsabilidad de la aplicación. Controles que sí se aplican en el Gateway: rate limit local y, si D3 lo decide, lista de IPs de origen.
+`HTTPRoute` de SonarQube **sin `SecurityPolicy` OIDC**, igual que la de Keycloak. SAML es front-channel: SonarQube no necesita red hacia Keycloak.
 
-Una ventaja de SAML: el intercambio es **front-channel** (vía navegador). SonarQube no necesita conectividad de red con Keycloak; basta con el certificado del IdP. Sin dependencia de arranque entre ambos.
+**Origen de las identidades (Q6).** Keycloak no debe ser la fuente de verdad de usuarios, sino un broker hacia la fuente corporativa (Google Workspace, Entra ID, u **organización de GitHub**). Si la fuente es GitHub, el broker de Keycloak no importa equipos de GitHub como grupos sin una extensión; los grupos `team-*` se mantendrían en Keycloak. Alternativa: autenticación **GitHub nativa** de SonarQube, que sí sincroniza equipos. Se recomienda Keycloak igualmente (D4): Grafana y futuras aplicaciones lo necesitan, y cambiar de proveedor de identidad en SonarQube después obliga a migrar la identidad externa de cada usuario.
 
-Autorización:
+| Grupo | Permisos en SonarQube |
+|---|---|
+| `sonar-administrators` | Administración global |
+| `sonar-users` | Navegar |
+| `team-<x>` | Plantilla de permisos por prefijo de clave de proyecto `<x>_*` |
 
-| Grupo en Keycloak | Grupo en SonarQube | Permisos |
-|---|---|---|
-| `sonar-administrators` | `sonar-administrators` | Administración global |
-| `sonar-users` | `sonar-users` | Navegar y ver proyectos |
-| `team-<x>` | `team-<x>` | Plantilla de permisos por prefijo de clave de proyecto `<x>-*` |
-
-Sincronización de grupos por el atributo `groups` de la aserción SAML. Los permisos por proyecto se definen con **plantillas de permisos**, no a mano, para que un proyecto nuevo nazca con los permisos de su equipo.
+Con 200 proyectos, los permisos **solo** por plantillas: un proyecto nuevo nace con los de su equipo.
 
 ### 4.7 Observabilidad
 
 ![Observabilidad](diagrams/06-observabilidad.svg)
 
-| Señal | Origen | Recogida | Alertas propuestas |
-|---|---|---|---|
-| Salud | `/api/system/health` (requiere passcode), `/api/system/status` (público) | Blackbox exporter desde fuera del namespace a través del Gateway | Status ≠ `UP` durante 5 min |
-| Métricas de aplicación | `/api/monitoring/metrics` | `PodMonitor` con passcode desde Secret | Cola del compute engine creciendo durante 30 min; tareas fallidas; ES en rojo |
-| JVM | Métricas JVM del mismo endpoint | Idem | Heap > 90 % sostenido; tiempo de GC |
-| Contenedor | cAdvisor / kube-state-metrics | kube-prometheus-stack | Reinicios con `OOMKilled` (exit 137, §8.3); memoria > 90 % del límite |
-| Disco | kubelet volume stats | kube-prometheus-stack | PVC de datos > 80 % (ES pasa a solo lectura por encima de su watermark) |
-| PostgreSQL | Exporter de CNPG `:9187` | `PodMonitor` de CNPG | Retraso de réplica; conexiones cerca del máximo; último backup correcto > 26 h |
-| Logs | stdout de los tres procesos | Fluent Bit → Loki | Tasa de `ERROR` |
-| Certificado | cert-manager | kube-prometheus-stack | Caducidad < 14 días |
+| Señal | Recogida | Alertas propuestas |
+|---|---|---|
+| Disponibilidad externa | Blackbox → `https://sonar.qa.acme.com/api/system/status` (pasa por GLB, Cloud Armor y Gateway) | ≠ `UP` durante 5 min |
+| **Cola del compute engine** | `PodMonitor` sobre `/api/monitoring/metrics` | Pendientes > 20 durante 15 min; tarea más antigua > 10 min. **La alerta clave con 200 proyectos** |
+| Tareas CE fallidas | Idem | Tasa de fallos > 5 % en 1 h |
+| JVM | Idem | Heap > 90 % sostenido |
+| Contenedor | kube-state-metrics | `OOMKilled` (exit 137, DG §8.3); memoria > 90 % |
+| Disco | kubelet | PVC de ES > 80 % (ES pasa a solo lectura por encima de su watermark); PVC de BD > 80 % |
+| PostgreSQL | Exporter CNPG | Retraso de réplica; conexiones > 80 %; último backup correcto > 26 h |
+| Logs | Fluent Bit → Loki (GCS) | Tasa de `ERROR` |
+| Certificados | cert-manager | CA interna o certificado de Envoy < 14 días |
 
-Grafana usa login OIDC con Keycloak: no hay problema de ciclo, porque Grafana está detrás del Gateway como cualquier aplicación y Keycloak no depende de ella.
-
-El `PodMonitor` y la `PrometheusRule` se empaquetan en el chart del arquetipo (el CRD debe existir en plan; R24). Por eso `sonarqube` exige `monitoring` con un trait que asegure los CRD de Prometheus Operator — se propone **`prometheus-operator-crds`**.
+`PodMonitor` y `PrometheusRule` van en el chart del arquetipo (CRD en plan, R24); de ahí el trait **`prometheus-operator-crds`**. Grafana entra por OIDC con Keycloak, sin ciclo.
 
 ### 4.8 Red
 
 ![Red](diagrams/07-red.svg)
 
-`NetworkPolicy` **default-deny de entrada y de salida** en `sonarqube`, más permisos explícitos:
+`NetworkPolicy` default-deny de entrada y salida en `sonarqube`:
 
-| Origen | Destino | Puerto | Motivo |
-|---|---|---|---|
-| Envoy (ns `envoy-gateway-system`) | SonarQube | 9000 | Tráfico de usuarios y CI |
-| Prometheus (ns `monitoring`) | SonarQube | 9000 | Métricas |
-| Prometheus | Pods CNPG | 9187 | Métricas de PostgreSQL |
-| SonarQube | Pods CNPG | 5432 | JDBC |
-| Pods CNPG | Pods CNPG | 5432 | Replicación |
-| Operador CNPG (ns `cnpg-system`) | Pods CNPG | 8000 | Estado de instancias |
-| Pods CNPG | Bucket de backups | 443 | WAL y base backups — private endpoint si la cloud lo permite |
-| Todos | CoreDNS | 53 | Resolución |
-| SonarQube | Internet | — | **Denegado.** Plugins en la imagen; `sonar.updatecenter.activate=false` |
+| Origen | Destino | Puerto |
+|---|---|---|
+| Envoy | SonarQube | 9000 |
+| Prometheus | SonarQube / CNPG | 9000 / 9187 |
+| SonarQube | CNPG | 5432 |
+| CNPG | CNPG | 5432 (replicación) |
+| Operador CNPG | CNPG | 8000 |
+| CNPG | `storage.googleapis.com` vía Private Google Access | 443 |
+| Todos | kube-dns | 53 |
+| SonarQube | Internet | **Denegado**; `sonar.updatecenter.activate=false` |
 
-Selectores de workload, no CIDR, conforme a AM §6.3. SonarQube no necesita hablar con Keycloak (SAML front-channel).
+GKE aplica `NetworkPolicy` con Dataplane V2; el egress a las APIs de Google se expresa por FQDN (`FQDNNetworkPolicy`) o por los rangos de Private Google Access — verificar cuál soporta la versión.
 
 ### 4.9 Backup y recuperación
 
 | Qué | Cómo | Dónde | Retención |
 |---|---|---|---|
-| PostgreSQL | CNPG barman-cloud: base backup diario + archivo continuo de WAL (PITR) | Bucket cloud del entorno, acceso por identidad de workload, sin claves | 14 días |
-| Clave de cifrado de settings | En OpenBao, que a su vez hace snapshot Raft | Bucket separado | Igual que OpenBao |
-| Índices de ES | **No se respaldan** | — | Reconstrucción al arrancar |
-| Configuración | En Git (valores del chart, manifiesto) | Repositorio | — |
+| PostgreSQL | CNPG barman-cloud: base diaria + WAL continuo (PITR) | `gs://acme-qa-backups-db` | 14 días (§12.6) |
+| OpenBao (incluye clave de cifrado de SonarQube) | Snapshot Raft programado | `gs://acme-qa-backups-bao` | 14 días |
+| Índices de ES | No se respaldan | — | Reindexado |
+| Configuración | Git | — | — |
 
-Velero no es necesario: todo el estado está en PostgreSQL, OpenBao o Git. Añadirlo sería un segundo mecanismo que respalda lo mismo.
+Buckets con versionado de objetos y retention policy, en la región del cluster. Velero no hace falta: todo el estado está en PostgreSQL, OpenBao o Git.
 
-Prueba de restauración: CNPG puede crear un `Cluster` nuevo en recuperación desde el bucket. Debe ensayarse una vez antes de dar el entorno por bueno; un backup nunca restaurado es una hipótesis.
+Restauración ensayada una vez antes de dar el entorno por bueno (V5).
 
 ### 4.10 Cadena de suministro de la imagen
 
 | Paso | Herramienta |
 |---|---|
-| Imagen propia `FROM sonarqube:<versión>-community` + plugins en `extensions/plugins` | Build del repositorio del arquetipo |
-| Escaneo | Trivy, bloqueante en `CRITICAL` con fix disponible |
-| Firma | cosign; la verificación en admisión es una mejora posterior |
-| Registro | Harbor (proxy-cache de Docker Hub + proyecto interno) o el registro cloud |
-| Despliegue | **Por digest**, no por tag (developer-guide: la imagen se promueve, no se reconstruye) |
+| Imagen `FROM sonarqube:<versión>-community` + plugins en `extensions/plugins` | GitHub Actions en el repo del arquetipo |
+| Escaneo | Trivy, bloqueante en `CRITICAL` con fix |
+| Firma | cosign con clave en Cloud KMS (evita publicar en el log público de Rekor) |
+| Registro | Artifact Registry; base desde el repo remoto de Docker Hub (evita límites de pull) |
+| Despliegue | Por digest (DG: la imagen se promueve, no se reconstruye) |
+
+### 4.11 Integración con GitHub Actions
+
+![Flujo de CI](diagrams/09-ci-github.svg)
+
+| Regla | Motivo |
+|---|---|
+| **Analizar solo en `push` a `main`**, nunca en `pull_request` | Community no tiene ramas: un análisis desde una PR **se registra como `main`** y contamina su historia y el quality gate. Error silencioso; se impone con una regla de conftest/actionlint sobre los workflows |
+| `concurrency: { group: sonar-${{ github.repository }}, cancel-in-progress: true }` | Dos merges seguidos: solo se analiza el último. Alivia la cola |
+| `sonar.qualitygate.wait=true` con `timeout` 300 s | El job falla si el gate falla; con la cola llena el job espera y consume minutos: vigilar |
+| Clave de proyecto `<org>_<repo>` | Plantillas de permisos por prefijo |
+| Workflow reutilizable en un repo central | 200 copias de un workflow divergen; uno reutilizable se cambia una vez |
+| Onboarding automatizado | Crear proyecto + token de proyecto con caducidad + secreto `SONAR_TOKEN` en el repo, por API de SonarQube y de GitHub (D9) |
+
+Los runners alojados por GitHub salen desde rangos enormes y cambiantes: filtrar por IP en Cloud Armor no es útil. Cloud Armor aporta reglas OWASP (con exclusiones en `/api/ce/submit`, cuyo multipart dispara falsos positivos — verificar) y rate limit por IP; la autenticación la hace SonarQube.
+
+### 4.12 Dimensionamiento para 200 proyectos
+
+Supuesto a confirmar (Q3): mediana de 50 k líneas por proyecto, ≈ 10 M líneas en total, ≈ 4 merges a `main` por proyecto y día.
+
+| Recurso | Valor inicial | Base |
+|---|---|---|
+| Node pool `sonar` | 1 × n2-standard-8 (8 vCPU, 32 GB) | Contenedor de 12 GiB + page cache para ES |
+| Pod SonarQube | request 4 vCPU / 12 GiB, limit 12 GiB, **sin límite de CPU** | Con `limits.cpu` bajo, las JVM eligen SerialGC y el CE se ralentiza (DG §8.3) |
+| Heaps | web `-Xmx2g`, CE `-Xmx3g`, search `-Xmx3g` | Σ 8 GiB + ≈ 1,5 GiB non-heap + margen = 12 GiB. **Nunca** heap = límite |
+| PVC de ES | 50 GiB `hyperdisk-balanced`, 3000 IOPS | Expandible |
+| PostgreSQL | 2 instancias (primaria + réplica), 2 vCPU / 8 GiB, 100 GiB, `max_connections` 200 | Pool de SonarQube ≈ 60 por proceso |
+| GCS backups | ≈ 2–3× el tamaño de la BD con 14 días de WAL | — |
+
+**La cola del compute engine es el límite.** 200 proyectos × 4 análisis/día = 800 tareas diarias. Con 20–60 s por tarea son **4,5–13 h de trabajo en serie**, concentradas en la jornada. En la parte alta, la cola crece en horas punta y los jobs de GitHub esperan al quality gate. Palancas, en orden:
+
+1. Solo `main` y `cancel-in-progress` (ya incluidos).
+2. CPU suficiente para el CE: la tarea es mayoritariamente monohilo; más núcleos no la aceleran, frecuencia sí (valorar c3 frente a n2 en V4).
+3. Monorepos grandes fuera de horas punta.
+4. Si la alerta de cola salta de forma sostenida: Enterprise Edition (varios workers, comercial) o separar en dos instancias por grupo de equipos.
+
+V4 mide el tiempo real por tarea con proyectos representativos antes de fijar nada.
 
 ---
 
-## 5. Diferencias por cloud (solo capas 0–2)
+## 5. Especificidades de GCP que afectan a SonarQube
 
-| Elemento | GCP | AWS | Azure |
-|---|---|---|---|
-| Runtime | GKE **Standard** (no Autopilot, §4.1) | EKS | AKS |
-| Sysctl de nodo | `linux_node_config.sysctls` — verificar | Launch template / Bottlerocket | `linux_os_config` |
-| StorageClass SSD | `pd-ssd` / `hyperdisk-balanced` | `gp3` | `managed-csi-premium` |
-| Bucket de backups | GCS + Workload Identity | S3 + IRSA (`StringEquals` exacto, R12) | Blob + Workload Identity |
-| Auto-unseal OpenBao | Cloud KMS | AWS KMS | Key Vault |
-| DNS-01 cert-manager / external-dns | Cloud DNS + WI | Route 53 + IRSA | Azure DNS + WI |
-| Borde | NEG standalone (sin `iac-owned-edge`, R20) | Target group + `TargetGroupBinding` | AGFC |
-
-Nada por encima de capa 2 cambia entre columnas. Esa es la prueba de aceptación de AM §14.3 aplicada a este caso.
+| Tema | Decisión | Referencia |
+|---|---|---|
+| NEG fuera del estado de Terraform | Declarado como `data`, nombrado explícitamente | §10.2, R20 |
+| Shared VPC o VPCs separadas | Sigue abierta en `CLAUDE.md` (nº 2); el backend del GLB debe estar en la misma VPC que el NEG | R23 |
+| Cuenta de servicio de nodos | Dedicada, con `artifactregistry.reader`, logging y monitoring writer | §5.7 |
+| Workload Identity | Principal exacto por namespace y KSA | R15 |
+| Pipeline de plataforma | WIF de GitHub con `attribute_condition` sobre repo y environment exactos | §11.2, R12 |
+| Org policies | Sin claves de SA, región confinada, sin IPs públicas en nodos | §11.7 |
 
 ---
 
 ## 6. Orden de despliegue y ciclos
 
+Como el entorno es nuevo, el despliegue de SonarQube es el despliegue de la plataforma entera. Tres fases, cada una aplicada por etiquetas con mocks OFF (§4.11):
+
 ![Orden de despliegue](diagrams/03-orden-despliegue.svg)
 
-Cada flecha entre stacks que cruce outputs sharing necesita su `after` (R2). Las aristas nuevas que introduce SonarQube:
+| Fase | Stacks | Bloqueada por |
+|---|---|---|
+| **0** | Repositorio desechable, verificaciones de `CLAUDE.md` | Nada. Hay que hacerla primero |
+| **A** | Landing zone, red, GKE | Fase 0; decisión Shared VPC |
+| **B** | Gatekeeper, cert-manager, monitorización, OpenBao + ESO, buckets, CNPG, Keycloak, Gateway, borde | A |
+| **C** | Los 8 stacks de `gcp-qa-sonarqube-main` | B; V1–V3 |
 
-| Consumidor (stack) | Productor | Qué cruza | Tipo |
+Aristas nuevas que introduce SonarQube (cada una con su `after`, R2):
+
+| Consumidor | Productor | Qué cruza | Tipo |
 |---|---|---|---|
-| `sonarqube-main-iam` | `qa-cluster` | Pool / proveedor OIDC de identidad de workload | outputs sharing |
-| `sonarqube-main-secrets` | `qa-secrets` | Nombre del mount kv y del rol de Kubernetes auth | global (determinista) |
-| `sonarqube-main-data-tenant` | `qa-postgres-operator` | Versión del operador, nombre del bucket de backups | outputs sharing |
-| `sonarqube-main-frontdoor` | `qa-gateway` | Nombre y namespace del `Gateway` | global (determinista) |
-| `sonarqube-main-sso` | `qa-keycloak` | Nombre del realm, URL de metadatos SAML | outputs sharing |
-| `sonarqube-main-observability` | `qa-monitoring` | Selector de reglas de Prometheus | global |
+| `…-iam` | `gcp-qa-gke` | `workload_identity_pool` | outputs sharing |
+| `…-iam` | `gcp-qa-objects` | Nombre del bucket de backups | global (determinista) |
+| `…-secrets` | `gcp-qa-secrets` | Mount kv y rol de Kubernetes auth | global |
+| `…-data-tenant` | `gcp-qa-postgres-operator` | Versión del operador | outputs sharing |
+| `…-frontdoor` | `gcp-qa-gateway` | Nombre y namespace del `Gateway` | global |
+| `…-sso` | `gcp-qa-keycloak` | Realm, URL de metadatos SAML | outputs sharing |
+| `…-observability` | `gcp-qa-monitoring` | Selector de reglas | global |
 
-Siguiendo el árbol de decisión de platform-overview §4, todo lo derivable de la identidad (namespace, nombre del Gateway, ruta kv) es global; outputs sharing solo para lo que no se conoce antes de un apply.
-
-Ciclos identificados y cómo se rompen:
+Ciclos y cómo se rompen:
 
 | Ciclo | Ruptura |
 |---|---|
-| Keycloak ↔ Gateway (R22) | Ya resuelto en la plataforma. SonarQube no lo agrava: su ruta tampoco lleva `SecurityPolicy` |
-| Keycloak → secretos → OpenBao → login OIDC → Keycloak | Workloads se autentican en OpenBao por **Kubernetes auth**. El login OIDC de personas a OpenBao se añade después y no es camino de arranque |
-| OpenBao → auto-unseal → KMS | No es un ciclo: KMS es de capa 0 |
-| Keycloak → PostgreSQL (CNPG) → secretos | Orden lineal: secretos → operador → Keycloak |
-| SonarQube SAML ↔ Keycloak | No existe: SAML es front-channel. El stack `sso` va después de `app` solo para registrar el cliente con la URL definitiva |
+| Keycloak ↔ Gateway (R22) | Resuelto en la plataforma; SonarQube tampoco lleva `SecurityPolicy` |
+| Keycloak → secretos → OpenBao → login OIDC → Keycloak | Workloads por Kubernetes auth; el login OIDC de personas a OpenBao se añade después |
+| OpenBao TLS → cert-manager | No es ciclo: cert-manager usa su CA propia, sin secretos de OpenBao |
+| OpenBao → KMS | KMS está en capa 0 |
+| SonarQube SAML ↔ Keycloak | No existe: front-channel |
+| Gateway → NEG → `env-edge` (capa 1) | La arista ascendente de §10: `gcp-qa-edge` se aplica tras `gcp-qa-gateway` |
 
 ---
 
 ## 7. Borradores ilustrativos
 
-No son ficheros del repositorio; muestran cómo quedaría la etapa 2.
+No son ficheros del repositorio; muestran la forma de la etapa 2.
 
 ```yaml
 # archetypes/sonarqube/manifest.yaml — borrador
@@ -332,7 +382,7 @@ metadata:
   description: SonarQube Community Build, single node, SAML contra oidc-idp
   owners: [team-platform]
 
-runtimes: [gke, eks, aks]                     # no gke-autopilot: falta el trait
+runtimes: [gke, eks, aks]                     # no gke-autopilot: le falta el trait
 
 requires:
   - capability: cluster
@@ -343,10 +393,6 @@ requires:
   - capability: ingress
     version: ">=3.0.0 <4.0.0"
     traits: [gateway-api, http-route]
-  - capability: certs
-    version: "^1.0.0"
-  - capability: dns
-    version: "^1.0.0"
   - capability: secrets
     version: "^2.0.0"
   - capability: oidc-idp
@@ -374,7 +420,7 @@ stacks:
     after: [secrets, firewall]
   - name: sso
     after: [app]
-    creates_tenant_resources: [oidc-idp]      # KeycloakClient
+    creates_tenant_resources: [oidc-idp]
   - name: frontdoor
     after: [app]
   - name: observability
@@ -392,28 +438,36 @@ firewall:
     ports: [9000]
 
 capacity:
-  cpu_millicores: 4000
-  memory_mib: 10240                           # SonarQube 6 GiB + 2 × PostgreSQL 2 GiB
-  pvc_gib: 70                                 # 30 ES + 2 × 20 PostgreSQL
+  cpu_millicores: 8000                        # 4000 SonarQube + 2 × 2000 PostgreSQL
+  memory_mib: 28672                           # 12 GiB + 2 × 8 GiB
+  pvc_gib: 250                                # 50 ES + 2 × 100 PostgreSQL
   ingress_routes: 1
-  workload_identities: 2                      # ESO→OpenBao, CNPG→bucket
+  workload_identities: 2                      # ESO→OpenBao, CNPG→GCS
 ```
 
 ```yaml
-# environments/qa/binding.yaml — borrador, solo las capabilities que SonarQube cierra
-metadata: { name: qa, model: dedicated, cloud: <por decidir> }
+# environments/qa/binding.yaml — borrador
+apiVersion: archetype/v1
+kind: EnvironmentBinding
+metadata: { name: qa, model: dedicated, cloud: gcp, region: europe-west1 }   # región por confirmar (Q7)
 bindings:
-  network:           { archetype: environment,        stack_id: <cloud>-qa-network }
-  cluster:           { archetype: <gke|eks|aks>,      stack_id: <cloud>-qa-cluster }
-  policy:            { archetype: policy-gatekeeper,  stack_id: <cloud>-qa-policy }
-  ingress:           { archetype: gateway-envoy-<rt>, stack_id: <cloud>-qa-gateway }
-  certs:             { archetype: cert-manager,       stack_id: <cloud>-qa-certs }
-  dns:               { archetype: external-dns,       stack_id: <cloud>-qa-dns }
-  secrets:           { archetype: secrets-openbao,    stack_id: <cloud>-qa-secrets }
-  monitoring:        { archetype: monitoring-oss,     stack_id: <cloud>-qa-monitoring }
-  oidc-idp:          { archetype: keycloak,           stack_id: <cloud>-qa-keycloak }
-  database-platform: { archetype: postgres-operator,  stack_id: <cloud>-qa-postgres-operator }  # SÍ enlazado en qa
-  object-store:      { archetype: object-store-<cloud>, stack_id: <cloud>-qa-objects }
+  network:             { archetype: environment,          stack_id: gcp-qa-network }
+  cluster:             { archetype: gke,                  stack_id: gcp-qa-gke }
+  cloud-observability: { archetype: cloud-monitoring-gcp, stack_id: gcp-qa-cloudmon }
+  policy:              { archetype: policy-gatekeeper,    stack_id: gcp-qa-policy }
+  ingress:             { archetype: gateway-envoy-gke,    stack_id: gcp-qa-gateway }
+  certs:               { archetype: cert-manager,         stack_id: gcp-qa-certs }
+  secrets:             { archetype: secrets-openbao,      stack_id: gcp-qa-secrets }
+  monitoring:          { archetype: monitoring-oss,       stack_id: gcp-qa-monitoring }
+  object-store:        { archetype: object-store-gcs,     stack_id: gcp-qa-objects }
+  database-platform:   { archetype: postgres-operator,    stack_id: gcp-qa-postgres-operator }  # SÍ en qa
+  oidc-idp:            { archetype: keycloak,             stack_id: gcp-qa-keycloak }
+  # dns: sin enlazar — wildcard en env-edge
+network:
+  dns_zone: qa-acme-com
+  dns_suffix: qa.acme.com
+cluster:
+  max_pods_per_node: 64
 policy:
   gatekeeper_enforcement: deny
   gatekeeper_failure_policy: Ignore
@@ -421,29 +475,32 @@ policy:
 
 ### Cambios propuestos al registro (no aplicados)
 
-Se aplicarán en `registry/*.yaml` (nunca en `schemas/`, R34) cuando se apruebe esta etapa:
+Se aplicarán en `registry/*.yaml` (nunca en `schemas/`, R34) al aprobar esta etapa:
 
 | Fichero | Alta | Motivo |
 |---|---|---|
-| `traits.yaml` · compute | `sysctl-max-map-count` | El runtime permite fijar el sysctl a nivel de nodo sin pods privilegiados |
+| `traits.yaml` · compute | `sysctl-max-map-count` | Sysctl de nodo sin pods privilegiados |
 | `traits.yaml` · identity | `saml-idp` | El `oidc-idp` también sirve SAML 2.0 |
-| `traits.yaml` · data | `cnpg` | El `database-platform` es CloudNativePG y admite `Cluster` como tenant resource |
-| `traits.yaml` · observability | `prometheus-operator-crds` | Existen los CRD `PodMonitor` / `PrometheusRule` |
-| `capabilities.yaml` | *(ninguna)* | KMS y registro de imágenes se modelan dentro de `landing-zone` de momento; decidir si merecen capability (Q5) |
+| `traits.yaml` · data | `cnpg` | `database-platform` es CloudNativePG y admite `Cluster` como tenant resource |
+| `traits.yaml` · observability | `prometheus-operator-crds` | Existen `PodMonitor` / `PrometheusRule` |
+| `capabilities.yaml` | *(ninguna por ahora)* | KMS y registro: Q5 |
 
 ---
 
-## 8. Decisiones propuestas
+## 8. Decisiones
 
-| # | Decisión | Recomendación | Alternativa | Qué la zanja |
+| # | Decisión | Estado | Recomendación | Alternativa |
 |---|---|---|---|---|
-| D1 | Backend de secretos | **OpenBao + ESO** | ESO + gestor cloud | Coste operativo de OpenBao (unseal, Raft, upgrades) frente al requisito de OSS |
-| D2 | PostgreSQL | **`Cluster` CNPG propio** (opción B, §4.4) | BD lógica en cluster compartido; servicio gestionado | — |
-| D3 | Exposición | **Solo red interna** + runners self-hosted (ARC) si hay acceso corporativo a la red de `qa`; si no, pública con WAF y rate limit | Pública con lista de IPs de GitHub (rangos enormes, poco útil) | Dónde corren los runners (liga con R18) |
-| D4 | Autenticación de personas | **SAML contra Keycloak** | Plugin OIDC de terceros; `SecurityPolicy` OIDC en el Gateway | — (el Gateway rompe el scanner, §4.6) |
-| D5 | Runtime en GCP | **GKE Standard** | Autopilot con `allow_mmap=false` | Verificación del sysctl (§4.1) |
-| D6 | Análisis de ramas / PR | **Solo rama principal** (Community) | Plugin comunitario de branches (acoplado a cada versión, bloquea upgrades); Developer Edition (comercial) | Si los equipos necesitan quality gate en PR |
-| D7 | Logs | **Fluent Bit → Loki** | Grafana Alloy (unifica logs y métricas) | Si la plataforma quiere un único agente |
+| D1 | Backend de secretos | Propuesta | OpenBao + ESO | ESO + Secret Manager |
+| D2 | PostgreSQL | Propuesta | `Cluster` CNPG propio | Cloud SQL |
+| D3 | Exposición | **Cerrada por el contexto** | Pública tras GLB + Cloud Armor; auth en SonarQube | Runners self-hosted (ARC) y Gateway interno: más infraestructura para `qa` |
+| D4 | Autenticación de personas | Propuesta | SAML con Keycloak como broker de la fuente corporativa | GitHub nativo en SonarQube |
+| D5 | Runtime | **Cerrada** | GKE Standard | — (Autopilot sin sysctl) |
+| D6 | Ramas / PR | Propuesta | Solo `main` | Plugin comunitario de ramas (acoplado a versión); Developer Edition |
+| D7 | Logs | Propuesta | Fluent Bit → Loki | Grafana Alloy |
+| D8 | Registro de imágenes | **Cerrada** | Artifact Registry | Harbor |
+| D9 | Tokens de CI | Propuesta | Token de proyecto por repo, con caducidad, creado por onboarding automatizado | Un token global de análisis como secreto de organización: más simple, pero una fuga da acceso a los 200 proyectos |
+| D10 | DNS del entorno | Propuesta | Wildcard + certificado wildcard; `dns` sin enlazar | external-dns por hostname |
 
 ---
 
@@ -453,37 +510,42 @@ Propuestos para `docs/risk-register.md`; se numerarán al incorporarse.
 
 | Riesgo | Probabilidad | Impacto | Mitigación |
 |---|---|---|---|
-| **Init container privilegiado del chart** activo por defecto; Gatekeeper lo rechaza y el pod no arranca, o alguien pide una exención global | Alta | Media | `initSysctl`/`initFs` desactivados en los valores del arquetipo; sysctl de nodo; trait en resolución |
-| **OOMKill silencioso**: tres heaps que suman más que el límite | Alta sin cálculo | Alta — exit 137 sin log | Heaps explícitos por proceso; límite = Σ heaps + ≥ 1,5 GiB; alerta de `OOMKilled` |
-| **Pérdida de `sonar-secret.txt`** | Baja | Alta — settings cifrados irrecuperables | En OpenBao, con snapshot Raft; incluida en la prueba de DR |
-| **`SecurityPolicy` OIDC añadida a la ruta** por homogeneidad con otras apps | Media | Alta — todos los análisis de CI fallan | Assertion en el generador: `sonarqube` no lleva `SecurityPolicy`; documentado junto a la excepción de Keycloak |
-| **Upgrade de SonarQube con migración de BD sin retorno** | Media | Alta | Backup CNPG verificado antes de cada upgrade; rollback = restaurar BD + imagen anterior (developer-guide §6). Se detalla en una etapa posterior |
-| **PVC de ES lleno** → índices en solo lectura | Media | Media | Alerta al 80 %; `allowVolumeExpansion` |
-| **Tokens de análisis globales** filtrados desde CI | Media | Media | Solo tokens de proyecto, con caducidad |
+| **Cola del CE saturada** con 200 proyectos | Media-alta | Media — CI lento, jobs esperando el gate | Solo `main`, `cancel-in-progress`, alerta de cola, V4; salida comercial documentada |
+| **Análisis lanzado desde una PR** contamina `main` | Alta sin control | Media — historia y gate de `main` incorrectos, en silencio | Workflow reutilizable solo con `push` a `main`; política sobre los workflows |
+| **Init container privilegiado del chart** activo | Alta | Media | Valores del arquetipo; sysctl de nodo; trait en resolución |
+| **OOMKill silencioso** por heaps que suman más que el límite | Alta sin cálculo | Alta — exit 137 sin log | Heaps explícitos; límite = Σ heaps + margen; alerta |
+| **`SecurityPolicy` OIDC añadida a la ruta** por homogeneidad | Media | Alta — todos los análisis fallan | Assertion en el generador; documentado junto a la excepción de Keycloak |
+| **Timeout de 30 s del backend service** del GLB | Alta en proyectos grandes | Media — análisis fallan con 502 intermitente | 120 s en `env-edge`; V6 |
+| **Pérdida de `sonar-secret.txt`** | Baja | Alta | En OpenBao con snapshot a GCS; en la prueba de DR |
+| **Token global filtrado** desde un repo | Media si se elige | Alta | Tokens de proyecto (D9) |
+| **Upgrade con migración de BD sin retorno** | Media | Alta | Backup CNPG verificado antes; rollback = restaurar BD + imagen anterior (DG §6) |
+| **Caída de la zona** del PVC | Baja | Media | Aceptado en `qa`; disco HA como opción (§4.1) |
 
 ---
 
-## 10. Qué verificar antes de la etapa 2
+## 10. Qué verificar y qué sigue abierto
 
 | # | Verificación | Resultado que la cierra |
 |---|---|---|
-| V1 | `vm.max_map_count` configurable en el node pool de la cloud elegida | Nodo con el valor aplicado y SonarQube arrancando sin `initSysctl` |
-| V2 | SonarQube con PSS `restricted` y, si aplica, `readOnlyRootFilesystem` | Pod admitido por Gatekeeper en `deny` sin exenciones |
-| V3 | SAML disponible en Community en la versión fijada, con sincronización de grupos | Login de un usuario de Keycloak con su grupo aplicado |
-| V4 | Consumo real de memoria de los tres procesos con el volumen de proyectos de `qa` | Límite de memoria justificado con datos, no con la tabla por defecto |
-| V5 | Restauración de CNPG desde el bucket a un `Cluster` nuevo | SonarQube arrancando contra la BD restaurada y reindexando |
-| V6 | Scanner contra `/api/ce/submit` a través del Gateway con un informe grande | Sin 413 ni timeout |
+| V1 | `vm.max_map_count` en `linux_node_config.sysctls` de GKE | Nodo con el valor y SonarQube arrancando sin `initSysctl` |
+| V2 | SonarQube con PSS `restricted` y Gatekeeper en `deny` | Pod admitido sin exenciones |
+| V3 | SAML en Community con sincronización de grupos | Usuario de Keycloak con su grupo aplicado |
+| V4 | Tiempo por tarea del CE con 5–10 proyectos representativos; memoria real de las tres JVM | Capacidad de cola y límites justificados con datos |
+| V5 | Restauración CNPG desde GCS a un `Cluster` nuevo | SonarQube arrancando contra la BD restaurada |
+| V6 | Análisis grande a través de GLB + Cloud Armor + Gateway | Sin 413, 502 ni bloqueo de WAF |
+| V7 | Endpoint DNS del plano de control de GKE desde runners alojados por GitHub | `tofu apply` sobre el cluster privado sin redes autorizadas (R18) |
 
 Preguntas abiertas:
 
-- **Q1.** ¿Qué cloud tiene `qa`? Condiciona solo capas 0–2 y la tabla de §5.
-- **Q2.** ¿Dónde corren los runners que analizan? Decide D3.
-- **Q3.** ¿Cuántos proyectos y líneas de código se esperan? Dimensiona CPU, memoria, PVC y BD.
-- **Q4.** ¿`qa` ya tiene, o tendrá, Keycloak y CNPG por otras aplicaciones? Si SonarQube es el primer consumidor, arrastra su despliegue completo.
-- **Q5.** ¿KMS y registro de imágenes merecen capability propia en el registro, o se quedan como parte de `landing-zone`?
+- **Q3.** Líneas de código reales: ¿se confirma una mediana del orden de 50 k por proyecto? ¿Hay monorepos grandes?
+- **Q5.** ¿KMS y registro de imágenes merecen capability propia o quedan dentro de `landing-zone`?
+- **Q6.** ¿Dónde viven las identidades de las personas: Google Workspace, Entra ID u organización de GitHub? Decide el broker de Keycloak y cómo se obtienen los grupos `team-*`.
+- **Q7.** Región de GCP.
+- **Q8.** ¿Organización de GitHub en plan Team o Enterprise? Enterprise da runners alojados con IP estática, que permitirían filtrar por IP en Cloud Armor.
+- De `CLAUDE.md`, sigue abierta la nº 2 (Shared VPC), que bloquea la fase A.
 
 ---
 
 ## 11. Siguiente etapa
 
-Etapa 2, cuando esta se apruebe: manifiesto real de `sonarqube`, alta de traits en `registry/`, `binding.yaml` de `qa`, valores del chart y contratos de outputs sharing de las aristas de §6. Las verificaciones V1–V3 van antes; si V1 falla en la cloud elegida, cambia D5 y parte de §4.1.
+Etapa 2: manifiesto real de `sonarqube`, alta de traits en `registry/`, `binding.yaml` de `qa`, valores del chart, contratos de outputs sharing de §6 y el workflow reutilizable de GitHub Actions. La fase 0 y V1–V3 van antes; si V1 falla, cambian §4.1 y el plan B pasa a ser el camino principal.

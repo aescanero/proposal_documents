@@ -1,19 +1,17 @@
 flowchart TB
-    subgraph NODE["Nodo del pool 'sonar' · taint dedicated=sonar:NoSchedule<br/>sysctl a nivel de nodo: vm.max_map_count=524288, fs.file-max=131072"]
-        subgraph POD["Pod sonarqube-0 (StatefulSet, 1 réplica)<br/>runAsNonRoot uid 1000 · seccomp RuntimeDefault · drop ALL · sin privilegios"]
-            direction TB
-            subgraph C["contenedor sonarqube · limit 6Gi"]
-                W["JVM web<br/>-Xmx1g"]
-                CE["JVM compute engine<br/>-Xmx2g"]
-                ES["JVM search · Elasticsearch<br/>-Xmx1g + mmap fuera del heap"]
-            end
+    subgraph NODE["Node pool 'sonar' · n2-standard-8 (8 vCPU · 32 GB) · taint dedicated=sonar:NoSchedule<br/>linux_node_config.sysctls: vm.max_map_count=524288"]
+        subgraph POD["Pod sonarqube-0 · StatefulSet 1 réplica · request 4 vCPU / 12 GiB · limit 12 GiB, sin límite de CPU<br/>runAsNonRoot uid 1000 · seccomp RuntimeDefault · drop ALL · sin privilegios"]
+            direction LR
+            W["JVM web<br/>-Xmx2g"]
+            CE["JVM compute engine<br/>-Xmx3g · 1 worker"]
+            ES["JVM search · ES<br/>-Xmx3g + mmap"]
         end
-        V1[("PVC data 30Gi SSD<br/>/opt/sonarqube/data<br/>índices ES — reconstruibles")]
-        V2[("emptyDir<br/>/opt/sonarqube/temp y /logs")]
-        V3[("Secret montado<br/>sonar-secret.txt")]
+        V1[("PVC 50 GiB hyperdisk-balanced<br/>/opt/sonarqube/data · índices ES")]
+        V2[("emptyDir temp y logs")]
+        V3[("Secret sonar-secret.txt")]
     end
-    X1["initSysctl privilegiado<br/>DESACTIVADO"]
-    X2["initFs como root<br/>DESACTIVADO"]
+    X1["initSysctl privilegiado · DESACTIVADO"]
+    X2["initFs como root · DESACTIVADO"]
     POD --- V1 & V2 & V3
     X1 -.-x POD
     X2 -.-x POD
