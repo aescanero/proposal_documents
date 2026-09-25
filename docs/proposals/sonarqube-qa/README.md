@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N · revisión 5 (recovery keys de OpenBao, acuerdo con identidad) |
+| **Estado** | Propuesta · etapa 1 de N · revisión 6 (custodia de recovery keys) |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
@@ -394,19 +394,24 @@ Lo que la documentación **no** dice: qué stack crea las claves, en qué capa, 
 - `lifecycle { prevent_destroy = true }` en las claves.
 - Perder `tofu-state` deja el estado ilegible; perder `openbao-unseal` deja OpenBao sellado para siempre y con él todos los secretos, incluida la clave de cifrado de SonarQube. Las dos son irrecuperables: son el activo más crítico del entorno.
 
-**Recuperación de OpenBao: recovery keys en Secret Manager.** Con auto-unseal, OpenBao genera en su inicialización *recovery keys* por Shamir. No desellan (eso lo hace la clave KMS); sirven para generar un token raíz y para re-keying. Quien reúna el umbral puede hacerse raíz de OpenBao, y con ello leer todos los secretos de `qa`.
+**Recuperación de OpenBao: recovery keys en Secret Manager.** Con auto-unseal, OpenBao genera en su inicialización *recovery keys* por Shamir. No desellan (eso lo hace la clave KMS); sirven para **generar un token raíz** y para re-keying. Quien reúna el umbral es raíz de OpenBao: lee todos los secretos de `qa`, cambia políticas y **puede desactivar la auditoría**.
 
-Guardarlas en Secret Manager es razonable por un motivo concreto: con auto-unseal, si se pierde GCP (proyecto o clave KMS), OpenBao está perdido tenga uno las recovery keys donde las tenga. Sacarlas de GCP no añade resiliencia; lo que importa es **quién puede reunir el umbral**. Condiciones:
+Guardarlas en Secret Manager es razonable: con auto-unseal, si se pierde GCP (proyecto o clave KMS), OpenBao está perdido tenga uno las recovery keys donde las tenga. Lo que importa es **quién puede reunir el umbral**.
+
+**Decisión del equipo:** custodio el **equipo SRE**, las claves se quedan en Secret Manager y **el pipeline accede por WIF**.
+
+Tal cual, el Shamir no aporta nada: tanto el grupo SRE como la identidad del pipeline llegan a todos los fragmentos. Eso es aceptable si se dice explícitamente y se compensa con otros controles. Lo que no es aceptable es que el acceso del pipeline sea de **lectura** con la identidad de despliegue de cada día, porque entonces cualquier merge a `main` que llegue a ejecutarse con esa identidad puede hacerse raíz de OpenBao sin dejar rastro en OpenBao.
 
 | Condición | Motivo |
 |---|---|
-| Umbral **3 de 5**, **un secreto por fragmento** (`openbao-qa-recovery-1` … `-5`) | Un único secreto con las cinco claves anula el Shamir |
-| Cada secreto legible por **una persona o grupo distinto** (`secretAccessor` sobre ese secreto, nunca a nivel de proyecto) | Nadie reúne el umbral solo |
+| El pipeline accede solo para **escribir** (`secretmanager.secretVersionAdder`), no para leer | La inicialización automatizada necesita **guardar** los fragmentos, no leerlos. Nada del ciclo normal de despliegue necesita raíz de OpenBao |
+| Si hay un caso real de **lectura** desde pipeline (recuperación automatizada), se hace con una identidad WIF **separada**, `bao-breakglass-qa@`, ligada a un workflow propio y a un GitHub Environment con revisores obligatorios | Nunca `tf-plan-qa@` (se ejecuta desde cualquier rama) ni `tf-apply-qa@` (se ejecuta en cada merge) |
+| SRE sin acceso permanente: `secretAccessor` concedido **just-in-time** con **Privileged Access Manager** de GCP, con justificación, duración máxima de 1 h y **aprobación de otro miembro de SRE** | Recupera la regla de dos personas que el Shamir pierde al tener un único custodio |
+| Un único secreto `openbao-qa-recovery` con los fragmentos (umbral 3 de 5 se mantiene en OpenBao) | Separar en cinco secretos no aporta nada con un solo custodio; simplifica la operación |
 | En el **proyecto de landing zone / seguridad**, no en el de `qa` | Quien administra `qa` no llega a los fragmentos |
-| **Ninguna identidad de pipeline** con acceso | El pipeline nunca necesita raíz de OpenBao |
-| *Data Access audit logs* activados en Secret Manager y alerta por cada acceso | Leer un fragmento es un evento excepcional; debe verse |
-| Replicación **user-managed** en `europe-west1` | Coherente con la región y la residencia en la UE |
-| Inicialización manual, una vez, con el procedimiento escrito: `bao operator init -recovery-shares=5 -recovery-threshold=3`, cada fragmento directamente a su secreto, sin pasar por disco ni chat | El momento de la inicialización es el de mayor exposición |
+| *Data Access audit logs* en Secret Manager y **alerta por cada lectura**, dirigida a SRE y a seguridad | La lectura es excepcional; si la hace el pipeline, lo ve alguien que no es el pipeline |
+| Replicación **user-managed** en `europe-west1` | Región y residencia en la UE |
+| Tras cualquier uso: re-keying (`bao operator rekey -target=recovery`) y nueva versión del secreto | Un fragmento leído se considera expuesto |
 
 Esto introduce Secret Manager en la plataforma, pero solo para material de **arranque y emergencia** (break-glass). Los secretos de aplicación siguen en OpenBao; la frontera queda escrita para que Secret Manager no se convierta en un segundo almacén de secretos por comodidad.
 
@@ -629,7 +634,7 @@ Propuestos para `docs/risk-register.md`; se numerarán al incorporarse.
 | **Usuario dado de baja en Entra ID conserva tokens** en SonarQube | Media | Media | Reconciliación diaria; sin tokens personales en CI |
 | **Destrucción de `tofu-state` u `openbao-unseal`** | Baja | Crítico — estado ilegible o todos los secretos perdidos | Sin permisos de destroy en pipelines, `prevent_destroy`, org policy de duración mínima (§4.14) |
 | **Caducidad de la credencial de Keycloak en Entra ID** | Media | Alta — nadie puede entrar | Certificado en vez de secreto; alerta 30 días antes de la caducidad, dirigida al equipo de identidad |
-| **Umbral de recovery keys reunible por una sola persona** | Baja con las condiciones de §4.14 | Crítico — raíz de OpenBao | Un secreto por fragmento, accesos disjuntos, auditoría y alerta de lectura |
+| **Raíz de OpenBao alcanzable desde el pipeline** (recovery keys legibles por WIF) | Media si la identidad de despliegue lee | Crítico — todos los secretos de `qa`, auditoría desactivable | Pipeline solo escribe; lectura solo con identidad break-glass aprobada; SRE vía PAM con aprobación; alerta por lectura (§4.14) |
 
 ---
 
@@ -649,7 +654,7 @@ Propuestos para `docs/risk-register.md`; se numerarán al incorporarse.
 Preguntas abiertas:
 
 - **Q10.** Acuerdo con el equipo de identidad, **estimado** a falta de confirmar: app role de equipo en ≤ 2 días laborables; renovación del certificado de Keycloak en la app registration a cargo de identidad, disparada por la alerta de 30 días de la plataforma. El alta de un equipo en SonarQube hereda ese plazo.
-- **Q11.** ¿Qué cinco personas o grupos custodian los fragmentos de recovery key de OpenBao?
+- **Q11.** ¿El pipeline necesita **leer** las recovery keys (recuperación automatizada) o solo **escribirlas** en la inicialización? Decide si hace falta la identidad `bao-breakglass-qa@`.
 - De `CLAUDE.md`, sigue abierta la nº 2 (Shared VPC), que bloquea la fase A.
 
 ---
