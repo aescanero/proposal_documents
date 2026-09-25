@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N · revisión 2 (contexto confirmado) |
+| **Estado** | Propuesta · etapa 1 de N · revisión 3 (identidad, región y acceso del pipeline confirmados) |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
@@ -19,7 +19,11 @@ Nada de este documento reabre decisiones de `CLAUDE.md`. Donde SonarQube choca c
 | Cloud | **GCP** | GKE **Standard** (no Autopilot, §4.1); borde con NEG standalone + Global external Application LB; GCS, Cloud KMS, Cloud DNS, Certificate Manager, Artifact Registry |
 | CI y código | **GitHub** / GitHub Actions | SonarQube se publica a internet detrás de Cloud Armor (D3); tokens de proyecto como secretos de repositorio (D9); en Community solo se analiza `main` (§4.11) |
 | Entorno | **Nuevo** — no existe nada | SonarQube es el **primer consumidor** y arrastra el cierre completo de la plataforma: landing zone, entorno, GKE, Gatekeeper, secretos, monitorización, CNPG y Keycloak (§6). Lo gobierna la fase 0 del roadmap |
-| Volumen | **200 proyectos** | Sizing en §4.12. El cuello de botella no es la memoria sino la **cola del compute engine, de un solo worker** en Community |
+| Volumen | **200 proyectos**, ≈ 10 M líneas, ≈ 4 merges/día por proyecto | Sizing en §4.12. El cuello de botella no es la memoria sino la **cola del compute engine, de un solo worker** en Community |
+| Identidad de personas | **Entra ID** | Keycloak como broker OIDC hacia Entra ID; grupos por *app roles* (§4.6) |
+| Región | "Irlanda" → **`europe-west1` (Bélgica)** provisional | **GCP no tiene región en Irlanda.** Las más cercanas: `europe-west1` (Bélgica, UE) y `europe-west2` (Londres, fuera de la UE). Se toma `europe-west1` por residencia en la UE; confirmar (Q7) |
+| Filtrado por IP | **No** en SonarQube | D3 cerrada: SonarQube público tras Cloud Armor sin listas de IP |
+| Acceso del pipeline al cluster | La IP del runner se **abre en las redes autorizadas** de GKE al empezar y se **cierra** al terminar | Procedimiento aceptado; cuatro condiciones para que sea seguro (§4.13) |
 
 Preguntas que siguen abiertas: §10.
 
@@ -118,7 +122,7 @@ Herramientas de plataforma sin cambios: Terramate, OpenTofu, conftest, Checkov.
 | Sysctl | `node_config.linux_node_config.sysctls = { "vm.max_map_count" = "524288" }` | Elimina el init container privilegiado |
 | `fs.file-max` | Sin acción: el kernel lo dimensiona con la RAM y en 32 GB supera 131072 de sobra | Verificar en V1 |
 | StorageClass | `hyperdisk-balanced`, `WaitForFirstConsumer`, `allowVolumeExpansion: true` | IOPS configurables sin sobredimensionar disco |
-| Acceso del pipeline al plano de control | **Endpoint DNS del plano de control de GKE** con IAM, o runners self-hosted | Riesgo R18: los runners alojados por GitHub no llegan a un endpoint privado. El endpoint DNS lo resuelve sin abrir redes autorizadas — verificar en fase 0 |
+| Acceso del pipeline al plano de control | Endpoint público del plano de control con **redes autorizadas vacías por defecto**; la IP del runner se abre y cierra por job | Decisión del equipo (§4.13); cubre R18 |
 
 **Por qué no Autopilot.** No permite configurar sysctl de nodo ni contenedores privilegiados. Se propone el trait **`sysctl-max-map-count`** en `cluster`: `gke` lo tiene, `gke-autopilot` no, y un binding equivocado falla en resolución en vez de en el primer arranque con `max virtual memory areas vm.max_map_count [65530] is too low`.
 
@@ -206,13 +210,28 @@ La plataforma prevé OIDC en el Gateway con `SecurityPolicy`. **No sirve para So
 
 `HTTPRoute` de SonarQube **sin `SecurityPolicy` OIDC**, igual que la de Keycloak. SAML es front-channel: SonarQube no necesita red hacia Keycloak.
 
-**Origen de las identidades (Q6).** Keycloak no debe ser la fuente de verdad de usuarios, sino un broker hacia la fuente corporativa (Google Workspace, Entra ID, u **organización de GitHub**). Si la fuente es GitHub, el broker de Keycloak no importa equipos de GitHub como grupos sin una extensión; los grupos `team-*` se mantendrían en Keycloak. Alternativa: autenticación **GitHub nativa** de SonarQube, que sí sincroniza equipos. Se recomienda Keycloak igualmente (D4): Grafana y futuras aplicaciones lo necesitan, y cambiar de proveedor de identidad en SonarQube después obliga a migrar la identidad externa de cada usuario.
+**Identidades en Entra ID.** Keycloak no es fuente de verdad de usuarios: hace de **broker** hacia Entra ID (identity provider OpenID Connect en el realm `qa`) y emite SAML hacia SonarQube. MFA y acceso condicional se aplican en Entra ID, antes de llegar a Keycloak.
+
+| Tema | Propuesta | Por qué |
+|---|---|---|
+| Registro en Entra ID | Una *app registration* `keycloak-qa`, redirect URI `https://sso.qa.acme.com/realms/qa/broker/entra/endpoint` | Un solo punto de confianza con Entra para todas las aplicaciones de `qa` |
+| Credencial de Keycloak ante Entra | **Certificado** (client assertion firmada), no client secret | Los client secrets de Entra caducan (≤ 24 meses) y suelen caducar en producción sin aviso. Clave privada en OpenBao |
+| Grupos | **App roles** en la app registration (`sonar-administrators`, `sonar-users`, `team-<x>`), asignados a grupos de Entra | El claim `groups` de Entra trae **GUIDs**, no nombres, y con más de 200 grupos se sustituye por un *overage* que exige llamar a Graph. El claim `roles` trae nombres estables y solo los de esta aplicación |
+| Mapeo en Keycloak | Mapper *claim to group* por cada rol → grupo de Keycloak; sincronización `force` en cada login | Un cambio de pertenencia en Entra se refleja en el siguiente login |
+| Hacia SonarQube | SAML con atributo `groups` = grupos de Keycloak | Sin cambios respecto al diseño anterior |
+| Red | Keycloak necesita **egress** a `login.microsoftonline.com` (intercambio de código back-channel) vía Cloud NAT | SonarQube sigue sin necesitar red hacia Keycloak ni Entra |
+
+Se mantiene Keycloak como intermediario (D4) aunque SonarQube podría hacer SAML directo contra Entra ID: Grafana, OpenBao y las aplicaciones futuras de `qa` usan el mismo realm, y la `SecurityPolicy` OIDC de Envoy para el resto de aplicaciones se diseñó contra Keycloak. El coste es que Keycloak queda en el camino crítico de login.
+
+**Baja de usuarios.** Community no tiene SCIM (es de Enterprise). Deshabilitar a alguien en Entra ID impide su login, pero su usuario de SonarQube y **sus tokens personales siguen activos**. Mitigación: prohibir tokens personales en CI (solo tokens de proyecto, D9) y un job de reconciliación diario que desactive en SonarQube los usuarios cuyo login ya no exista o esté deshabilitado en Entra ID (Graph API + Web API de SonarQube).
 
 | Grupo | Permisos en SonarQube |
 |---|---|
 | `sonar-administrators` | Administración global |
 | `sonar-users` | Navegar |
 | `team-<x>` | Plantilla de permisos por prefijo de clave de proyecto `<x>_*` |
+
+Cada grupo de SonarQube corresponde a un app role de Entra ID; alta de un equipo = app role nuevo + grupo de Entra asignado + plantilla de permisos.
 
 Con 200 proyectos, los permisos **solo** por plantillas: un proyecto nuevo nace con los de su equipo.
 
@@ -293,7 +312,7 @@ Los runners alojados por GitHub salen desde rangos enormes y cambiantes: filtrar
 
 ### 4.12 Dimensionamiento para 200 proyectos
 
-Supuesto a confirmar (Q3): mediana de 50 k líneas por proyecto, ≈ 10 M líneas en total, ≈ 4 merges a `main` por proyecto y día.
+Estimación confirmada: mediana de 50 k líneas por proyecto, ≈ 10 M líneas en total, ≈ 4 merges a `main` por proyecto y día.
 
 | Recurso | Valor inicial | Base |
 |---|---|---|
@@ -313,6 +332,25 @@ Supuesto a confirmar (Q3): mediana de 50 k líneas por proyecto, ≈ 10 M línea
 
 V4 mide el tiempo real por tarea con proyectos representativos antes de fijar nada.
 
+### 4.13 Acceso del pipeline al plano de control de GKE
+
+Procedimiento decidido: el endpoint del plano de control es público pero con **redes autorizadas vacías** por defecto; cada job de GitHub Actions que necesita la API de Kubernetes añade la IP de su runner, ejecuta y la retira. Cubre R18 sin runners self-hosted.
+
+![Acceso del runner](diagrams/10-acceso-runner.svg)
+
+Funciona, con cuatro condiciones. Sin ellas falla de formas poco evidentes:
+
+| # | Problema | Condición |
+|---|---|---|
+| 1 | **Carrera entre jobs.** La lista de redes autorizadas se actualiza **reemplazándola entera**: dos jobs simultáneos leen, añaden su IP y escriben, y el segundo borra la del primero, que pierde el acceso a mitad de un `apply` | Serializar: `concurrency: { group: gke-qa-api, cancel-in-progress: false }` en **todos** los workflows que abren la IP. Un job espera al anterior |
+| 2 | **IP huérfana.** Un runner que muere o un job cancelado a destiempo no ejecuta el paso de cierre | Cierre en un paso `if: always()` **y** un reconciliador programado (cada 15 min) que retira toda entrada con más de 60 min. Cada entrada lleva `display_name = gha-<run_id>-<epoch>` para poder caducarla |
+| 3 | **Deriva con OpenTofu.** Si `gcp-qa-gke` gestiona `master_authorized_networks_config`, un `apply` de ese stack revierte la IP del propio runner a mitad de ejecución, y cada `plan` muestra diferencias | `lifecycle { ignore_changes = [master_authorized_networks_config] }` en el cluster: la lista la gestiona solo el procedimiento; la línea base (vacía) se fija en la creación |
+| 4 | **Escalada de privilegios.** Abrir la IP requiere `container.clusters.update`, que permite cambiar **cualquier** ajuste del cluster. La identidad de *preview* (PR, cualquier rama, §11.2) también la necesita, porque el plan de los proveedores `helm`/`kubernetes` consulta la API | **No dar `clusters.update` a las identidades del pipeline.** Un servicio intermedio mínimo (Cloud Run function) con esa permisión expone solo `open(ip)` / `close(ip)`, valida que la IP sea una /32, fija la caducidad y registra quién la pidió. El pipeline lo invoca con su identidad OIDC de GitHub |
+
+Aun así, abrir la IP no autentica a nadie: la API sigue exigiendo IAM. Las redes autorizadas son una segunda barrera, no la primera. Y la IP de un runner alojado es compartida con otros clientes de GitHub durante la ventana abierta, aunque sin credenciales de IAM no obtienen nada.
+
+La alternativa que haría innecesario todo lo anterior es el **endpoint DNS del plano de control** de GKE, controlado solo por IAM y sin listas de IP. Queda anotada por si el reconciliador o el servicio intermedio resultan más costosos de operar de lo previsto.
+
 ---
 
 ## 5. Especificidades de GCP que afectan a SonarQube
@@ -324,6 +362,8 @@ V4 mide el tiempo real por tarea con proyectos representativos antes de fijar na
 | Cuenta de servicio de nodos | Dedicada, con `artifactregistry.reader`, logging y monitoring writer | §5.7 |
 | Workload Identity | Principal exacto por namespace y KSA | R15 |
 | Pipeline de plataforma | WIF de GitHub con `attribute_condition` sobre repo y environment exactos | §11.2, R12 |
+| Acceso a la API de GKE | Redes autorizadas abiertas por job a través del servicio intermedio | §4.13, R18 |
+| Región | `europe-west1` (no existe región GCP en Irlanda) | Q7 |
 | Org policies | Sin claves de SA, región confinada, sin IPs públicas en nodos | §11.7 |
 
 ---
@@ -449,7 +489,7 @@ capacity:
 # environments/qa/binding.yaml — borrador
 apiVersion: archetype/v1
 kind: EnvironmentBinding
-metadata: { name: qa, model: dedicated, cloud: gcp, region: europe-west1 }   # región por confirmar (Q7)
+metadata: { name: qa, model: dedicated, cloud: gcp, region: europe-west1 }   # GCP no tiene región en Irlanda; confirmar (Q7)
 bindings:
   network:             { archetype: environment,          stack_id: gcp-qa-network }
   cluster:             { archetype: gke,                  stack_id: gcp-qa-gke }
@@ -493,14 +533,16 @@ Se aplicarán en `registry/*.yaml` (nunca en `schemas/`, R34) al aprobar esta et
 |---|---|---|---|---|
 | D1 | Backend de secretos | Propuesta | OpenBao + ESO | ESO + Secret Manager |
 | D2 | PostgreSQL | Propuesta | `Cluster` CNPG propio | Cloud SQL |
-| D3 | Exposición | **Cerrada por el contexto** | Pública tras GLB + Cloud Armor; auth en SonarQube | Runners self-hosted (ARC) y Gateway interno: más infraestructura para `qa` |
-| D4 | Autenticación de personas | Propuesta | SAML con Keycloak como broker de la fuente corporativa | GitHub nativo en SonarQube |
+| D3 | Exposición | **Cerrada** | Pública tras GLB + Cloud Armor, sin filtrado por IP; auth en SonarQube | — |
+| D4 | Autenticación de personas | **Cerrada en la fuente** (Entra ID); propuesta en el camino | SAML desde Keycloak, que hace broker OIDC hacia Entra ID; grupos por app roles | SAML directo SonarQube ↔ Entra ID: menos piezas, pero rompe la uniformidad del realm `qa` |
 | D5 | Runtime | **Cerrada** | GKE Standard | — (Autopilot sin sysctl) |
 | D6 | Ramas / PR | Propuesta | Solo `main` | Plugin comunitario de ramas (acoplado a versión); Developer Edition |
 | D7 | Logs | Propuesta | Fluent Bit → Loki | Grafana Alloy |
 | D8 | Registro de imágenes | **Cerrada** | Artifact Registry | Harbor |
 | D9 | Tokens de CI | Propuesta | Token de proyecto por repo, con caducidad, creado por onboarding automatizado | Un token global de análisis como secreto de organización: más simple, pero una fuga da acceso a los 200 proyectos |
 | D10 | DNS del entorno | Propuesta | Wildcard + certificado wildcard; `dns` sin enlazar | external-dns por hostname |
+| D11 | Acceso del pipeline a GKE | **Cerrada** | Apertura temporal de la IP del runner, con las condiciones de §4.13 | Endpoint DNS del plano de control |
+| D12 | Grupos de Entra ID | Propuesta | App roles | Claim `groups` (GUIDs y overage) |
 
 ---
 
@@ -520,6 +562,11 @@ Propuestos para `docs/risk-register.md`; se numerarán al incorporarse.
 | **Token global filtrado** desde un repo | Media si se elige | Alta | Tokens de proyecto (D9) |
 | **Upgrade con migración de BD sin retorno** | Media | Alta | Backup CNPG verificado antes; rollback = restaurar BD + imagen anterior (DG §6) |
 | **Caída de la zona** del PVC | Baja | Media | Aceptado en `qa`; disco HA como opción (§4.1) |
+| **Carrera en redes autorizadas**: un job borra la IP de otro | Alta sin serializar | Media — `apply` cortado a medias | Grupo de `concurrency` único para la API de GKE (§4.13) |
+| **IP de runner olvidada abierta** | Media | Baja — IAM sigue protegiendo | `if: always()` + reconciliador con caducidad de 60 min |
+| **`container.clusters.update` en la identidad de preview** | Alta si se hace por la vía directa | Crítico — cualquier PR puede reconfigurar el cluster | Servicio intermedio con permiso mínimo (§4.13) |
+| **Usuario dado de baja en Entra ID conserva tokens** en SonarQube | Media | Media | Reconciliación diaria; sin tokens personales en CI |
+| **Caducidad de la credencial de Keycloak en Entra ID** | Media | Alta — nadie puede entrar | Certificado en vez de secreto; alerta 30 días antes de la caducidad |
 
 ---
 
@@ -533,15 +580,14 @@ Propuestos para `docs/risk-register.md`; se numerarán al incorporarse.
 | V4 | Tiempo por tarea del CE con 5–10 proyectos representativos; memoria real de las tres JVM | Capacidad de cola y límites justificados con datos |
 | V5 | Restauración CNPG desde GCS a un `Cluster` nuevo | SonarQube arrancando contra la BD restaurada |
 | V6 | Análisis grande a través de GLB + Cloud Armor + Gateway | Sin 413, 502 ni bloqueo de WAF |
-| V7 | Endpoint DNS del plano de control de GKE desde runners alojados por GitHub | `tofu apply` sobre el cluster privado sin redes autorizadas (R18) |
+| V7 | Apertura/cierre de IP con dos workflows simultáneos y un job cancelado | Ningún job pierde acceso a mitad; el reconciliador retira la entrada huérfana |
+| V8 | Login Entra ID → Keycloak → SonarQube con app roles | Usuario con su grupo `team-<x>` aplicado; baja en Entra reflejada tras la reconciliación |
 
 Preguntas abiertas:
 
-- **Q3.** Líneas de código reales: ¿se confirma una mediana del orden de 50 k por proyecto? ¿Hay monorepos grandes?
 - **Q5.** ¿KMS y registro de imágenes merecen capability propia o quedan dentro de `landing-zone`?
-- **Q6.** ¿Dónde viven las identidades de las personas: Google Workspace, Entra ID u organización de GitHub? Decide el broker de Keycloak y cómo se obtienen los grupos `team-*`.
-- **Q7.** Región de GCP.
-- **Q8.** ¿Organización de GitHub en plan Team o Enterprise? Enterprise da runners alojados con IP estática, que permitirían filtrar por IP en Cloud Armor.
+- **Q7.** GCP no tiene región en Irlanda. ¿`europe-west1` (Bélgica, UE) o `europe-west2` (Londres, fuera de la UE)? ¿Hay requisito de residencia de datos en la UE?
+- **Q9.** ¿Quién administra la app registration en Entra ID y los app roles? El alta de un equipo pasa por ese equipo.
 - De `CLAUDE.md`, sigue abierta la nº 2 (Shared VPC), que bloquea la fase A.
 
 ---

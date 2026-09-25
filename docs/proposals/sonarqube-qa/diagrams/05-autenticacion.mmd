@@ -4,7 +4,7 @@ sequenceDiagram
     participant LB as GLB + Cloud Armor
     participant SQ as SonarQube
     participant KC as Keycloak (realm qa)
-    participant UP as IdP corporativo o GitHub
+    participant UP as Entra ID
     actor CI as GitHub Actions
 
     rect rgb(232, 240, 254)
@@ -12,9 +12,11 @@ sequenceDiagram
     U->>LB: GET https://sonar.qa.acme.com
     LB->>SQ: vía Envoy Gateway
     SQ-->>U: 302 a Keycloak (AuthnRequest)
-    U->>KC: login
-    KC->>UP: brokering de identidad (opcional)
-    UP-->>KC: identidad + pertenencia
+    U->>KC: acceso
+    KC->>UP: redirección OIDC (broker)
+    Note over UP: login + MFA + acceso condicional
+    UP-->>KC: id_token con claim roles (app roles)
+    KC->>KC: mapper roles → grupos
     KC-->>U: POST SAMLResponse (login, email, groups)
     U->>SQ: POST /oauth2/callback/saml
     SQ->>SQ: valida firma, sincroniza grupos

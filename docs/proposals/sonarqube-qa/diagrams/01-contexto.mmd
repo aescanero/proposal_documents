@@ -5,6 +5,8 @@ flowchart LR
         OPS(["Equipo de plataforma"])
     end
 
+    ENTRA["Microsoft Entra ID<br/>usuarios · MFA · app roles"]
+
     subgraph GCP0["GCP · capas 0 y 1 (proyecto hub)"]
         DNS["Cloud DNS<br/>*.qa.acme.com"]
         LB["Global external Application LB<br/>Certificate Manager (wildcard)<br/>Cloud Armor"]
@@ -32,6 +34,7 @@ flowchart LR
     GW -->|"HTTP 9000"| SQ
     SQ -->|"JDBC 5432"| PG
     DEV -. "redirección SAML" .-> KC
+    KC -->|"broker OIDC"| ENTRA
     ESO --> BAO
     ESO -->|"Secrets"| SQ
     ESO -->|"Secrets"| PG
