@@ -67,6 +67,7 @@ The same technology can be both. `postgres-operator` (archetype, provides `datab
 
 1. **Is `max_pods_per_node` settable on Autopilot?** The default of 64 assumes it is.
 2. **Shared VPC or separate VPCs on GCP?** Peering non-transitivity plus the same-VPC backend rule may force Shared VPC. Address plan unchanged either way. Risk R23.
+   **Settled for `qa`: separate VPC.** `qa` is dedicated, so its edge load balancer lives in its own VPC next to the Envoy NEG and nothing routes through the hub; R23 does not arise. Still open for `demos` and any environment whose edge would sit in the hub. See `docs/proposals/sonarqube-qa/README.md` §4.15.
 3. **Kafka partition ceiling** on the intended broker count. The 4000 budget in the `demos` binding is a placeholder.
 4. **Where does resolution run** — a CLI in the repo, or a reusable workflow? Determines whether the project office can validate a demo locally.
 5. **How much Rego is genuinely shared** between conftest and `ConstraintTemplate`s. Measure before planning a single policy codebase.
