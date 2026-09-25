@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N · revisión 4 (región cerrada, propiedad de Entra ID, claves KMS) |
+| **Estado** | Propuesta · etapa 1 de N · revisión 5 (recovery keys de OpenBao, acuerdo con identidad) |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
@@ -394,7 +394,21 @@ Lo que la documentación **no** dice: qué stack crea las claves, en qué capa, 
 - `lifecycle { prevent_destroy = true }` en las claves.
 - Perder `tofu-state` deja el estado ilegible; perder `openbao-unseal` deja OpenBao sellado para siempre y con él todos los secretos, incluida la clave de cifrado de SonarQube. Las dos son irrecuperables: son el activo más crítico del entorno.
 
-**Recuperación de OpenBao.** Con auto-unseal, OpenBao genera *recovery keys* en su inicialización (no sirven para desellar, sí para operaciones de raíz). Se reparten por Shamir entre varias personas y se guardan fuera de GCP. El procedimiento de inicialización es manual, una vez, y queda documentado.
+**Recuperación de OpenBao: recovery keys en Secret Manager.** Con auto-unseal, OpenBao genera en su inicialización *recovery keys* por Shamir. No desellan (eso lo hace la clave KMS); sirven para generar un token raíz y para re-keying. Quien reúna el umbral puede hacerse raíz de OpenBao, y con ello leer todos los secretos de `qa`.
+
+Guardarlas en Secret Manager es razonable por un motivo concreto: con auto-unseal, si se pierde GCP (proyecto o clave KMS), OpenBao está perdido tenga uno las recovery keys donde las tenga. Sacarlas de GCP no añade resiliencia; lo que importa es **quién puede reunir el umbral**. Condiciones:
+
+| Condición | Motivo |
+|---|---|
+| Umbral **3 de 5**, **un secreto por fragmento** (`openbao-qa-recovery-1` … `-5`) | Un único secreto con las cinco claves anula el Shamir |
+| Cada secreto legible por **una persona o grupo distinto** (`secretAccessor` sobre ese secreto, nunca a nivel de proyecto) | Nadie reúne el umbral solo |
+| En el **proyecto de landing zone / seguridad**, no en el de `qa` | Quien administra `qa` no llega a los fragmentos |
+| **Ninguna identidad de pipeline** con acceso | El pipeline nunca necesita raíz de OpenBao |
+| *Data Access audit logs* activados en Secret Manager y alerta por cada acceso | Leer un fragmento es un evento excepcional; debe verse |
+| Replicación **user-managed** en `europe-west1` | Coherente con la región y la residencia en la UE |
+| Inicialización manual, una vez, con el procedimiento escrito: `bao operator init -recovery-shares=5 -recovery-threshold=3`, cada fragmento directamente a su secreto, sin pasar por disco ni chat | El momento de la inicialización es el de mayor exposición |
+
+Esto introduce Secret Manager en la plataforma, pero solo para material de **arranque y emergencia** (break-glass). Los secretos de aplicación siguen en OpenBao; la frontera queda escrita para que Secret Manager no se convierta en un segundo almacén de secretos por comodidad.
 
 ---
 
@@ -614,7 +628,8 @@ Propuestos para `docs/risk-register.md`; se numerarán al incorporarse.
 | **`container.clusters.update` en la identidad de preview** | Alta si se hace por la vía directa | Crítico — cualquier PR puede reconfigurar el cluster | Servicio intermedio con permiso mínimo (§4.13) |
 | **Usuario dado de baja en Entra ID conserva tokens** en SonarQube | Media | Media | Reconciliación diaria; sin tokens personales en CI |
 | **Destrucción de `tofu-state` u `openbao-unseal`** | Baja | Crítico — estado ilegible o todos los secretos perdidos | Sin permisos de destroy en pipelines, `prevent_destroy`, org policy de duración mínima (§4.14) |
-| **Caducidad de la credencial de Keycloak en Entra ID** | Media | Alta — nadie puede entrar | Certificado en vez de secreto; alerta 30 días antes de la caducidad |
+| **Caducidad de la credencial de Keycloak en Entra ID** | Media | Alta — nadie puede entrar | Certificado en vez de secreto; alerta 30 días antes de la caducidad, dirigida al equipo de identidad |
+| **Umbral de recovery keys reunible por una sola persona** | Baja con las condiciones de §4.14 | Crítico — raíz de OpenBao | Un secreto por fragmento, accesos disjuntos, auditoría y alerta de lectura |
 
 ---
 
@@ -633,8 +648,8 @@ Propuestos para `docs/risk-register.md`; se numerarán al incorporarse.
 
 Preguntas abiertas:
 
-- **Q10.** Acuerdo con el equipo de identidad: plazo para crear un app role de equipo y quién rota el certificado de Keycloak en la app registration. El alta de cada equipo en SonarQube depende de ello.
-- **Q11.** ¿Quién custodia las recovery keys de OpenBao y dónde (fuera de GCP)?
+- **Q10.** Acuerdo con el equipo de identidad, **estimado** a falta de confirmar: app role de equipo en ≤ 2 días laborables; renovación del certificado de Keycloak en la app registration a cargo de identidad, disparada por la alerta de 30 días de la plataforma. El alta de un equipo en SonarQube hereda ese plazo.
+- **Q11.** ¿Qué cinco personas o grupos custodian los fragmentos de recovery key de OpenBao?
 - De `CLAUDE.md`, sigue abierta la nº 2 (Shared VPC), que bloquea la fase A.
 
 ---
