@@ -14,6 +14,7 @@ GCP, AWS and Azure at parity; designed so a fourth cloud touches only layers 0�
 | [`docs/terramate-outputs-sharing-architecture.md`](docs/terramate-outputs-sharing-architecture.md) | How it is generated and applied — generators, outputs sharing, IAM, policy, CI/CD, five runtime guides |
 | [`docs/developer-guide.md`](docs/developer-guide.md) | For application developers — branching, versioning, build, rollback, and the three languages |
 | [`docs/risk-register.md`](docs/risk-register.md) | 37 risks by domain, reviewed at each phase gate |
+| [`docs/proposals/sonarqube-qa/`](docs/proposals/sonarqube-qa/README.md) | Proposal, stage 1: SonarQube Community on `qa` — elements, dependencies, OSS tooling (Spanish) |
 | [`CLAUDE.md`](CLAUDE.md) | Decision log: what is settled, what is open, and the traps |
 
 The two halves meet at `binding.tm.hcl`: the resolver writes globals, the generators

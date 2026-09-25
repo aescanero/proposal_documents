@@ -1,0 +1,29 @@
+sequenceDiagram
+    autonumber
+    actor U as Desarrollador
+    participant GW as Envoy Gateway
+    participant SQ as SonarQube
+    participant KC as Keycloak (realm qa)
+    actor CI as Runner CI
+
+    rect rgb(232, 240, 254)
+    Note over U,KC: Personas: SAML 2.0 SP-initiated. Sin SecurityPolicy OIDC en la ruta
+    U->>GW: GET https://sonar.qa.acme.com
+    GW->>SQ: HTTPRoute → Service :9000
+    SQ-->>U: 302 a Keycloak (AuthnRequest)
+    U->>KC: login + MFA
+    KC-->>U: POST SAMLResponse (login, email, groups)
+    U->>GW: POST /oauth2/callback/saml
+    GW->>SQ: assertion
+    SQ->>SQ: valida firma con cert IdP,<br/>sincroniza grupos sonar-*
+    SQ-->>U: sesión (cookie JWT-SESSION)
+    end
+
+    rect rgb(232, 245, 233)
+    Note over CI,SQ: Máquinas: token de análisis de proyecto, no SAML
+    CI->>GW: POST /api/ce/submit<br/>Authorization: Bearer squ_…
+    GW->>SQ: misma ruta, sin OIDC en el Gateway
+    SQ-->>CI: task id
+    CI->>SQ: GET /api/qualitygates/project_status (wait)
+    SQ-->>CI: OK / ERROR → pasa o falla el job
+    end

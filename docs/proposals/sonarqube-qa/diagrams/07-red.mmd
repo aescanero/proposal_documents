@@ -1,0 +1,32 @@
+flowchart LR
+    subgraph EGW["ns envoy-gateway-system"]
+        ENV["Envoy proxy"]
+    end
+    subgraph NS["ns sonarqube · NetworkPolicy default-deny ingress + egress"]
+        SQ["SonarQube<br/>app.kubernetes.io/name=sonarqube"]
+        PG["CNPG pods<br/>cnpg.io/cluster=sonarqube-db"]
+    end
+    subgraph MON["ns monitoring"]
+        P["Prometheus"]
+    end
+    subgraph SYS["ns kube-system"]
+        DNS["CoreDNS :53"]
+    end
+    subgraph OPS["ns cnpg-system"]
+        OPR["operador CNPG"]
+    end
+    OBJ[("bucket de backups<br/>vía NAT / private endpoint")]
+    INET(["Internet<br/>update center, plugins"])
+
+    ENV -->|"TCP 9000"| SQ
+    P -->|"TCP 9000 métricas"| SQ
+    P -->|"TCP 9187"| PG
+    SQ -->|"TCP 5432"| PG
+    SQ -->|"UDP/TCP 53"| DNS
+    PG -->|"UDP/TCP 53"| DNS
+    OPR -->|"TCP 8000 status"| PG
+    PG -->|"TCP 443"| OBJ
+    PG <-->|"TCP 5432 replicación"| PG
+    SQ -.-x|"DENEGADO<br/>plugins en la imagen"| INET
+
+    style INET fill:#fce8e6

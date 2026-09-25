@@ -1,0 +1,38 @@
+flowchart LR
+    subgraph ACT["Actores"]
+        DEV(["Desarrolladores<br/>navegador"])
+        CI(["Runners de CI<br/>sonar-scanner + token"])
+        OPS(["Equipo de plataforma"])
+    end
+
+    subgraph EDGE["Borde del entorno qa (capa 1)"]
+        DNS["DNS<br/>sonar.qa.acme.com"]
+        LB["Balanceador L4/L7 cloud<br/>env-edge"]
+    end
+
+    subgraph K8S["Cluster Kubernetes qa (capa 2)"]
+        GW["Envoy Gateway<br/>Gateway + HTTPRoute<br/>TLS de cert-manager"]
+        SQ["SonarQube Community Build<br/>ns sonarqube"]
+        PG[("PostgreSQL<br/>CloudNativePG Cluster")]
+        KC["Keycloak<br/>realm qa · IdP SAML"]
+        ESO["External Secrets Operator"]
+        BAO[("OpenBao<br/>fuente de verdad de secretos")]
+        MON["Prometheus · Alertmanager<br/>Grafana · Loki"]
+        GK["Gatekeeper<br/>admisión"]
+    end
+
+    OBJ[("Almacenamiento de objetos<br/>backups PostgreSQL")]
+
+    DEV --> DNS --> LB --> GW
+    CI --> DNS
+    GW -->|"HTTP 9000"| SQ
+    SQ -->|"JDBC 5432"| PG
+    DEV -. "redirección SAML<br/>(front-channel)" .-> KC
+    ESO -->|"lee"| BAO
+    ESO -->|"materializa Secret"| SQ
+    ESO -->|"materializa Secret"| PG
+    MON -->|"scrape /api/monitoring/metrics"| SQ
+    MON -->|"scrape :9187"| PG
+    PG -->|"WAL + base backups"| OBJ
+    GK -. "valida todo lo que se admite" .-> SQ
+    OPS --> GW
