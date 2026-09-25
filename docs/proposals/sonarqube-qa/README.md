@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N · revisión 8 (VPC separada; `qa` dedicado) |
+| **Estado** | Propuesta · etapa 1 de N · revisión 9 (revisión de coherencia y cierre) |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
@@ -92,7 +92,7 @@ Todo se construye de cero. **Registro** indica si la capability existe en `regis
 | 0 | *(identidad CI)* | Workload Identity Federation para GitHub Actions (§11.2) | cloud | Despliegue de la plataforma sin claves | — |
 | 1 | `network` | **VPC propia** de `qa`, subredes, Cloud NAT, **Private Google Access** | cloud | Nodos, pods, acceso a APIs de Google sin internet | ✓ |
 | 1 | `env-edge` | Backend service + URL map + proxy + forwarding rule **del propio entorno**, con el NEG en la VPC de `qa` | cloud | Entrada hacia el NEG del Gateway | ✓ |
-| 1b | `cloud-observability` | Cloud Logging **reducido** a auditoría y plano de control de GKE | cloud | No lo consume SonarQube; auditoría | ✓ |
+| 1b | `cloud-observability` | Cloud Logging **reducido** a auditoría y plano de control de GKE, con alertas basadas en logs | cloud | Alertas de acceso a secretos, redes autorizadas y KMS (§4.7) | ✓ |
 | 2 | `cluster` | **GKE Standard** regional, node pools `general` y `sonar` | cloud | Donde corre; `sonar` aporta el sysctl | ✓ (+ trait) |
 | 2b | `policy` | **OPA Gatekeeper** | Apache-2.0 | PSS `restricted`, etiquetas, registros permitidos | ✓ |
 | 3 | `ingress` | **Envoy Gateway** (`gateway-envoy-gke`) | Apache-2.0 | `HTTPRoute`, políticas de tráfico | ✓ |
@@ -120,7 +120,7 @@ Herramientas de plataforma sin cambios: Terramate, OpenTofu, conftest, Checkov.
 
 | Elemento | Propuesta | Motivo |
 |---|---|---|
-| Cluster | GKE Standard **regional**, plano de control privado, Workload Identity, release channel `STABLE`, `deletion_protection: true` (§12.6) | Línea base de §5.7 |
+| Cluster | GKE Standard **regional**, **nodos privados**, endpoint del plano de control con redes autorizadas vacías por defecto (§4.13), Workload Identity, release channel `STABLE`, `deletion_protection: true` (§12.6) | Línea base de §5.7 |
 | Pods por nodo | 64 (default de plataforma) | No aplica la pregunta abierta de Autopilot |
 | Node pool `sonar` | 1 nodo **n2-standard-8** (8 vCPU, 32 GB) en **una zona**, taint `dedicated=sonar:NoSchedule` | Aísla sysctl y presión de memoria. Zona única porque el PVC es zonal |
 | Sysctl | `node_config.linux_node_config.sysctls = { "vm.max_map_count" = "524288" }` | Elimina el init container privilegiado |
@@ -266,6 +266,9 @@ Con 200 proyectos, los permisos **solo** por plantillas: un proyecto nuevo nace 
 | PostgreSQL | Exporter CNPG | Retraso de réplica; conexiones > 80 %; último backup correcto > 26 h |
 | Logs | Fluent Bit → Loki (GCS) | Tasa de `ERROR` |
 | Certificados | cert-manager | CA interna o certificado de Envoy < 14 días |
+| Secretos | Métricas de ESO | `ExternalSecret` sin sincronizar > 15 min (un secreto rotado en Secret Manager no llega al pod) |
+
+Las alertas que nacen de **logs de auditoría de GCP** no pasan por Prometheus: son alertas basadas en logs de la capa 1b (`cloud-observability`). Tres: lectura de un secreto por un principal que no es ESO (§4.3), cambios en las redes autorizadas fuera del servicio intermedio (§4.13) y cualquier operación de destrucción sobre claves KMS (§4.14). Por eso la capa 1b no se reduce a cero.
 
 `PodMonitor` y `PrometheusRule` van en el chart del arquetipo (CRD en plan, R24); de ahí el trait **`prometheus-operator-crds`**. Grafana entra por OIDC con Keycloak, sin ciclo.
 
@@ -297,7 +300,7 @@ GKE aplica `NetworkPolicy` con Dataplane V2; el egress a las APIs de Google se e
 | Índices de ES | No se respaldan | — | Reindexado |
 | Configuración | Git | — | — |
 
-Buckets con versionado de objetos y retention policy, en la región del cluster. Velero no hace falta: todo el estado está en PostgreSQL, Secret Manager o Git.
+Buckets regionales en `europe-west1` con *soft delete* de GCS (7 días) como red de seguridad. **Sin** retention policy bloqueante ni versionado de objetos en el bucket de CNPG: barman purga sus backups según su propia retención, y una política que impida borrar hace fallar esa purga (o, con versionado, acumula versiones no actuales sin límite). Velero no hace falta: todo el estado está en PostgreSQL, Secret Manager o Git.
 
 Restauración ensayada una vez antes de dar el entorno por bueno (V5).
 
@@ -418,7 +421,7 @@ Lo que la documentación **no** dice: qué stack crea las claves, en qué capa, 
 | Global external Application LB (backend service, URL map, proxy, forwarding rule) | Stack `gcp-qa-edge`, capa 1 de `qa` | El backend service y el NEG de Envoy quedan en la misma VPC. Un LB externo global no necesita subred proxy-only |
 | IP global, política de Cloud Armor, certificado wildcard | Capa 0, mismo proyecto | Se referencian desde el LB de `qa`; al estar en el mismo proyecto no hay restricción de proyecto cruzado |
 | Zona `qa.acme.com` | Capa 0, delegada desde `acme.com` | El wildcard apunta a la IP del LB de `qa` |
-| Plano de control de GKE | Endpoint en la VPC de `qa` | Acceso del pipeline según §4.13 |
+| Plano de control de GKE | Endpoint público con redes autorizadas vacías; nodos privados en la VPC de `qa` | Acceso del pipeline según §4.13 |
 | Egress | Cloud NAT de `qa` | Keycloak → Entra ID; Cloud Armor y el LB no lo usan |
 | APIs de Google (Secret Manager, GCS, Artifact Registry, KMS) | Private Google Access en las subredes de `qa` | Sin NAT ni internet |
 | Peering con el hub | **No se necesita para SonarQube** | Ningún flujo de §4.8 cruza al hub. Si más adelante `qa` necesita on-premise u otro servicio del hub, se añade el peering sabiendo que no es transitivo |
@@ -445,7 +448,7 @@ Direccionamiento: una `/17` del bloque permanente `10.2.0.0/15` por resolución 
 
 ## 6. Orden de despliegue y ciclos
 
-Como el entorno es nuevo, el despliegue de SonarQube es el despliegue de la plataforma entera. Tres fases, cada una aplicada por etiquetas con mocks OFF (§4.11):
+Como el entorno es nuevo, el despliegue de SonarQube es el despliegue de la plataforma entera. Una fase previa de verificación y tres de despliegue, cada una aplicada por etiquetas con mocks OFF (arquitectura §4.11):
 
 ![Orden de despliegue](diagrams/03-orden-despliegue.svg)
 
@@ -666,6 +669,16 @@ Preguntas abiertas:
 
 ---
 
-## 11. Siguiente etapa
+## 11. Cierre de la etapa 1
+
+| Estado | Elementos |
+|---|---|
+| **Cerrado por el equipo** | Cloud, CI, región, red (VPC separada, dedicado), volumen, identidad (Entra ID, gestionado por identidad), exposición (D3), runtime (D5), registro (D8), secretos (D1), acceso del pipeline (D11) |
+| **Propuesto, pendiente de aprobación** | D2 `Cluster` CNPG propio · D4 camino Keycloak → SAML · D6 solo `main` · D7 Fluent Bit → Loki · D9 tokens de proyecto · D10 DNS wildcard · D12 app roles |
+| **Pendiente de terceros** | Q10, acuerdo con el equipo de identidad (estimado) |
+| **Pendiente de verificar** | V1–V9, en la fase 0 o antes de la fase C |
+| **Fuera del repositorio aún** | Traits nuevos en `registry/`, riesgos nuevos en `docs/risk-register.md`: se aplican al aprobar la etapa |
+
+## 12. Siguiente etapa
 
 Etapa 2: manifiesto real de `sonarqube`, alta de traits en `registry/`, `binding.yaml` de `qa`, valores del chart, contratos de outputs sharing de §6 y el workflow reutilizable de GitHub Actions. La fase 0 y V1–V3 van antes; si V1 falla, cambian §4.1 y el plan B pasa a ser el camino principal.
