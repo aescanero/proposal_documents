@@ -41,7 +41,7 @@ Plus `docs/platform-overview.md` (diagram-led map, read first), `docs/risk-regis
 | Decision | Rationale |
 |---|---|
 | **`from_stack_id` accepts an expression** | **This is an assumption taken as a design decision.** The entire late-binding model depends on it: one hand-written contract file per capability, referencing `global.platform.cluster_stack_id`. If it turns out to be literal-only, the resolver must generate a contract file per instance — more machinery, noisier PRs, but not a redesign |
-| **Hub and spoke in one account/project/subscription** | |
+| **One account/project/subscription per environment; hub and landing zone in their own** | The environment is the isolation boundary of the dedicated model (architecture §12.1), and cross-project state reads are already designed for (§11.5). On GCP the edge IP, Cloud Armor policy and certificate must share a project with the load balancer, so they are provided by the **environment**, not the landing zone. KMS, the image registry and CI federation stay in the landing zone, granted across projects. Settled with `qa` (`acme-qa`) |
 | **Each environment is a VPC/VNet**, a `/17` (or `/16` for production) from `10.0.0.0/8` | |
 | **Environments: `prod`, `qa`, `dev`, `demos`, `ephemeral-*`** | Normalised naming. Older drafts used `shared-demo`/`pre`/`prd` — those names are dead |
 | **`demos` is a shared environment** | Not ephemeral-per-demo. Kafka as a common bus argues for it |
@@ -72,7 +72,6 @@ The same technology can be both. `postgres-operator` (archetype, provides `datab
 4. **Where does resolution run** — a CLI in the repo, or a reusable workflow? Determines whether the project office can validate a demo locally.
 5. **How much Rego is genuinely shared** between conftest and `ConstraintTemplate`s. Measure before planning a single policy codebase.
 6. **Developer guide open questions** — scaffolding tool vs template repository, where the version bump is computed, ephemeral environments opt-in or automatic. Listed in `docs/developer-guide.md` §13.
-7. **One project for hub and spokes, or one per environment?** The architecture decision above says one account/project/subscription; the architecture document's examples use a project per environment (`acme-demos`, `acme-prod`), cross-project state reads (§11.5) and "cloud account / project" as the dedicated isolation boundary (§12.1). On GCP it decides where each environment's edge IP, Cloud Armor policy and certificate live — they must share a project with the load balancer.
 
 ---
 

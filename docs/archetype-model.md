@@ -112,6 +112,7 @@ Three structural notes:
 
 - **Layer 1b is parallel to layer 2.** Cloud-native monitoring attaches to the environment, not a cluster. Modelling it as a layer-3 dependency would serialise the pipeline for nothing.
 - **Layer 2 claims from the environment's pool**, which layer 1 published. Pools are hierarchical (§9).
+- **Edge capabilities move to layer 1 when the environment has its own project.** One account/project/subscription per environment is the platform decision (`CLAUDE.md`). On GCP the edge IP, Cloud Armor policy and certificate must share a project with the load balancer, so `edge-ip`, `waf` and `cert` are provided by the environment archetype. Layer 0 keeps the parent DNS zone, the address pool, KMS, the image registry and CI federation.
 - **Layer 2b exists because admission control must precede everything it governs.** If Gatekeeper enforces Pod Security Standards, it has to be in place before the gateway and monitoring workloads are admitted, so it cannot sit at layer 3. It is also cluster-scoped rather than a service consumed by name. The precedent is layer 1b. It has no counterpart on Cloud Run, ECS Fargate or Container Apps — the `policy` capability exists only where `cluster` does, and §14.4 records that gap.
 - **Layer 3 `gateway` produces something a lower layer consumes** — the edge attachment handle (NEG name, target group ARN, AGFC frontend). It is the one upward edge in the graph and must be explicit so the topological order surprises nobody.
 

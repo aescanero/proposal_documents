@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 10 |
+| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 11 (proyecto GCP propio para `qa`) |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
@@ -22,6 +22,7 @@ Nada de este documento reabre decisiones de `CLAUDE.md`. Donde SonarQube choca c
 | Volumen | **200 proyectos**, ≈ 10 M líneas, ≈ 4 merges/día por proyecto | Sizing en §4.12. El cuello de botella no es la memoria sino la **cola del compute engine, de un solo worker** en Community |
 | Identidad de personas | **Entra ID** | Keycloak como broker OIDC hacia Entra ID; grupos por *app roles* (§4.6) |
 | Región | **`europe-west1`** (Bélgica) | Todo lo regional en la misma región: cluster, discos, buckets, key ring de KMS, Artifact Registry. GCP no tiene región en Irlanda |
+| Proyecto GCP | **Propio**: `acme-qa`. Un proyecto por entorno; el hub y la landing zone en el suyo | El borde (IP, Cloud Armor, certificado, LB) vive en `acme-qa`; KMS, Artifact Registry y WIF de GitHub quedan en el proyecto de landing zone con permisos entre proyectos (§4.15) |
 | Red | **VPC separada** para `qa`, no Shared VPC | El borde de `qa` vive en su propia VPC; no hay tránsito por el hub (§4.15). Cierra la pregunta abierta nº 2 de `CLAUDE.md` **para `qa`** |
 | Modelo | **Dedicado**, no shared | Una plataforma, una instancia (§12.1). No se generan las salvaguardas multi-tenant de §12.3 (ResourceQuota por tenant, budgets de `capacity`); el aislamiento es la VPC y el cluster |
 | Secretos | **GCP Secret Manager**; **OpenBao no se usa en `qa`** | ESO como interfaz en el cluster, Secret Manager como backend (lo que AM §14.2 ya asigna a GCP). Sin unseal, sin Raft, sin recovery keys (§4.3) |
@@ -82,13 +83,13 @@ Todo se construye de cero. **Registro** indica si la capability existe en `regis
 
 | Capa | Capability | Implementación en GCP | Licencia | Por qué la necesita SonarQube | Registro |
 |---|---|---|---|---|---|
-| 0 | `dns-zone` | Cloud DNS, zona delegada `qa.acme.com` | cloud | Registro wildcard `*.qa.acme.com` | ✓ |
+| 0 | `dns-zone` | Cloud DNS, zona `acme.com` en el proyecto de landing zone, que **delega** `qa.acme.com` a una zona en `acme-qa` | cloud | Registro wildcard `*.qa.acme.com` | ✓ |
 | 0 | `cidr-pool` | Ledger del modelo (AM §9) | — | Una `/17` del bloque permanente `10.4.0.0/14` (ejemplo de AM §9.2: `10.4.128.0/17`) | ✓ |
-| 0 | `cert` | Certificate Manager, certificado **wildcard** `*.qa.acme.com` con DNS authorization | cloud | TLS público en el borde | ✓ |
-| 0 | `waf` | Cloud Armor | cloud | Única protección de red posible con runners alojados por GitHub (D3) | ✓ |
-| 0 | `edge-ip` | IP global reservada | cloud | Destino del wildcard | ✓ |
-| 0 | *(KMS)* | Cloud KMS, key ring `qa` en `europe-west1` | cloud | Estado de OpenTofu, secretos de etcd, firma de imágenes (§4.14) | ✗ — deliberado, §4.14 |
-| 0 | *(registro)* | Artifact Registry: repo remoto de Docker Hub + repo estándar | cloud | Imagen propia con plugins, pull por digest | ✗ — mismo criterio que KMS |
+| 1 | `cert` | Certificate Manager en `acme-qa`, certificado **wildcard** `*.qa.acme.com` con DNS authorization | cloud | TLS público en el borde | ✓ |
+| 1 | `waf` | Cloud Armor en `acme-qa` | cloud | Única protección de red posible con runners alojados por GitHub (D3) | ✓ |
+| 1 | `edge-ip` | IP global reservada en `acme-qa` | cloud | Destino del wildcard | ✓ |
+| 0 | *(KMS)* | Cloud KMS en el proyecto de landing zone, key ring `qa` en `europe-west1` | cloud | Estado de OpenTofu, secretos de etcd, firma de imágenes (§4.14) | ✗ — deliberado, §4.14 |
+| 0 | *(registro)* | Artifact Registry en el proyecto de landing zone: repo remoto de Docker Hub + repo estándar; `artifactregistry.reader` para la SA de nodos de `acme-qa` | cloud | Imagen propia con plugins, pull por digest | ✗ — mismo criterio que KMS |
 | 0 | *(identidad CI)* | Workload Identity Federation para GitHub Actions (§11.2) | cloud | Despliegue de la plataforma sin claves | — |
 | 1 | `network` | **VPC propia** de `qa`, subredes, Cloud NAT, **Private Google Access** | cloud | Nodos, pods, acceso a APIs de Google sin internet | ✓ |
 | 1 | `env-edge` | Backend service + URL map + proxy + forwarding rule **del propio entorno**, con el NEG en la VPC de `qa` | cloud | Entrada hacia el NEG del Gateway | ✓ |
@@ -414,13 +415,14 @@ Lo que la documentación **no** dice: qué stack crea las claves, en qué capa, 
 
 ### 4.15 Red: VPC separada y borde propio
 
-`qa` es un entorno **dedicado** con **VPC propia**. `CLAUDE.md` fija hub y spokes en un mismo proyecto, pero el documento de arquitectura usa un proyecto por entorno (`acme-demos`, `acme-prod`); esa contradicción está pendiente (ver cierre). La tabla vale para ambos casos con una diferencia: si `qa` tiene proyecto propio, la IP global, la política de Cloud Armor y el certificado deben estar en ese proyecto, junto al LB, y pasan de capa 0 a capa 1. R23 describe el problema de esta topología: el peering de VPC no es transitivo y los backends de un balanceador deben estar en su misma VPC, así que un balanceador **en el hub** no alcanza un NEG **en `qa`**. La salida para `qa` es no pasar por el hub:
+`qa` es un entorno **dedicado**, con **proyecto GCP propio** (`acme-qa`) y **VPC propia**. R23 describe el problema de una topología hub-and-spoke: el peering de VPC no es transitivo y los backends de un balanceador deben estar en su misma VPC, así que un balanceador **en el hub** no alcanza un NEG **en `qa`**. La salida para `qa` es no pasar por el hub: todo el borde vive en `acme-qa`.
 
 | Elemento | Dónde | Por qué |
 |---|---|---|
-| Global external Application LB (backend service, URL map, proxy, forwarding rule) | Stack `gcp-qa-edge`, capa 1 de `qa` | El backend service y el NEG de Envoy quedan en la misma VPC. Un LB externo global no necesita subred proxy-only |
-| IP global, política de Cloud Armor, certificado wildcard | Capa 0, mismo proyecto | Se referencian desde el LB de `qa`; al estar en el mismo proyecto no hay restricción de proyecto cruzado |
-| Zona `qa.acme.com` | Capa 0, delegada desde `acme.com` | El wildcard apunta a la IP del LB de `qa` |
+| Global external Application LB (backend service, URL map, proxy, forwarding rule) | Stack `gcp-qa-edge`, capa 1, en `acme-qa` | El backend service y el NEG de Envoy quedan en la misma VPC. Un LB externo global no necesita subred proxy-only |
+| IP global, política de Cloud Armor, certificado wildcard | Stack `gcp-qa-edge`, capa 1, en `acme-qa` | Deben estar en el **mismo proyecto que el LB**. Con un proyecto por entorno, las capabilities `cert`, `waf` y `edge-ip` las provee el entorno, no la landing zone |
+| Zona `qa.acme.com` | En `acme-qa`, delegada desde `acme.com` (proyecto de landing zone) | El wildcard y los registros de DNS authorization del certificado se escriben sin permisos sobre la zona padre |
+| KMS, Artifact Registry, WIF de GitHub | Proyecto de landing zone | Permisos entre proyectos: agente de GKE de `acme-qa` sobre la clave `gke-secrets`; SA de nodos lectora del registro; identidades de pipeline por WIF |
 | Plano de control de GKE | Endpoint público con redes autorizadas vacías; nodos privados en la VPC de `qa` | Acceso del pipeline según §4.13 |
 | Egress | Cloud NAT de `qa` | Keycloak → Entra ID; Cloud Armor y el LB no lo usan |
 | APIs de Google (Secret Manager, GCS, Artifact Registry, KMS) | Private Google Access en las subredes de `qa` | Sin NAT ni internet |
@@ -441,7 +443,8 @@ Direccionamiento: una `/17` del bloque permanente `10.4.0.0/14` por resolución 
 | Pipeline de plataforma | WIF de GitHub con `attribute_condition` sobre repo y environment exactos | §11.2, R12 |
 | Acceso a la API de GKE | Redes autorizadas abiertas por job a través del servicio intermedio | §4.13, R18 |
 | Región | `europe-west1` | Contexto (§0) |
-| KMS | Key ring `qa` regional en capa 0, sin capability, protegido frente a destrucción | §4.14 |
+| KMS | Key ring `qa` regional en el proyecto de landing zone, sin capability, protegido frente a destrucción | §4.14 |
+| Proyecto | `acme-qa`, uno por entorno | §0, §4.15 |
 | Org policies | Sin claves de SA, región confinada, sin IPs públicas en nodos | §11.7 |
 
 ---
@@ -567,6 +570,9 @@ capacity:
 apiVersion: archetype/v1
 kind: EnvironmentBinding
 metadata: { name: qa, model: dedicated, cloud: gcp, region: europe-west1 }
+platform:
+  landing_zone: acme-gcp-lz
+  project_id: acme-qa
 bindings:
   network:             { archetype: environment, version: 2.1.0,          stack_id: gcp-qa-network }
   cluster:             { archetype: gke, version: 2.4.0,                  stack_id: gcp-qa-gke }
@@ -677,7 +683,6 @@ Preguntas abiertas:
 | **Cerrado** | Contexto de §0 y decisiones D1–D12 |
 | **Aplicado al repositorio** | Traits nuevos en `registry/` y `schemas/`; riesgos R38–R53 en `docs/risk-register.md`; VPC separada de `qa` en `CLAUDE.md` |
 | **Pendiente de terceros** | Q10, acuerdo con el equipo de identidad (estimado) |
-| **Pendiente de la plataforma** | Un proyecto para hub y spokes (`CLAUDE.md`) o uno por entorno (documento de arquitectura). Afecta a dónde viven IP, Cloud Armor y certificado de `qa` (§4.15) |
 | **Pendiente de verificar** | V1–V9, en la fase 0 o antes de la fase C |
 
 ## 12. Siguiente etapa

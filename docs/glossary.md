@@ -616,4 +616,3 @@ Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mi
 | 4 | Where does resolution run — a CLI in the repo, or a reusable workflow? Determines whether the project office can validate a demo locally. |
 | 5 | How much Rego is genuinely shared between conftest and `ConstraintTemplate`s — measure before planning a single policy codebase. |
 | 6 | Developer-guide open questions: scaffolding tool vs. template repository, where the version bump is computed, ephemeral environments opt-in or automatic. |
-| 7 | One project for hub and spokes, or one per environment? `CLAUDE.md` says one; the architecture document's examples use one per environment. On GCP it decides where each environment's edge IP, Cloud Armor policy and certificate live. |

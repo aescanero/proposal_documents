@@ -7,12 +7,12 @@ flowchart LR
 
     ENTRA["Microsoft Entra ID<br/>usuarios · MFA · app roles"]
 
-    subgraph GCP0["GCP · borde de qa (VPC propia, capas 0 y 1)"]
+    subgraph GCP0["Proyecto acme-qa · borde (capa 1)"]
         DNS["Cloud DNS<br/>*.qa.acme.com"]
         LB["Global external Application LB<br/>Certificate Manager (wildcard)<br/>Cloud Armor"]
     end
 
-    subgraph K8S["GKE Standard · qa (capa 2)"]
+    subgraph K8S["Proyecto acme-qa · GKE Standard (capa 2)"]
         GW["Envoy Gateway<br/>NEG standalone<br/>TLS interno de cert-manager"]
         SQ["SonarQube Community Build<br/>ns sonarqube"]
         PG[("PostgreSQL<br/>CloudNativePG Cluster")]
@@ -22,7 +22,7 @@ flowchart LR
         GK["Gatekeeper"]
     end
 
-    subgraph GCPS["Servicios GCP"]
+    subgraph GCPS["Servicios GCP · acme-qa y landing zone"]
         GCS[("GCS<br/>backups CNPG · chunks Loki")]
         GSM[("Secret Manager<br/>qa-sonarqube-*")]
         KMS["Cloud KMS<br/>estado · etcd"]
