@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N · revisión 6 (custodia de recovery keys) |
+| **Estado** | Propuesta · etapa 1 de N · revisión 7 (secretos en Secret Manager; OpenBao fuera de `qa`) |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
@@ -22,6 +22,7 @@ Nada de este documento reabre decisiones de `CLAUDE.md`. Donde SonarQube choca c
 | Volumen | **200 proyectos**, ≈ 10 M líneas, ≈ 4 merges/día por proyecto | Sizing en §4.12. El cuello de botella no es la memoria sino la **cola del compute engine, de un solo worker** en Community |
 | Identidad de personas | **Entra ID** | Keycloak como broker OIDC hacia Entra ID; grupos por *app roles* (§4.6) |
 | Región | **`europe-west1`** (Bélgica) | Todo lo regional en la misma región: cluster, discos, buckets, key ring de KMS, Artifact Registry. GCP no tiene región en Irlanda |
+| Secretos | **GCP Secret Manager**; **OpenBao no se usa en `qa`** | ESO como interfaz en el cluster, Secret Manager como backend (lo que AM §14.2 ya asigna a GCP). Sin unseal, sin Raft, sin recovery keys (§4.3) |
 | Entra ID | Lo gestiona el **equipo de identidad** | App registration, app roles y asignación de grupos son suyos; la plataforma solo consume el claim `roles` (§4.6) |
 | Filtrado por IP | **No** en SonarQube | D3 cerrada: SonarQube público tras Cloud Armor sin listas de IP |
 | Acceso del pipeline al cluster | La IP del runner se **abre en las redes autorizadas** de GKE al empezar y se **cierra** al terminar | Procedimiento aceptado; cuatro condiciones para que sea seguro (§4.13) |
@@ -84,7 +85,7 @@ Todo se construye de cero. **Registro** indica si la capability existe en `regis
 | 0 | `cert` | Certificate Manager, certificado **wildcard** `*.qa.acme.com` con DNS authorization | cloud | TLS público en el borde | ✓ |
 | 0 | `waf` | Cloud Armor | cloud | Única protección de red posible con runners alojados por GitHub (D3) | ✓ |
 | 0 | `edge-ip` | IP global reservada | cloud | Destino del wildcard | ✓ |
-| 0 | *(KMS)* | Cloud KMS, key ring `qa` en `europe-west1` | cloud | Estado de OpenTofu, secretos de etcd, auto-unseal de OpenBao, firma de imágenes (§4.14) | ✗ — deliberado, §4.14 |
+| 0 | *(KMS)* | Cloud KMS, key ring `qa` en `europe-west1` | cloud | Estado de OpenTofu, secretos de etcd, firma de imágenes (§4.14) | ✗ — deliberado, §4.14 |
 | 0 | *(registro)* | Artifact Registry: repo remoto de Docker Hub + repo estándar | cloud | Imagen propia con plugins, pull por digest | ✗ — mismo criterio que KMS |
 | 0 | *(identidad CI)* | Workload Identity Federation para GitHub Actions (§11.2) | cloud | Despliegue de la plataforma sin claves | — |
 | 1 | `network` | VPC / subredes de `qa`, Cloud NAT, **Private Google Access** | cloud | Nodos, pods, acceso a GCS sin internet | ✓ |
@@ -93,11 +94,11 @@ Todo se construye de cero. **Registro** indica si la capability existe en `regis
 | 2 | `cluster` | **GKE Standard** regional, node pools `general` y `sonar` | cloud | Donde corre; `sonar` aporta el sysctl | ✓ (+ trait) |
 | 2b | `policy` | **OPA Gatekeeper** | Apache-2.0 | PSS `restricted`, etiquetas, registros permitidos | ✓ |
 | 3 | `ingress` | **Envoy Gateway** (`gateway-envoy-gke`) | Apache-2.0 | `HTTPRoute`, políticas de tráfico | ✓ |
-| 3 | `certs` | **cert-manager** con **CA interna** (`ClusterIssuer` CA) | Apache-2.0 | TLS GLB→Envoy y de OpenBao. Sin ACME: el certificado público lo da Certificate Manager | ✓ |
+| 3 | `certs` | **cert-manager** con **CA interna** (`ClusterIssuer` CA) | Apache-2.0 | TLS GLB→Envoy. Sin ACME: el certificado público lo da Certificate Manager | ✓ |
 | 3 | `dns` | **No se enlaza** | — | El wildcard de `env-edge` lo cubre; external-dns no aporta nada con un Gateway y una IP por entorno (igual que `demos`, AM §7) | ✓ sin uso |
-| 3 | `secrets` | **OpenBao** (Raft ×3, auto-unseal Cloud KMS) + **External Secrets Operator** | MPL-2.0 / Apache-2.0 | Credenciales, passcode, clave de cifrado, SAML | ✓ |
+| 3 | `secrets` | **External Secrets Operator** (interfaz) + **Secret Manager** (backend) | Apache-2.0 / cloud | Credenciales, passcode, clave de cifrado, SAML | ✓ |
 | 3 | `monitoring` | **kube-prometheus-stack**, **Grafana**, **Loki** (sobre GCS), **Fluent Bit**, **Blackbox exporter** | Apache-2.0 / AGPL-3.0 | Métricas, logs, alertas, sonda externa | ✓ (+ trait) |
-| 4 | `object-store` | Buckets GCS por propósito | cloud | Backups CNPG, chunks de Loki, snapshots de OpenBao | ✓ |
+| 4 | `object-store` | Buckets GCS por propósito | cloud | Backups CNPG, chunks de Loki | ✓ |
 | 4 | `database-platform` | **CloudNativePG** | Apache-2.0 | SonarQube y Keycloak crean su propio `Cluster` | ✓ (+ trait) |
 | 4 | `oidc-idp` | **Keycloak**, realm `qa` | Apache-2.0 | Personas vía **SAML** | ✓ (+ trait) |
 | 5 | — | **SonarQube Community Build**, chart oficial `sonarqube/sonarqube` | LGPL-3.0 | La aplicación | — |
@@ -105,7 +106,7 @@ Todo se construye de cero. **Registro** indica si la capability existe en `regis
 
 Herramientas de plataforma sin cambios: Terramate, OpenTofu, conftest, Checkov.
 
-**Qué es cloud y qué es OSS.** Todo lo que corre en el cluster es open source. Lo que queda en GCP es lo que no se puede o no conviene operar uno mismo: borde (LB, Cloud Armor, certificado público), KMS, almacenamiento de objetos y registro. Sustituir GCS o Artifact Registry por equivalentes OSS en el propio cluster crearía dependencias circulares (un backup dentro del cluster que protege no es un backup) y más superficie que operar. Se descarta Harbor por el mismo motivo, y MinIO además porque su edición comunitaria dejó de distribuir binarios e imágenes en 2025.
+**Qué es cloud y qué es OSS.** Todo lo que corre en el cluster es open source. Lo que queda en GCP es lo que no se puede o no conviene operar uno mismo: borde (LB, Cloud Armor, certificado público), KMS, **almacén de secretos**, almacenamiento de objetos y registro. Sustituir GCS o Artifact Registry por equivalentes OSS en el propio cluster crearía dependencias circulares (un backup dentro del cluster que protege no es un backup) y más superficie que operar. Se descarta Harbor por el mismo motivo, y MinIO además porque su edición comunitaria dejó de distribuir binarios e imágenes en 2025.
 
 **Licencias.** Grafana y Loki son AGPL-3.0: sin impacto para uso interno sin modificar; que lo confirme quien gestione licencias.
 
@@ -152,20 +153,32 @@ Si SonarQube no puede correr con raíz de solo lectura, la salida es una **exenc
 
 ![Flujo de secretos](diagrams/04-secretos.svg)
 
-| Secreto | Ruta en OpenBao | Consumidor | Notas |
+| Secreto | Secreto en Secret Manager | Consumidor | Notas |
 |---|---|---|---|
-| Usuario y password JDBC | `qa/sonarqube/db` | CNPG (`bootstrap.initdb.secret`) y SonarQube | Un único origen para ambos lados |
-| Monitoring passcode | `qa/sonarqube/passcode` | SonarQube y `PodMonitor` | Mismo namespace que el `PodMonitor` |
-| Password admin | `qa/sonarqube/admin` | Job del chart | Break-glass tras activar SAML |
-| Clave de cifrado de settings | `qa/sonarqube/secret-key` | `sonar.secretKeyPath` | Si se pierde, los settings cifrados son irrecuperables: entra en DR |
-| Material SAML | `qa/sonarqube/saml` | Certificado del IdP; clave del SP si se firman peticiones | — |
-| Tokens de análisis | **Secretos de repositorio en GitHub** (D9) | GitHub Actions | No en OpenBao: exigiría publicar OpenBao a internet para los runners alojados |
+| Usuario y password JDBC | `qa-sonarqube-db` | CNPG (`bootstrap.initdb.secret`) y SonarQube | Un único origen para ambos lados |
+| Monitoring passcode | `qa-sonarqube-passcode` | SonarQube y `PodMonitor` | Mismo namespace que el `PodMonitor` |
+| Password admin | `qa-sonarqube-admin` | Job del chart | Break-glass tras activar SAML |
+| Clave de cifrado de settings | `qa-sonarqube-secret-key` | `sonar.secretKeyPath` | Si se pierde, los settings cifrados son irrecuperables |
+| Material SAML | `qa-sonarqube-saml` | Certificado del IdP; clave del SP si se firman peticiones | — |
+| Tokens de análisis | **Secretos de repositorio en GitHub** (D9) | GitHub Actions | Los runners alojados no tienen identidad en `qa` que les dé acceso a Secret Manager, ni hace falta |
 
-- **ESO como interfaz, OpenBao como backend.** Cambiar a Secret Manager es cambiar el `SecretStore`, no el arquetipo.
-- **Auto-unseal con Cloud KMS**, clave `openbao-unseal` de capa 0 (§4.14); la cuenta de servicio de OpenBao tiene `cryptoKeyEncrypterDecrypter` solo sobre esa clave.
-- **`SecretStore` por namespace**, rol de Kubernetes auth ligado a `ns=sonarqube, sa=eso-sonarqube` exacto (espíritu de R15).
-- **Workloads a OpenBao por Kubernetes auth**, no por OIDC de Keycloak: evita el ciclo de §6.
-- **Por outputs sharing solo viajan rutas**, nunca valores (§11.6, R8).
+Tres piezas, cada una con una sola responsabilidad:
+
+| Pieza | Responsabilidad | Identidad |
+|---|---|---|
+| **Stack `sonarqube-main-secrets`** (OpenTofu, pipeline por WIF) | Crea los **contenedores** de secreto, sus etiquetas obligatorias (`registry/labels.yaml`) y su IAM | `tf-apply-qa@`: administra secretos, **no** tiene `secretAccessor` |
+| **Valores** | Generados con recurso `ephemeral` y escritos con el atributo **write-only** `secret_data_wo`, de modo que el valor **nunca entra en el estado** de OpenTofu | La misma, en el mismo apply. Verificar el soporte en la versión de OpenTofu y del proveedor `google` fijadas (V9). Si no está, la versión inicial la crea un script fuera de OpenTofu |
+| **ESO** en el namespace `sonarqube` | Lee los valores y los materializa como `Secret` de Kubernetes | KSA `eso-sonarqube` vía Workload Identity, `secretAccessor` **sobre cada secreto**, nunca sobre el proyecto (§7.4: un permiso de proyecto expone los secretos de todos) |
+
+- **`SecretStore` por namespace**, no `ClusterSecretStore`: el principal de Workload Identity es exactamente `ns/sonarqube/sa/eso-sonarqube` (R15).
+- **Los `Secret` de Kubernetes quedan en etcd cifrados con la clave KMS `gke-secrets`** (§4.14, arquitectura §5.7). Son copia, no fuente de verdad.
+- **Por qué ESO y no el add-on de Secret Manager para GKE** (driver CSI): el add-on monta ficheros, pero el chart de SonarQube lee la password JDBC de una variable de entorno y CNPG exige un `Secret` de Kubernetes.
+- **Por outputs sharing solo viajan nombres de secreto**, nunca valores (§11.6, R8).
+- **Secretos en el proyecto de `qa`**, replicación **user-managed** en `europe-west1`.
+
+**Acceso humano y del pipeline.** El pipeline accede por WIF para **gestionar** secretos; leer valores no forma parte de ningún despliegue. Lectura humana solo para SRE, **just-in-time** con Privileged Access Manager (justificación, máximo 1 h, aprobación de otro miembro de SRE). *Data Access audit logs* en Secret Manager y alerta ante cualquier `AccessSecretVersion` cuyo principal no sea un KSA de ESO.
+
+**Protección frente a borrado.** Borrar un secreto en Secret Manager es inmediato e irreversible. Por eso: ninguna identidad de pipeline salvo la de destroy tiene `secretmanager.secrets.delete`; `lifecycle { prevent_destroy = true }` en `qa-sonarqube-secret-key`; y destrucción diferida de versiones (`version_destroy_ttl`, 30 días) para poder deshacer una rotación equivocada.
 
 ### 4.4 Datos: PostgreSQL con CloudNativePG
 
@@ -216,13 +229,13 @@ La plataforma prevé OIDC en el Gateway con `SecurityPolicy`. **No sirve para So
 | Tema | Propuesta | Por qué |
 |---|---|---|
 | Registro en Entra ID | Una *app registration* `keycloak-qa`, redirect URI `https://sso.qa.acme.com/realms/qa/broker/entra/endpoint` | Un solo punto de confianza con Entra para todas las aplicaciones de `qa` |
-| Credencial de Keycloak ante Entra | **Certificado** (client assertion firmada), no client secret | Los client secrets de Entra caducan (≤ 24 meses) y suelen caducar en producción sin aviso. Clave privada en OpenBao |
+| Credencial de Keycloak ante Entra | **Certificado** (client assertion firmada), no client secret | Los client secrets de Entra caducan (≤ 24 meses) y suelen caducar en producción sin aviso. Clave privada en Secret Manager (`qa-keycloak-entra-cert`) |
 | Grupos | **App roles** en la app registration (`sonar-administrators`, `sonar-users`, `team-<x>`), asignados a grupos de Entra | El claim `groups` de Entra trae **GUIDs**, no nombres, y con más de 200 grupos se sustituye por un *overage* que exige llamar a Graph. El claim `roles` trae nombres estables y solo los de esta aplicación |
 | Mapeo en Keycloak | Mapper *claim to group* por cada rol → grupo de Keycloak; sincronización `force` en cada login | Un cambio de pertenencia en Entra se refleja en el siguiente login |
 | Hacia SonarQube | SAML con atributo `groups` = grupos de Keycloak | Sin cambios respecto al diseño anterior |
 | Red | Keycloak necesita **egress** a `login.microsoftonline.com` (intercambio de código back-channel) vía Cloud NAT | SonarQube sigue sin necesitar red hacia Keycloak ni Entra |
 
-Se mantiene Keycloak como intermediario (D4) aunque SonarQube podría hacer SAML directo contra Entra ID: Grafana, OpenBao y las aplicaciones futuras de `qa` usan el mismo realm, y la `SecurityPolicy` OIDC de Envoy para el resto de aplicaciones se diseñó contra Keycloak. El coste es que Keycloak queda en el camino crítico de login.
+Se mantiene Keycloak como intermediario (D4) aunque SonarQube podría hacer SAML directo contra Entra ID: Grafana y las aplicaciones futuras de `qa` usan el mismo realm, y la `SecurityPolicy` OIDC de Envoy para el resto de aplicaciones se diseñó contra Keycloak. El coste es que Keycloak queda en el camino crítico de login.
 
 **Baja de usuarios.** Community no tiene SCIM (es de Enterprise). Deshabilitar a alguien en Entra ID impide su login, pero su usuario de SonarQube y **sus tokens personales siguen activos**. Mitigación: prohibir tokens personales en CI (solo tokens de proyecto, D9) y un job de reconciliación diario que desactive en SonarQube los usuarios cuyo login ya no exista o esté deshabilitado en Entra ID (Graph API + Web API de SonarQube).
 
@@ -278,11 +291,11 @@ GKE aplica `NetworkPolicy` con Dataplane V2; el egress a las APIs de Google se e
 | Qué | Cómo | Dónde | Retención |
 |---|---|---|---|
 | PostgreSQL | CNPG barman-cloud: base diaria + WAL continuo (PITR) | `gs://acme-qa-backups-db` | 14 días (§12.6) |
-| OpenBao (incluye clave de cifrado de SonarQube) | Snapshot Raft programado | `gs://acme-qa-backups-bao` | 14 días |
+| Secretos (incluye la clave de cifrado de SonarQube) | Versiones de Secret Manager; sin backup adicional | Secret Manager | Protección frente a borrado (§4.3) |
 | Índices de ES | No se respaldan | — | Reindexado |
 | Configuración | Git | — | — |
 
-Buckets con versionado de objetos y retention policy, en la región del cluster. Velero no hace falta: todo el estado está en PostgreSQL, OpenBao o Git.
+Buckets con versionado de objetos y retention policy, en la región del cluster. Velero no hace falta: todo el estado está en PostgreSQL, Secret Manager o Git.
 
 Restauración ensayada una vez antes de dar el entorno por bueno (V5).
 
@@ -371,9 +384,9 @@ Lo que la documentación **no** dice: qué stack crea las claves, en qué capa, 
 |---|---|---|---|---|
 | `tofu-state` | Simétrica | Todas las identidades de pipeline de `qa` (`tf-plan-qa@`, `tf-apply-qa@`, `tf-destroy-qa@`) | `cryptoKeyEncrypterDecrypter` — también la de *plan*: el bloque `plan { }` **cifra** el fichero de plan | 90 días automática |
 | `gke-secrets` | Simétrica | Agente de servicio de GKE (`service-<n>@container-engine-robot`) | `cryptoKeyEncrypterDecrypter` | 90 días |
-| `openbao-unseal` | Simétrica | SA de OpenBao vía Workload Identity | `cryptoKeyEncrypterDecrypter` | 90 días |
 | `cosign` | Asimétrica de firma (EC P-256) | Identidad del build de imágenes | `signerVerifier` | Manual, con solapamiento |
 | *(opcional)* `gcs-cmek` | Simétrica | Agente de servicio de Cloud Storage | `cryptoKeyEncrypterDecrypter` | 90 días |
+| *(opcional)* `secrets-cmek` | Simétrica | Agente de servicio de Secret Manager | `cryptoKeyEncrypterDecrypter` | 90 días |
 
 **Por qué capa 0 y no capa 1.** La clave de estado debe existir **antes** del primer stack cifrado de `qa`, que es el propio `gcp-qa-network`. Si la creara el stack de entorno, su estado se cifraría con una clave que él mismo crea. La landing zone ya es el singleton que se arranca a mano; su propia clave de estado es la única que se crea fuera del pipeline (bootstrap documentado, una vez).
 
@@ -392,28 +405,7 @@ Lo que la documentación **no** dice: qué stack crea las claves, en qué capa, 
 
 - Ninguna identidad de pipeline tiene `cloudkms.admin` ni `cryptoKeyVersions.destroy`. Solo el stack de landing zone, con su identidad de destroy separada (§11.4).
 - `lifecycle { prevent_destroy = true }` en las claves.
-- Perder `tofu-state` deja el estado ilegible; perder `openbao-unseal` deja OpenBao sellado para siempre y con él todos los secretos, incluida la clave de cifrado de SonarQube. Las dos son irrecuperables: son el activo más crítico del entorno.
-
-**Recuperación de OpenBao: recovery keys en Secret Manager.** Con auto-unseal, OpenBao genera en su inicialización *recovery keys* por Shamir. No desellan (eso lo hace la clave KMS); sirven para **generar un token raíz** y para re-keying. Quien reúna el umbral es raíz de OpenBao: lee todos los secretos de `qa`, cambia políticas y **puede desactivar la auditoría**.
-
-Guardarlas en Secret Manager es razonable: con auto-unseal, si se pierde GCP (proyecto o clave KMS), OpenBao está perdido tenga uno las recovery keys donde las tenga. Lo que importa es **quién puede reunir el umbral**.
-
-**Decisión del equipo:** custodio el **equipo SRE**, las claves se quedan en Secret Manager y **el pipeline accede por WIF**.
-
-Tal cual, el Shamir no aporta nada: tanto el grupo SRE como la identidad del pipeline llegan a todos los fragmentos. Eso es aceptable si se dice explícitamente y se compensa con otros controles. Lo que no es aceptable es que el acceso del pipeline sea de **lectura** con la identidad de despliegue de cada día, porque entonces cualquier merge a `main` que llegue a ejecutarse con esa identidad puede hacerse raíz de OpenBao sin dejar rastro en OpenBao.
-
-| Condición | Motivo |
-|---|---|
-| El pipeline accede solo para **escribir** (`secretmanager.secretVersionAdder`), no para leer | La inicialización automatizada necesita **guardar** los fragmentos, no leerlos. Nada del ciclo normal de despliegue necesita raíz de OpenBao |
-| Si hay un caso real de **lectura** desde pipeline (recuperación automatizada), se hace con una identidad WIF **separada**, `bao-breakglass-qa@`, ligada a un workflow propio y a un GitHub Environment con revisores obligatorios | Nunca `tf-plan-qa@` (se ejecuta desde cualquier rama) ni `tf-apply-qa@` (se ejecuta en cada merge) |
-| SRE sin acceso permanente: `secretAccessor` concedido **just-in-time** con **Privileged Access Manager** de GCP, con justificación, duración máxima de 1 h y **aprobación de otro miembro de SRE** | Recupera la regla de dos personas que el Shamir pierde al tener un único custodio |
-| Un único secreto `openbao-qa-recovery` con los fragmentos (umbral 3 de 5 se mantiene en OpenBao) | Separar en cinco secretos no aporta nada con un solo custodio; simplifica la operación |
-| En el **proyecto de landing zone / seguridad**, no en el de `qa` | Quien administra `qa` no llega a los fragmentos |
-| *Data Access audit logs* en Secret Manager y **alerta por cada lectura**, dirigida a SRE y a seguridad | La lectura es excepcional; si la hace el pipeline, lo ve alguien que no es el pipeline |
-| Replicación **user-managed** en `europe-west1` | Región y residencia en la UE |
-| Tras cualquier uso: re-keying (`bao operator rekey -target=recovery`) y nueva versión del secreto | Un fragmento leído se considera expuesto |
-
-Esto introduce Secret Manager en la plataforma, pero solo para material de **arranque y emergencia** (break-glass). Los secretos de aplicación siguen en OpenBao; la frontera queda escrita para que Secret Manager no se convierta en un segundo almacén de secretos por comodidad.
+- Perder `tofu-state` deja el estado ilegible, y es irrecuperable: es el activo más crítico del entorno. Si se activa `secrets-cmek`, perderla deja ilegibles todos los secretos de `qa`: mismo tratamiento.
 
 ---
 
@@ -443,7 +435,7 @@ Como el entorno es nuevo, el despliegue de SonarQube es el despliegue de la plat
 |---|---|---|
 | **0** | Repositorio desechable, verificaciones de `CLAUDE.md` | Nada. Hay que hacerla primero |
 | **A** | Landing zone, red, GKE | Fase 0; decisión Shared VPC |
-| **B** | Gatekeeper, cert-manager, monitorización, OpenBao + ESO, buckets, CNPG, Keycloak, Gateway, borde | A |
+| **B** | Gatekeeper, cert-manager, monitorización, ESO, buckets, CNPG, Keycloak, Gateway, borde | A |
 | **C** | Los 8 stacks de `gcp-qa-sonarqube-main` | B; V1–V3 |
 
 Aristas nuevas que introduce SonarQube (cada una con su `after`, R2):
@@ -452,7 +444,7 @@ Aristas nuevas que introduce SonarQube (cada una con su `after`, R2):
 |---|---|---|---|
 | `…-iam` | `gcp-qa-gke` | `workload_identity_pool` | outputs sharing |
 | `…-iam` | `gcp-qa-objects` | Nombre del bucket de backups | global (determinista) |
-| `…-secrets` | `gcp-qa-secrets` | Mount kv y rol de Kubernetes auth | global |
+| `…-secrets` | `gcp-qa-secrets` | Namespace de ESO y versión de sus CRD | global |
 | `…-data-tenant` | `gcp-qa-postgres-operator` | Versión del operador | outputs sharing |
 | `…-frontdoor` | `gcp-qa-gateway` | Nombre y namespace del `Gateway` | global |
 | `…-sso` | `gcp-qa-keycloak` | Realm, URL de metadatos SAML | outputs sharing |
@@ -463,9 +455,7 @@ Ciclos y cómo se rompen:
 | Ciclo | Ruptura |
 |---|---|
 | Keycloak ↔ Gateway (R22) | Resuelto en la plataforma; SonarQube tampoco lleva `SecurityPolicy` |
-| Keycloak → secretos → OpenBao → login OIDC → Keycloak | Workloads por Kubernetes auth; el login OIDC de personas a OpenBao se añade después |
-| OpenBao TLS → cert-manager | No es ciclo: cert-manager usa su CA propia, sin secretos de OpenBao |
-| OpenBao → KMS | KMS está en capa 0 |
+| Keycloak → secretos → Keycloak | Desaparece con Secret Manager: ESO se autentica por Workload Identity, sin pasar por Keycloak |
 | Estado cifrado de `gcp-qa-network` → clave `tofu-state` | La clave la crea la landing zone, no el entorno (§4.14) |
 | SonarQube SAML ↔ Keycloak | No existe: front-channel |
 | Gateway → NEG → `env-edge` (capa 1) | La arista ascendente de §10: `gcp-qa-edge` se aplica tras `gcp-qa-gateway` |
@@ -548,7 +538,7 @@ capacity:
   memory_mib: 28672                           # 12 GiB + 2 × 8 GiB
   pvc_gib: 250                                # 50 ES + 2 × 100 PostgreSQL
   ingress_routes: 1
-  workload_identities: 2                      # ESO→OpenBao, CNPG→GCS
+  workload_identities: 2                      # ESO→Secret Manager, CNPG→GCS
 ```
 
 ```yaml
@@ -563,7 +553,7 @@ bindings:
   policy:              { archetype: policy-gatekeeper,    stack_id: gcp-qa-policy }
   ingress:             { archetype: gateway-envoy-gke,    stack_id: gcp-qa-gateway }
   certs:               { archetype: cert-manager,         stack_id: gcp-qa-certs }
-  secrets:             { archetype: secrets-openbao,      stack_id: gcp-qa-secrets }
+  secrets:             { archetype: secrets-eso-gsm,      stack_id: gcp-qa-secrets }
   monitoring:          { archetype: monitoring-oss,       stack_id: gcp-qa-monitoring }
   object-store:        { archetype: object-store-gcs,     stack_id: gcp-qa-objects }
   database-platform:   { archetype: postgres-operator,    stack_id: gcp-qa-postgres-operator }  # SÍ en qa
@@ -597,7 +587,7 @@ Se aplicarán en `registry/*.yaml` (nunca en `schemas/`, R34) al aprobar esta et
 
 | # | Decisión | Estado | Recomendación | Alternativa |
 |---|---|---|---|---|
-| D1 | Backend de secretos | Propuesta | OpenBao + ESO | ESO + Secret Manager |
+| D1 | Backend de secretos | **Cerrada** | ESO + Secret Manager; OpenBao fuera de `qa` | — |
 | D2 | PostgreSQL | Propuesta | `Cluster` CNPG propio | Cloud SQL |
 | D3 | Exposición | **Cerrada** | Pública tras GLB + Cloud Armor, sin filtrado por IP; auth en SonarQube | — |
 | D4 | Autenticación de personas | **Cerrada en la fuente** (Entra ID); propuesta en el camino | SAML desde Keycloak, que hace broker OIDC hacia Entra ID; grupos por app roles | SAML directo SonarQube ↔ Entra ID: menos piezas, pero rompe la uniformidad del realm `qa` |
@@ -624,7 +614,7 @@ Propuestos para `docs/risk-register.md`; se numerarán al incorporarse.
 | **OOMKill silencioso** por heaps que suman más que el límite | Alta sin cálculo | Alta — exit 137 sin log | Heaps explícitos; límite = Σ heaps + margen; alerta |
 | **`SecurityPolicy` OIDC añadida a la ruta** por homogeneidad | Media | Alta — todos los análisis fallan | Assertion en el generador; documentado junto a la excepción de Keycloak |
 | **Timeout de 30 s del backend service** del GLB | Alta en proyectos grandes | Media — análisis fallan con 502 intermitente | 120 s en `env-edge`; V6 |
-| **Pérdida de `sonar-secret.txt`** | Baja | Alta | En OpenBao con snapshot a GCS; en la prueba de DR |
+| **Pérdida de `sonar-secret.txt`** | Baja | Alta | Secret Manager con `prevent_destroy` y destrucción diferida de versiones |
 | **Token global filtrado** desde un repo | Media si se elige | Alta | Tokens de proyecto (D9) |
 | **Upgrade con migración de BD sin retorno** | Media | Alta | Backup CNPG verificado antes; rollback = restaurar BD + imagen anterior (DG §6) |
 | **Caída de la zona** del PVC | Baja | Media | Aceptado en `qa`; disco HA como opción (§4.1) |
@@ -632,9 +622,9 @@ Propuestos para `docs/risk-register.md`; se numerarán al incorporarse.
 | **IP de runner olvidada abierta** | Media | Baja — IAM sigue protegiendo | `if: always()` + reconciliador con caducidad de 60 min |
 | **`container.clusters.update` en la identidad de preview** | Alta si se hace por la vía directa | Crítico — cualquier PR puede reconfigurar el cluster | Servicio intermedio con permiso mínimo (§4.13) |
 | **Usuario dado de baja en Entra ID conserva tokens** en SonarQube | Media | Media | Reconciliación diaria; sin tokens personales en CI |
-| **Destrucción de `tofu-state` u `openbao-unseal`** | Baja | Crítico — estado ilegible o todos los secretos perdidos | Sin permisos de destroy en pipelines, `prevent_destroy`, org policy de duración mínima (§4.14) |
+| **Destrucción de `tofu-state`** | Baja | Crítico — estado ilegible | Sin permisos de destroy en pipelines, `prevent_destroy`, org policy de duración mínima (§4.14) |
 | **Caducidad de la credencial de Keycloak en Entra ID** | Media | Alta — nadie puede entrar | Certificado en vez de secreto; alerta 30 días antes de la caducidad, dirigida al equipo de identidad |
-| **Raíz de OpenBao alcanzable desde el pipeline** (recovery keys legibles por WIF) | Media si la identidad de despliegue lee | Crítico — todos los secretos de `qa`, auditoría desactivable | Pipeline solo escribe; lectura solo con identidad break-glass aprobada; SRE vía PAM con aprobación; alerta por lectura (§4.14) |
+| **Valores de secreto en el estado de OpenTofu** | Alta si se usa `random_password` normal | Alta — el estado cifrado se vuelve un almacén de secretos paralelo | Recursos `ephemeral` y atributos write-only (V9) |
 
 ---
 
@@ -650,11 +640,11 @@ Propuestos para `docs/risk-register.md`; se numerarán al incorporarse.
 | V6 | Análisis grande a través de GLB + Cloud Armor + Gateway | Sin 413, 502 ni bloqueo de WAF |
 | V7 | Apertura/cierre de IP con dos workflows simultáneos y un job cancelado | Ningún job pierde acceso a mitad; el reconciliador retira la entrada huérfana |
 | V8 | Login Entra ID → Keycloak → SonarQube con app roles | Usuario con su grupo `team-<x>` aplicado; baja en Entra reflejada tras la reconciliación |
+| V9 | `ephemeral` + `secret_data_wo` en la versión fijada de OpenTofu y del proveedor `google` | `tofu show` sin rastro del valor; ESO sincroniza el secreto |
 
 Preguntas abiertas:
 
 - **Q10.** Acuerdo con el equipo de identidad, **estimado** a falta de confirmar: app role de equipo en ≤ 2 días laborables; renovación del certificado de Keycloak en la app registration a cargo de identidad, disparada por la alerta de 30 días de la plataforma. El alta de un equipo en SonarQube hereda ese plazo.
-- **Q11.** ¿El pipeline necesita **leer** las recovery keys (recuperación automatizada) o solo **escribirlas** en la inicialización? Decide si hace falta la identidad `bao-breakglass-qa@`.
 - De `CLAUDE.md`, sigue abierta la nº 2 (Shared VPC), que bloquea la fase A.
 
 ---

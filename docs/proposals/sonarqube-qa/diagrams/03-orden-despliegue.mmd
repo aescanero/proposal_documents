@@ -11,7 +11,7 @@ flowchart TD
         C --> PO["gcp-qa-policy<br/>Gatekeeper"]
         PO --> CE["gcp-qa-certs<br/>cert-manager + CA interna"]
         PO --> M["gcp-qa-monitoring"]
-        CE --> S1["gcp-qa-secrets<br/>OpenBao + ESO"]
+        CE --> S1["gcp-qa-secrets<br/>ESO"]
         CE --> GW["gcp-qa-gateway"]
         GW -. "NEG" .-> ED["gcp-qa-edge<br/>backend · URL map · DNS wildcard"]
         S1 --> OB["gcp-qa-objects<br/>buckets GCS"]
@@ -24,7 +24,7 @@ flowchart TD
 
     subgraph I["Fase C · instancia gcp-qa-sonarqube-main"]
         direction TB
-        IAM["iam<br/>KSA + IAM en bucket"] --> SEC["secrets<br/>ExternalSecrets"]
+        IAM["iam<br/>KSA + IAM en bucket"] --> SEC["secrets<br/>secretos GSM + IAM<br/>+ ExternalSecrets"]
         IAM --> DATA["data-tenant<br/>CNPG Cluster + ScheduledBackup"]
         SEC --> DATA
         DATA --> FW["firewall<br/>NetworkPolicies"]

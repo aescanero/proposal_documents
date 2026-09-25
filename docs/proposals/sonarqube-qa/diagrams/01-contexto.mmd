@@ -18,14 +18,14 @@ flowchart LR
         PG[("PostgreSQL<br/>CloudNativePG Cluster")]
         KC["Keycloak<br/>realm qa · IdP SAML"]
         ESO["External Secrets Operator"]
-        BAO[("OpenBao<br/>Raft x3")]
         MON["Prometheus · Alertmanager<br/>Grafana · Loki"]
         GK["Gatekeeper"]
     end
 
     subgraph GCPS["Servicios GCP"]
-        GCS[("GCS<br/>backups CNPG · chunks Loki<br/>snapshots OpenBao")]
-        KMS["Cloud KMS<br/>auto-unseal"]
+        GCS[("GCS<br/>backups CNPG · chunks Loki")]
+        GSM[("Secret Manager<br/>qa-sonarqube-*")]
+        KMS["Cloud KMS<br/>estado · etcd"]
         AR["Artifact Registry<br/>imagen sonarqube propia"]
     end
 
@@ -35,10 +35,9 @@ flowchart LR
     SQ -->|"JDBC 5432"| PG
     DEV -. "redirección SAML" .-> KC
     KC -->|"broker OIDC"| ENTRA
-    ESO --> BAO
+    ESO -->|"Workload Identity"| GSM
     ESO -->|"Secrets"| SQ
     ESO -->|"Secrets"| PG
-    KMS --> BAO
     MON -->|"scrape"| SQ
     MON -->|"scrape"| PG
     PG -->|"WAL + base backups<br/>Workload Identity"| GCS

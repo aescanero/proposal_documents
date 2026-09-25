@@ -24,7 +24,7 @@ flowchart BT
     subgraph L3["Capa 3 · platform services"]
         ING["ingress<br/>gateway-envoy-gke"]
         CRT["certs<br/>cert-manager · CA interna"]
-        SEC["secrets<br/>OpenBao + ESO"]
+        SEC["secrets<br/>ESO + Secret Manager"]
         MONI["monitoring<br/>Prometheus · Grafana · Loki"]
     end
     subgraph L4["Capa 4 · middleware"]
@@ -46,9 +46,8 @@ flowchart BT
     NET --> EE
     CL --> POL
     POL --> ING & CRT & SEC & MONI
-    KMS --> SEC
+    KMS --> CL
     CRT --> ING
-    CRT --> SEC
     ING -. "nombre del NEG<br/>(arista ascendente)" .-> EE
     SEC --> DBP
     OBJS --> DBP
