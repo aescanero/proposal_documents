@@ -486,9 +486,9 @@ globals {
 # stacks/platforms/gcp/demos/config.tm.hcl          ← environment layer
 globals {
   env        = "demos"
-  project_id = "acme-demo-shared"
+  project_id = "acme-demos"
   region     = "europe-west1"
-  vpc_cidr   = "10.60.0.0/16"
+  vpc_cidr   = "10.4.0.0/17"             # claimed from the permanent block (AM §9.2)
 }
 
 globals "cluster" {
@@ -512,7 +512,7 @@ globals {
   env        = "prod"
   project_id = "acme-prod"
   region     = "europe-west1"
-  vpc_cidr   = "10.10.0.0/16"
+  vpc_cidr   = "10.6.0.0/16"             # production gets a /16
 }
 
 globals "cluster" {
@@ -763,10 +763,10 @@ import { source = "/imports/contracts/contract_network_gcp.tm.hcl" }
 ```hcl
 # stacks/platforms/gcp/demos/config.tm.hcl
 globals {
-  vpc_cidr           = "10.60.0.0/16"
-  subnet_cidr        = tm_cidrsubnet(global.vpc_cidr, 4, 0)   # 10.60.0.0/20
-  pods_cidr          = tm_cidrsubnet(global.vpc_cidr, 2, 1)   # 10.64.0.0/18
-  services_cidr      = tm_cidrsubnet(global.vpc_cidr, 6, 40)  # /22
+  vpc_cidr           = "10.4.0.0/17"
+  subnet_cidr        = tm_cidrsubnet(global.vpc_cidr, 3, 0)   # 10.4.0.0/20  — zone infra
+  pods_cidr          = tm_cidrsubnet(global.vpc_cidr, 1, 1)   # 10.4.64.0/18 — zone pods
+  services_cidr      = tm_cidrsubnet(global.vpc_cidr, 7, 32)  # 10.4.32.0/24 — zone edge, as in the AM §9.6 ledger
 }
 ```
 
@@ -1005,6 +1005,10 @@ assert {
 ```
 
 Organisation policies backing this up (§11.7): `constraints/compute.requireShieldedVm`, `constraints/compute.vmExternalIpAccess`, `constraints/iam.disableServiceAccountKeyCreation`.
+
+---
+
+## 6. Guide B — EKS platform and its dependency chain
 
 ### 6.1 Dependency graph
 
@@ -1309,9 +1313,6 @@ Keeping the *names* aligned where the *meaning* is aligned (`cluster_name`, `clu
 
 ---
 
-
----
-
 ## 7. Guide C — Cloud Run platform and its dependency chain
 
 Cloud Run removes the cluster from the topology, which changes the shape of the platform layer but not the pattern. The isolation boundary moves from *Kubernetes namespace* to *service plus its runtime service account*, and that turns out to make shared environments considerably cheaper — Cloud Run scales to zero, so an idle demo instance costs almost nothing.
@@ -1360,7 +1361,7 @@ output "project_id"               { backend = "tofu"  value = var.project_id }
 globals "serverless" {
   egress_mode          = "direct"                # "direct" | "connector"
   egress_setting       = "PRIVATE_RANGES_ONLY"   # avoid ALL_TRAFFIC unless egress must be inspected
-  serverless_subnet    = "10.60.16.0/24"         # /24 minimum for Direct VPC egress
+  serverless_subnet    = "10.4.40.0/24"          # zone edge; /24 minimum for Direct VPC egress
   ingress              = "INTERNAL_AND_CLOUD_LOAD_BALANCING"
 }
 ```
@@ -2464,7 +2465,7 @@ Deny  kms:ScheduleKeyDeletion for state-encryption keys
 | `drift` (cron) | `tf-plan-<env>@` | `tf-plan-<env>` | none | read |
 | `destroy` (manual) | `tf-destroy-<env>@` | `tf-destroy-<env>` | **required reviewers + separate approver group** | read + write |
 
-Destroy deserves its own identity. On a shared platform it is the operation that can take down every tenant (§14.4), and separating it means a compromised deploy path cannot delete infrastructure.
+Destroy deserves its own identity. On a shared platform it is the operation that can take down every tenant (§12.4), and separating it means a compromised deploy path cannot delete infrastructure.
 
 Plan runs must use `-lock=false`, so the plan identity needs no write on the lock table or state object. That is what makes a genuinely read-only plan role possible:
 
@@ -3296,7 +3297,7 @@ The ordering invariant that previously relied on a shell script is now a Rego po
 
 ## 15. Risk register
 
-The full register — 37 risks grouped by domain, with likelihood, impact, mitigation and the section that specifies each control — is maintained in its own document, `risk-register.md`. It is reviewed at every roadmap phase gate rather than read end to end.
+The full register — 53 risks grouped by domain (52 active; R28 retired as a duplicate of R26), with likelihood, impact, mitigation and the section that specifies each control — is maintained in its own document, `risk-register.md`. It is reviewed at every roadmap phase gate rather than read end to end.
 
 The five to act on first:
 
@@ -3345,7 +3346,7 @@ If the inherited-globals or interpolation variants fail, the late-binding model 
 ### Phase 2 — Second cloud (1–2 weeks)
 
 - Second set of mixins and generator branches
-- Prove that the archetype contract files are genuinely cloud-agnostic where §6.9 says they should be
+- Prove that the archetype contract files are genuinely cloud-agnostic where §6.8 says they should be
 - G2 plan scanning
 - Permission boundaries published by the platform stack and asserted in app stacks
 

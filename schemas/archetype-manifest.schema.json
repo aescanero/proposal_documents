@@ -332,19 +332,6 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "oneOf": [
-          {
-            "required": [
-              "name"
-            ]
-          },
-          {
-            "required": [
-              "use",
-              "name"
-            ]
-          }
-        ],
         "properties": {
           "name": {
             "$ref": "#/$defs/slug"
@@ -378,7 +365,10 @@
               "$ref": "#/$defs/capability"
             }
           }
-        }
+        },
+        "required": [
+          "name"
+        ]
       }
     },
     "firewall": {
@@ -481,6 +471,7 @@
         "acl-authz",
         "arm64",
         "audit-api",
+        "cnpg",
         "cross-namespace-refgrant",
         "custom-templates",
         "daemonset-privileged",
@@ -513,13 +504,16 @@
         "overlay-pods",
         "pod-identity",
         "private-endpoint",
+        "prometheus-operator-crds",
         "psa-shared",
         "referential-constraints",
         "regional-only",
+        "saml-idp",
         "schema-registry",
         "self-managed-nodes",
         "spot",
         "strimzi",
+        "sysctl-max-map-count",
         "tcp-route",
         "tiered-storage",
         "tls-mtls",
@@ -555,7 +549,8 @@
           "enum": [
             "cidr",
             "hostname",
-            "static_ip"
+            "static_ip",
+            "listener_priority"
           ]
         },
         "pool": {

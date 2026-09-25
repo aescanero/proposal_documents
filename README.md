@@ -13,7 +13,8 @@ GCP, AWS and Azure at parity; designed so a fourth cloud touches only layers 0�
 | [`docs/archetype-model.md`](docs/archetype-model.md) | What may be composed with what — manifests, capabilities, traits, pools, CMDB, resolution |
 | [`docs/terramate-outputs-sharing-architecture.md`](docs/terramate-outputs-sharing-architecture.md) | How it is generated and applied — generators, outputs sharing, IAM, policy, CI/CD, five runtime guides |
 | [`docs/developer-guide.md`](docs/developer-guide.md) | For application developers — branching, versioning, build, rollback, and the three languages |
-| [`docs/risk-register.md`](docs/risk-register.md) | 37 risks by domain, reviewed at each phase gate |
+| [`docs/risk-register.md`](docs/risk-register.md) | 53 risks by domain (52 active), reviewed at each phase gate |
+| [`docs/glossary.md`](docs/glossary.md) | Every technical term in the documents above, with its definition |
 | [`docs/proposals/sonarqube-qa/`](docs/proposals/sonarqube-qa/README.md) | Proposal, stage 1: SonarQube Community on `qa` — elements, dependencies, OSS tooling (Spanish) |
 | [`CLAUDE.md`](CLAUDE.md) | Decision log: what is settled, what is open, and the traps |
 
@@ -27,7 +28,9 @@ consume them.
 | `docs/` | Reference documents — the specification |
 | `registry/` | **Source of truth** for capabilities, traits, zones, labels |
 | `schemas/` | JSON Schema — **generated** from `registry/`, never hand-edited |
-| `policy/` | Rego for conftest, plus `*_test.rego` |
+| `.github/workflows/` | `validate.yml`: schema and registry well-formedness, manifest validation, policy tests |
+
+Planned, not yet present: `policy/` (Rego for conftest, plus `*_test.rego`), `archetypes/`, `components/`, `environments/`, `cmdb-data/`, and the Terramate tree listed in `CLAUDE.md`. The validation commands below skip what does not exist yet.
 
 ## Status
 

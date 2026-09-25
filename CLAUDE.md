@@ -15,7 +15,7 @@ A multi-cloud infrastructure platform built on **Terramate CLI + OpenTofu**, wit
 | **Resolve** | `docs/archetype-model.md` | What may be composed with what — manifests, capabilities, traits, pools, CMDB, resolution |
 | **Generate** | `docs/terramate-outputs-sharing-architecture.md` | How it is generated and applied — generators, outputs sharing, IAM, policy, CI/CD, per-cloud guides |
 
-Plus `docs/platform-overview.md` (diagram-led map, read first), `docs/risk-register.md` (37 risks by domain) and `docs/developer-guide.md` (the application developer's half — branching, versioning, build, rollback).
+Plus `docs/platform-overview.md` (diagram-led map, read first), `docs/risk-register.md` (53 risks by domain, 52 active), `docs/glossary.md` (every term, defined) and `docs/developer-guide.md` (the application developer's half — branching, versioning, build, rollback).
 
 **The seam between the halves is `binding.tm.hcl`.** The resolver writes globals; the generators consume them. Neither knows the other's internals.
 
@@ -72,6 +72,7 @@ The same technology can be both. `postgres-operator` (archetype, provides `datab
 4. **Where does resolution run** — a CLI in the repo, or a reusable workflow? Determines whether the project office can validate a demo locally.
 5. **How much Rego is genuinely shared** between conftest and `ConstraintTemplate`s. Measure before planning a single policy codebase.
 6. **Developer guide open questions** — scaffolding tool vs template repository, where the version bump is computed, ephemeral environments opt-in or automatic. Listed in `docs/developer-guide.md` §13.
+7. **One project for hub and spokes, or one per environment?** The architecture decision above says one account/project/subscription; the architecture document's examples use a project per environment (`acme-demos`, `acme-prod`), cross-project state reads (§11.5) and "cloud account / project" as the dedicated isolation boundary (§12.1). On GCP it decides where each environment's edge IP, Cloud Armor policy and certificate live — they must share a project with the load balancer.
 
 ---
 
@@ -113,15 +114,16 @@ These are the failure modes that have already been identified. Do not rediscover
 
 ```
 docs/                   reference documents — the specification
+docs/proposals/         design proposals for concrete deployments (not normative)
 schemas/                JSON Schema, GENERATED from registry/
 registry/               SOURCE OF TRUTH for capabilities, traits, zones, labels
-policy/                 Rego for conftest, plus *_test.rego
 .github/workflows/
 ```
 
 Planned, not yet present:
 
 ```
+policy/                 Rego for conftest, plus *_test.rego
 modules/                OpenTofu modules
 imports/mixins/         backend and provider generators per cloud
 imports/generators/v1/  one generator per capability — "the base layer"

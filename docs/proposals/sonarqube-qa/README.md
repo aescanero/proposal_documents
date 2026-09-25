@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N · revisión 9 (revisión de coherencia y cierre) |
+| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 10 |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
@@ -83,7 +83,7 @@ Todo se construye de cero. **Registro** indica si la capability existe en `regis
 | Capa | Capability | Implementación en GCP | Licencia | Por qué la necesita SonarQube | Registro |
 |---|---|---|---|---|---|
 | 0 | `dns-zone` | Cloud DNS, zona delegada `qa.acme.com` | cloud | Registro wildcard `*.qa.acme.com` | ✓ |
-| 0 | `cidr-pool` | Ledger del modelo (AM §9) | — | Una `/17` del bloque permanente `10.2.0.0/15` | ✓ |
+| 0 | `cidr-pool` | Ledger del modelo (AM §9) | — | Una `/17` del bloque permanente `10.4.0.0/14` (ejemplo de AM §9.2: `10.4.128.0/17`) | ✓ |
 | 0 | `cert` | Certificate Manager, certificado **wildcard** `*.qa.acme.com` con DNS authorization | cloud | TLS público en el borde | ✓ |
 | 0 | `waf` | Cloud Armor | cloud | Única protección de red posible con runners alojados por GitHub (D3) | ✓ |
 | 0 | `edge-ip` | IP global reservada | cloud | Destino del wildcard | ✓ |
@@ -414,7 +414,7 @@ Lo que la documentación **no** dice: qué stack crea las claves, en qué capa, 
 
 ### 4.15 Red: VPC separada y borde propio
 
-`qa` es un entorno **dedicado** con **VPC propia** dentro del mismo proyecto que el hub (decisión de `CLAUDE.md`: hub y spokes en un proyecto). R23 describe el problema de esta topología: el peering de VPC no es transitivo y los backends de un balanceador deben estar en su misma VPC, así que un balanceador **en el hub** no alcanza un NEG **en `qa`**. La salida para `qa` es no pasar por el hub:
+`qa` es un entorno **dedicado** con **VPC propia**. `CLAUDE.md` fija hub y spokes en un mismo proyecto, pero el documento de arquitectura usa un proyecto por entorno (`acme-demos`, `acme-prod`); esa contradicción está pendiente (ver cierre). La tabla vale para ambos casos con una diferencia: si `qa` tiene proyecto propio, la IP global, la política de Cloud Armor y el certificado deben estar en ese proyecto, junto al LB, y pasan de capa 0 a capa 1. R23 describe el problema de esta topología: el peering de VPC no es transitivo y los backends de un balanceador deben estar en su misma VPC, así que un balanceador **en el hub** no alcanza un NEG **en `qa`**. La salida para `qa` es no pasar por el hub:
 
 | Elemento | Dónde | Por qué |
 |---|---|---|
@@ -426,7 +426,7 @@ Lo que la documentación **no** dice: qué stack crea las claves, en qué capa, 
 | APIs de Google (Secret Manager, GCS, Artifact Registry, KMS) | Private Google Access en las subredes de `qa` | Sin NAT ni internet |
 | Peering con el hub | **No se necesita para SonarQube** | Ningún flujo de §4.8 cruza al hub. Si más adelante `qa` necesita on-premise u otro servicio del hub, se añade el peering sabiendo que no es transitivo |
 
-Direccionamiento: una `/17` del bloque permanente `10.2.0.0/15` por resolución (AM §9), con las zonas de `registry/zones.yaml`. La VPC separada no cambia el plan de direcciones; sí obliga a que la `/17` no solape con el hub si algún día se hace el peering, algo que el ledger ya garantiza.
+Direccionamiento: una `/17` del bloque permanente `10.4.0.0/14` por resolución (AM §9), con las zonas de `registry/zones.yaml`. La VPC separada no cambia el plan de direcciones; sí obliga a que la `/17` no solape con el hub si algún día se hace el peering, algo que el ledger ya garantiza.
 
 ---
 
@@ -563,24 +563,25 @@ capacity:
 ```
 
 ```yaml
-# environments/qa/binding.yaml — borrador
+# environments/qa/binding.yaml — borrador (versiones: las de `demos` donde existe el arquetipo; 0.1.0 para los nuevos)
 apiVersion: archetype/v1
 kind: EnvironmentBinding
 metadata: { name: qa, model: dedicated, cloud: gcp, region: europe-west1 }
 bindings:
-  network:             { archetype: environment,          stack_id: gcp-qa-network }
-  cluster:             { archetype: gke,                  stack_id: gcp-qa-gke }
-  cloud-observability: { archetype: cloud-monitoring-gcp, stack_id: gcp-qa-cloudmon }
-  policy:              { archetype: policy-gatekeeper,    stack_id: gcp-qa-policy }
-  ingress:             { archetype: gateway-envoy-gke,    stack_id: gcp-qa-gateway }
-  certs:               { archetype: cert-manager,         stack_id: gcp-qa-certs }
-  secrets:             { archetype: secrets-eso-gsm,      stack_id: gcp-qa-secrets }
-  monitoring:          { archetype: monitoring-oss,       stack_id: gcp-qa-monitoring }
-  object-store:        { archetype: object-store-gcs,     stack_id: gcp-qa-objects }
-  database-platform:   { archetype: postgres-operator,    stack_id: gcp-qa-postgres-operator }  # SÍ en qa
-  oidc-idp:            { archetype: keycloak,             stack_id: gcp-qa-keycloak }
+  network:             { archetype: environment, version: 2.1.0,          stack_id: gcp-qa-network }
+  cluster:             { archetype: gke, version: 2.4.0,                  stack_id: gcp-qa-gke }
+  cloud-observability: { archetype: cloud-monitoring-gcp, version: 1.2.0, stack_id: gcp-qa-cloudmon }
+  policy:              { archetype: policy-gatekeeper, version: 1.0.0,    stack_id: gcp-qa-policy }
+  ingress:             { archetype: gateway-envoy-gke, version: 3.1.0,    stack_id: gcp-qa-gateway }
+  certs:               { archetype: cert-manager, version: 1.0.4,         stack_id: gcp-qa-certs }
+  secrets:             { archetype: secrets-eso-gsm, version: 0.1.0,      stack_id: gcp-qa-secrets }
+  monitoring:          { archetype: monitoring-oss, version: 0.1.0,       stack_id: gcp-qa-monitoring }
+  object-store:        { archetype: object-store-gcs, version: 0.1.0,     stack_id: gcp-qa-objects }
+  database-platform:   { archetype: postgres-operator, version: 0.1.0,    stack_id: gcp-qa-postgres-operator }  # SÍ en qa
+  oidc-idp:            { archetype: keycloak, version: 4.1.0,             stack_id: gcp-qa-keycloak }
   # dns: sin enlazar — wildcard en env-edge
 network:
+  cidr: 10.4.128.0/17               # ejemplo de AM §9.2; la asigna el ledger
   dns_zone: qa-acme-com
   dns_suffix: qa.acme.com
 cluster:
@@ -590,9 +591,9 @@ policy:
   gatekeeper_failure_policy: Ignore
 ```
 
-### Cambios propuestos al registro (no aplicados)
+### Cambios al registro (aplicados)
 
-Se aplicarán en `registry/*.yaml` (nunca en `schemas/`, R34) al aprobar esta etapa:
+Añadidos en `registry/traits.yaml`, con el `enum` de `schemas/archetype-manifest.schema.json` sincronizado en el mismo commit (R34):
 
 | Fichero | Alta | Motivo |
 |---|---|---|
@@ -609,43 +610,43 @@ Se aplicarán en `registry/*.yaml` (nunca en `schemas/`, R34) al aprobar esta et
 | # | Decisión | Estado | Recomendación | Alternativa |
 |---|---|---|---|---|
 | D1 | Backend de secretos | **Cerrada** | ESO + Secret Manager; OpenBao fuera de `qa` | — |
-| D2 | PostgreSQL | Propuesta | `Cluster` CNPG propio | Cloud SQL |
+| D2 | PostgreSQL | **Cerrada** | `Cluster` CNPG propio | Cloud SQL |
 | D3 | Exposición | **Cerrada** | Pública tras GLB + Cloud Armor, sin filtrado por IP; auth en SonarQube | — |
-| D4 | Autenticación de personas | **Cerrada en la fuente** (Entra ID); propuesta en el camino | SAML desde Keycloak, que hace broker OIDC hacia Entra ID; grupos por app roles | SAML directo SonarQube ↔ Entra ID: menos piezas, pero rompe la uniformidad del realm `qa` |
+| D4 | Autenticación de personas | **Cerrada** | SAML desde Keycloak, que hace broker OIDC hacia Entra ID; grupos por app roles | SAML directo SonarQube ↔ Entra ID: menos piezas, pero rompe la uniformidad del realm `qa` |
 | D5 | Runtime | **Cerrada** | GKE Standard | — (Autopilot sin sysctl) |
-| D6 | Ramas / PR | Propuesta | Solo `main` | Plugin comunitario de ramas (acoplado a versión); Developer Edition |
-| D7 | Logs | Propuesta | Fluent Bit → Loki | Grafana Alloy |
+| D6 | Ramas / PR | **Cerrada** | Solo `main` | Plugin comunitario de ramas (acoplado a versión); Developer Edition |
+| D7 | Logs | **Cerrada** | Fluent Bit → Loki | Grafana Alloy |
 | D8 | Registro de imágenes | **Cerrada** | Artifact Registry | Harbor |
-| D9 | Tokens de CI | Propuesta | Token de proyecto por repo, con caducidad, creado por onboarding automatizado | Un token global de análisis como secreto de organización: más simple, pero una fuga da acceso a los 200 proyectos |
-| D10 | DNS del entorno | Propuesta | Wildcard + certificado wildcard; `dns` sin enlazar | external-dns por hostname |
+| D9 | Tokens de CI | **Cerrada** | Token de proyecto por repo, con caducidad, creado por onboarding automatizado | Un token global de análisis como secreto de organización: más simple, pero una fuga da acceso a los 200 proyectos |
+| D10 | DNS del entorno | **Cerrada** | Wildcard + certificado wildcard; `dns` sin enlazar | external-dns por hostname |
 | D11 | Acceso del pipeline a GKE | **Cerrada** | Apertura temporal de la IP del runner, con las condiciones de §4.13 | Endpoint DNS del plano de control |
-| D12 | Grupos de Entra ID | Propuesta | App roles | Claim `groups` (GUIDs y overage) |
+| D12 | Grupos de Entra ID | **Cerrada** | App roles | Claim `groups` (GUIDs y overage) |
 
 ---
 
 ## 9. Riesgos nuevos
 
-Propuestos para `docs/risk-register.md`; se numerarán al incorporarse.
+Incorporados a `docs/risk-register.md`: los genéricos de plataforma en su dominio (R38–R46) y los propios de SonarQube en el dominio 8 (R47–R53).
 
-| Riesgo | Probabilidad | Impacto | Mitigación |
-|---|---|---|---|
-| **Cola del CE saturada** con 200 proyectos | Media-alta | Media — CI lento, jobs esperando el gate | Solo `main`, `cancel-in-progress`, alerta de cola, V4; salida comercial documentada |
-| **Análisis lanzado desde una PR** contamina `main` | Alta sin control | Media — historia y gate de `main` incorrectos, en silencio | Workflow reutilizable solo con `push` a `main`; política sobre los workflows |
-| **Init container privilegiado del chart** activo | Alta | Media | Valores del arquetipo; sysctl de nodo; trait en resolución |
-| **OOMKill silencioso** por heaps que suman más que el límite | Alta sin cálculo | Alta — exit 137 sin log | Heaps explícitos; límite = Σ heaps + margen; alerta |
-| **`SecurityPolicy` OIDC añadida a la ruta** por homogeneidad | Media | Alta — todos los análisis fallan | Assertion en el generador; documentado junto a la excepción de Keycloak |
-| **Timeout de 30 s del backend service** del GLB | Alta en proyectos grandes | Media — análisis fallan con 502 intermitente | 120 s en `env-edge`; V6 |
-| **Pérdida de `sonar-secret.txt`** | Baja | Alta | Secret Manager con `prevent_destroy` y destrucción diferida de versiones |
-| **Token global filtrado** desde un repo | Media si se elige | Alta | Tokens de proyecto (D9) |
-| **Upgrade con migración de BD sin retorno** | Media | Alta | Backup CNPG verificado antes; rollback = restaurar BD + imagen anterior (DG §6) |
-| **Caída de la zona** del PVC | Baja | Media | Aceptado en `qa`; disco HA como opción (§4.1) |
-| **Carrera en redes autorizadas**: un job borra la IP de otro | Alta sin serializar | Media — `apply` cortado a medias | Grupo de `concurrency` único para la API de GKE (§4.13) |
-| **IP de runner olvidada abierta** | Media | Baja — IAM sigue protegiendo | `if: always()` + reconciliador con caducidad de 60 min |
-| **`container.clusters.update` en la identidad de preview** | Alta si se hace por la vía directa | Crítico — cualquier PR puede reconfigurar el cluster | Servicio intermedio con permiso mínimo (§4.13) |
-| **Usuario dado de baja en Entra ID conserva tokens** en SonarQube | Media | Media | Reconciliación diaria; sin tokens personales en CI |
-| **Destrucción de `tofu-state`** | Baja | Crítico — estado ilegible | Sin permisos de destroy en pipelines, `prevent_destroy`, org policy de duración mínima (§4.14) |
-| **Caducidad de la credencial de Keycloak en Entra ID** | Media | Alta — nadie puede entrar | Certificado en vez de secreto; alerta 30 días antes de la caducidad, dirigida al equipo de identidad |
-| **Valores de secreto en el estado de OpenTofu** | Alta si se usa `random_password` normal | Alta — el estado cifrado se vuelve un almacén de secretos paralelo | Recursos `ephemeral` y atributos write-only (V9) |
+| # | Riesgo | Probabilidad | Impacto | Mitigación |
+|---|---|---|---|---|
+| R47 | **Cola del CE saturada** con 200 proyectos | Media-alta | Media — CI lento, jobs esperando el gate | Solo `main`, `cancel-in-progress`, alerta de cola, V4; salida comercial documentada |
+| R48 | **Análisis lanzado desde una PR** contamina `main` | Alta sin control | Media — historia y gate de `main` incorrectos, en silencio | Workflow reutilizable solo con `push` a `main`; política sobre los workflows |
+| R46 | **Init container privilegiado del chart** activo | Alta | Media | Valores del arquetipo; sysctl de nodo; trait en resolución |
+| R49 | **OOMKill silencioso** por heaps que suman más que el límite | Alta sin cálculo | Alta — exit 137 sin log | Heaps explícitos; límite = Σ heaps + margen; alerta |
+| R44 | **`SecurityPolicy` OIDC añadida a la ruta** por homogeneidad | Media | Alta — todos los análisis fallan | Assertion en el generador; documentado junto a la excepción de Keycloak |
+| R45 | **Timeout de 30 s del backend service** del GLB | Alta en proyectos grandes | Media — análisis fallan con 502 intermitente | 120 s en `env-edge`; V6 |
+| R50 | **Pérdida de `sonar-secret.txt`** | Baja | Alta | Secret Manager con `prevent_destroy` y destrucción diferida de versiones |
+| R51 | **Token global filtrado** desde un repo | Media si se elige | Alta | Tokens de proyecto (D9) |
+| R52 | **Upgrade con migración de BD sin retorno** | Media | Alta | Backup CNPG verificado antes; rollback = restaurar BD + imagen anterior (DG §6) |
+| R53 | **Caída de la zona** del PVC | Baja | Media | Aceptado en `qa`; disco HA como opción (§4.1) |
+| R38 | **Carrera en redes autorizadas**: un job borra la IP de otro | Alta sin serializar | Media — `apply` cortado a medias | Grupo de `concurrency` único para la API de GKE (§4.13) |
+| R38 | **IP de runner olvidada abierta** | Media | Baja — IAM sigue protegiendo | `if: always()` + reconciliador con caducidad de 60 min |
+| R39 | **`container.clusters.update` en la identidad de preview** | Alta si se hace por la vía directa | Crítico — cualquier PR puede reconfigurar el cluster | Servicio intermedio con permiso mínimo (§4.13) |
+| R43 | **Usuario dado de baja en Entra ID conserva tokens** en SonarQube | Media | Media | Reconciliación diaria; sin tokens personales en CI |
+| R41 | **Destrucción de `tofu-state`** | Baja | Crítico — estado ilegible | Sin permisos de destroy en pipelines, `prevent_destroy`, org policy de duración mínima (§4.14) |
+| R42 | **Caducidad de la credencial de Keycloak en Entra ID** | Media | Alta — nadie puede entrar | Certificado en vez de secreto; alerta 30 días antes de la caducidad, dirigida al equipo de identidad |
+| R40 | **Valores de secreto en el estado de OpenTofu** | Alta si se usa `random_password` normal | Alta — el estado cifrado se vuelve un almacén de secretos paralelo | Recursos `ephemeral` y atributos write-only (V9) |
 
 ---
 
@@ -673,11 +674,11 @@ Preguntas abiertas:
 
 | Estado | Elementos |
 |---|---|
-| **Cerrado por el equipo** | Cloud, CI, región, red (VPC separada, dedicado), volumen, identidad (Entra ID, gestionado por identidad), exposición (D3), runtime (D5), registro (D8), secretos (D1), acceso del pipeline (D11) |
-| **Propuesto, pendiente de aprobación** | D2 `Cluster` CNPG propio · D4 camino Keycloak → SAML · D6 solo `main` · D7 Fluent Bit → Loki · D9 tokens de proyecto · D10 DNS wildcard · D12 app roles |
+| **Cerrado** | Contexto de §0 y decisiones D1–D12 |
+| **Aplicado al repositorio** | Traits nuevos en `registry/` y `schemas/`; riesgos R38–R53 en `docs/risk-register.md`; VPC separada de `qa` en `CLAUDE.md` |
 | **Pendiente de terceros** | Q10, acuerdo con el equipo de identidad (estimado) |
+| **Pendiente de la plataforma** | Un proyecto para hub y spokes (`CLAUDE.md`) o uno por entorno (documento de arquitectura). Afecta a dónde viven IP, Cloud Armor y certificado de `qa` (§4.15) |
 | **Pendiente de verificar** | V1–V9, en la fase 0 o antes de la fase C |
-| **Fuera del repositorio aún** | Traits nuevos en `registry/`, riesgos nuevos en `docs/risk-register.md`: se aplican al aprobar la etapa |
 
 ## 12. Siguiente etapa
 

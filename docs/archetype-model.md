@@ -128,7 +128,7 @@ An application never depends on `gke`. It depends on `cluster`. Several archetyp
 provides:
   - capability: cluster
     version: 2.4.0
-    traits: [self-managed-nodes, daemonset-privileged, hostpath, node-agent, gpu]
+    traits: [self-managed-nodes, daemonset-privileged, hostpath, node-agent, gpu, sysctl-max-map-count]
 
 # archetypes/gke-autopilot/manifest.yaml
 provides:
@@ -160,22 +160,24 @@ provides:
 
 Traits are a controlled vocabulary. An unregistered trait is a resolution error, because a typo that silently matches nothing is worse than no check.
 
+The table below is a **reading copy**; the source of truth is `registry/traits.yaml` (§4.4). If they disagree, the registry wins and this table is the bug.
+
 | Domain | Traits |
 |---|---|
-| Compute | `self-managed-nodes`, `managed-nodes`, `daemonset-privileged`, `hostpath`, `node-agent`, `gpu`, `arm64`, `spot`, `overlay-pods` |
+| Compute | `self-managed-nodes`, `managed-nodes`, `daemonset-privileged`, `hostpath`, `node-agent`, `gpu`, `arm64`, `spot`, `overlay-pods`, `sysctl-max-map-count` |
 | Ingress | `gateway-api`, `ingress-api`, `http-route`, `grpc-route`, `tcp-route`, `cross-namespace-refgrant`, `oidc-security-policy`, `jwt-auth`, `local-rate-limit`, `global-rate-limit`, `mtls-backend` |
 | Edge | `iac-owned-edge`, `managed-cert`, `waf`, `global-anycast`, `regional-only` |
-| Identity | `workload-identity`, `irsa`, `pod-identity`, `managed-identity` |
-| Data | `private-endpoint`, `iam-auth`, `multi-az`, `psa-shared` |
+| Identity | `workload-identity`, `irsa`, `pod-identity`, `managed-identity`, `saml-idp` |
+| Data | `private-endpoint`, `iam-auth`, `multi-az`, `psa-shared`, `cnpg` |
 | Messaging | `strimzi`, `kraft`, `acl-authz`, `tls-mtls`, `schema-registry`, `tiered-storage` |
 | Policy | `gatekeeper`, `custom-templates`, `audit-api`, `referential-constraints`, `mutation` |
-| Observability | `managed-prometheus`, `otlp-native`, `managed-tracing` |
+| Observability | `managed-prometheus`, `otlp-native`, `managed-tracing`, `prometheus-operator-crds` |
 
 `iac-owned-edge` records whether every cloud resource in the edge path is in Terraform state. GCP standalone NEGs are not (architecture document §10.2). If a compliance requirement ever demands full IaC ownership, the resolver detects the gap at validation time rather than at audit time.
 
 `overlay-pods` matters for capacity planning: AKS with Azure CNI Overlay does not consume VNet addresses for pods, so its pod-range claim is zero (§9.5).
 
-### 4.5 The single registry
+### 4.4 The single registry
 
 Capabilities, traits, pool zone names and mandatory labels are consumed by three different mechanisms — JSON Schema `enum`s, conftest `--data`, and Gatekeeper chart values. Held separately they diverge within months, and the failure is nasty: a label the generator stops emitting but the admission `Constraint` still demands blocks legitimate deployments at admission time.
 
@@ -195,7 +197,7 @@ registry/
 
 The YAML is the source. A schema edited by hand is a bug, guarded by a `registry-generate --check` gate in CI exactly like `terramate generate --check`.
 
-### 4.6 Capability version semantics
+### 4.5 Capability version semantics
 
 The version of a capability is the version of its **outputs contract**, not of its implementation.
 
@@ -234,7 +236,7 @@ stacks:
     after: [data]
   - name: app
     after: [secrets, data, firewall]
-  - name: frontdoor                              # HTTPRoute, no SecurityPolicy — see §10.4
+  - name: frontdoor                              # HTTPRoute, no SecurityPolicy — see §10.5
     after: [app]
 
 provides:
@@ -567,7 +569,7 @@ capacity:
   workload_identities: 80
 
 policy:
-  gatekeeper_enforcement: warn        # warn | deny — see architecture §13.7
+  gatekeeper_enforcement: warn        # warn | deny | dryrun — see architecture §13.7
   gatekeeper_failure_policy: Ignore   # Ignore | Fail
   enforce_namespace_quota: true
   enforce_network_policy: true
@@ -639,6 +641,7 @@ flowchart TD
 | Serverless egress subnet | environment pool, zone `edge` | `/24` min | Cloud Run, Container Apps |
 | Hostname | environment DNS zone | name | Layer 4, 5 |
 | Static edge IP | account / project | address | Layer 0 |
+| ALB listener-rule priority | shared ALB listener (ECS Fargate) | range per tenant | Layer 5 on `fargate`. Gateway API removes it on Kubernetes runtimes; Fargate has no Gateway API, so it stays a claim. Until the resolver exists, ranges are set in globals and asserted (architecture §8.6) |
 
 ### 8.2 Capacity
 
@@ -706,7 +709,9 @@ The environment archetype is both consumer and producer of `cidr-pool`, exactly 
 |---|---|---|
 | `10.0.0.0/17` | Hub — LB, shared services, NAT | **Fixed reservation** |
 | `10.0.128.0/17` | Hub DR / transit / on-prem overlap buffer | **Fixed reservation** |
-| `10.2.0.0/15` | Permanent environments (prod, qa, dev, demos) | Yes — `/16` or `/17` |
+| `10.1.0.0/16`, `10.2.0.0/15` | Reserved: hub growth | No |
+| `10.4.0.0/14` | Permanent environments. Example: `demos` `10.4.0.0/17`, `qa` `10.4.128.0/17`, `dev` `10.5.0.0/17`, `prod` `10.6.0.0/16` | Yes — `/16` or `/17` |
+| `10.8.0.0/13` | Reserved: permanent-environment growth | No |
 | `10.16.0.0/12` | Ephemeral environments | Yes — `/17`, with quarantine |
 | `10.32.0.0/11`, `10.64.0.0/10` | Reserved: expansion, M&A, partners, on-prem | No |
 
@@ -776,6 +781,7 @@ Node subnet sizing is derived, not chosen: `max_nodes × 4`, floored at `/24`. F
   "parent_pool": "environments",
   "kind_of": "cidr",
   "supernet": "10.4.0.0/17",
+  "allowed_prefixes": [18, 20, 21, 23, 24],
   "quarantine_days": 7,
   "zones": [
     { "name": "infra",  "cidr": "10.4.0.0/20" },
@@ -1298,7 +1304,7 @@ Step 7 is the acceptance test for the whole model.
 
 Model these rather than hide them:
 
-- **GCP VPC peering is not transitive**, and load balancer backends must sit in the same VPC as the balancer — which may force Shared VPC rather than separate spoke VPCs. The address plan is unchanged either way. Specified in the architecture document §14.4.
+- **GCP VPC peering is not transitive**, and load balancer backends must sit in the same VPC as the balancer — which may force Shared VPC rather than separate spoke VPCs. The address plan is unchanged either way. Risk R23; still open except for `qa`, which uses a separate VPC with its own edge (`CLAUDE.md`, open question 2).
 - **Autopilot, EKS Auto Mode and AKS Automatic** restrict privileged workloads differently. Capture as traits, not special cases in code.
 - **Quota shapes differ** — GCP counts service accounts per project, AWS IAM roles per account, Azure managed identities per subscription. Normalise to `workload_identities` with a per-cloud budget.
 - **Managed policy add-ons are mutually exclusive with self-managed Gatekeeper.** AKS refuses the Azure Policy add-on if Gatekeeper v3 is already installed, and it restricts custom templates; GKE's Policy Controller needs an Enterprise licence. Self-managed Gatekeeper on all three clouds is the portable answer. Alternative providers are still modelled so that an archetype needing `custom-templates` fails resolution rather than failing at admission.
@@ -1459,7 +1465,7 @@ A malformed manifest should fail in two seconds with a schema path, not thirty s
 ## Open questions for the proof of concept
 
 1. **Is `max_pods_per_node` settable on Autopilot?** The platform default of 64 assumes it is. If not, Autopilot environments inherit whatever Google sets, and the pod-range sizing must be recomputed from that.
-2. **Shared VPC or separate VPCs on GCP?** Peering non-transitivity plus the same-VPC backend rule may force Shared VPC. The address plan is unchanged either way.
+2. **Shared VPC or separate VPCs on GCP?** Peering non-transitivity plus the same-VPC backend rule may force Shared VPC. The address plan is unchanged either way. **Settled for `qa`:** separate VPC, edge in the same VPC as its NEG.
 3. **Kafka partition ceiling on the intended broker count.** The `kafka_partitions` budget in the demos binding is a placeholder; measure it before it becomes a promise.
 4. **Where does resolution run** — a CLI in the repository, or a reusable workflow? Determines whether the project office can validate a demo locally before opening a pull request.
 5. **Does the same Rego helper library genuinely serve both conftest and `ConstraintTemplate`s?** The language is shared; the inputs are not (`resolution.json` versus `AdmissionReview`). Confirm how much is reusable before assuming a single policy codebase.

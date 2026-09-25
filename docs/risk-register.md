@@ -6,6 +6,7 @@
 |---|---|
 | **Scope** | Every identified failure mode across generation, resolution, identity, edge, policy and multi-tenancy |
 | **Section references** | `§n` refers to the architecture document unless prefixed `AM §n` (archetype model) |
+| **Identifiers** | R1–R53. R28 is **retired** (duplicate of R26); its number is not reused |
 | **Review cadence** | At each roadmap phase gate, and whenever a pinned tool version changes |
 
 Risks are grouped by domain rather than numbered order, because that is how they are reviewed. The original R-numbers are stable identifiers and must not be reused if a risk is retired.
@@ -46,6 +47,11 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R16 | **Permission boundary omitted from a tenant-created IAM role** | Medium | High — tenant stack can escalate | Platform publishes `task_role_boundary_arn`; assertion blocks generation without it (§11.7) |
 | R19 | **Default service account used as workload identity** (GCP compute SA, ECS shared role) | Medium | High — workload runs with project Editor | Dedicated identity per workload, enforced by Checkov custom policy (§7.4, §5.7) |
 | R25 | **AKS `kube_config` lands in state as a credential** | Certain if used | High | `local_account_disabled = true` plus Entra auth; never expose `kube_config` as a shared output (§9.5) |
+| R39 | **`container.clusters.update` granted to a pipeline identity** to open the runner IP in GKE authorized networks | High if done the direct way | Critical — any PR can reconfigure the cluster, since preview identities need it too | A minimal intermediate service holds the permission and exposes only open/close of a /32 with expiry (`proposals/sonarqube-qa`, section 4.13) |
+| R40 | **Secret values stored in OpenTofu state** (`random_password` + secret version) | High by default | High — the encrypted state becomes a second secret store readable by every identity that can read state | Ephemeral resources and write-only attributes (`secret_data_wo`); verify support in the pinned OpenTofu and provider versions in Phase 0 |
+| R41 | **Environment state-encryption key destroyed** — GCP has no written equivalent of the AWS SCP in §11.3 | Low | Critical — the environment's state is unreadable, irrecoverably | No KMS destroy permission on pipeline identities; `prevent_destroy`; org policy `constraints/cloudkms.minimumDestroyScheduledDuration`; key ring created at layer 0 (`proposals/sonarqube-qa`, section 4.14) |
+| R42 | **IdP federation credential expires** (Keycloak's credential in the upstream IdP app registration) | Medium | High — nobody can log in to anything behind the realm | Certificate credential instead of client secret; alert 30 days before expiry routed to the team that owns the app registration |
+| R43 | **Offboarded user keeps application tokens** where the application has no SCIM | Medium | Medium — access continues after the upstream account is disabled | Daily reconciliation job against the upstream directory; no personal tokens in CI |
 
 ## 3. Networking and address planning
 
@@ -54,8 +60,9 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R7 | **Cross-account state read permissions missing** | High at first setup | Medium — CI fails loudly | Document the required grants per environment; test in the PoC before scaling out |
 | R18 | **Private control plane unreachable from GitHub-hosted runners** | High on private clusters | Medium — pipeline blocked late in rollout | Decide self-hosted runners vs authorized-network allowance in Phase 0 (§11.9) |
 | R23 | **GCP VPC peering non-transitivity blocks hub LB → spoke NEG** | High if hub-and-spoke uses separate VPCs | High — the edge design does not work | Shared VPC with a /17 per environment, Network Connectivity Center, or an LB per spoke. Decide in Phase 0 |
-| R26 | **Pod CIDR sized for 64 nodes** (a /18 with 110 pods per node) | High | High — cluster cannot grow, and the range is immutable | Lower `max-pods-per-node`, or allocate a /16 to production; Azure CNI Overlay removes the constraint (§9.2) |
-| R27 | **Environment pool fragments into unusable /17s** | Medium over 12 months | Medium — a /16 becomes unallocatable | Buddy allocation preferring blocks that do not split larger free runs; isolate the ephemeral supernet (companion document §8.5) |
+| R26 | **Pod secondary range sized for too few nodes** — immutable after cluster creation. The original trigger was a /18 at 110 pods per node (64 nodes) | High without the check | High — cluster cannot grow; fixed only by rebuilding it | Platform default of 64 pods per node (`/25` per node, 128 nodes in a `/18`); resolver rejects `max_nodes × block > range` (AM §9.4); `/16` for production; Azure CNI Overlay removes the constraint (§9.2) |
+| R27 | **Environment pool fragments into unusable /17s** | Medium over 12 months | Medium — a /16 becomes unallocatable | Buddy allocation preferring blocks that do not split larger free runs; isolate the ephemeral supernet (AM §8.5) |
+| R38 | **GKE authorized networks edited per CI job** — concurrent jobs overwrite each other's entry (the list is replaced whole) and a dead runner leaves its IP open | High without serialization | Medium — an apply cut off mid-run; a stale entry (IAM still applies) | One `concurrency` group for every workflow touching the API; close step with `if: always()`; scheduled reconciler expiring entries older than 60 min; `ignore_changes` on the list in the cluster stack (`proposals/sonarqube-qa`, section 4.13) |
 
 ## 4. Edge and ingress
 
@@ -65,20 +72,22 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R21 | **`TargetGroupBinding` lets a tenant redirect another tenant's traffic** | Medium on shared EKS | Critical | Kubernetes RBAC denying the CRD to application namespaces; only the `gateway` archetype creates them; controller IAM scoped to specific target groups (§10.3) |
 | R22 | **Keycloak ↔ Gateway bootstrap cycle** | High on first cold start | High — environment does not start | Keycloak's `HTTPRoute` carries no `SecurityPolicy`; OIDC discovery via in-cluster Service; documented as an invariant (§10.7) |
 | R24 | **`kubernetes_manifest` breaks PR previews** | High if used | Medium | Package Gateway API custom resources in the archetype's Helm chart; deploy via `helm_release` (§10.5) |
+| R44 | **OIDC `SecurityPolicy` applied to a route that also serves machine clients** with their own bearer tokens | Medium, by homogeneity | High — every API client is redirected to the IdP and fails | Assertion in the generator for archetypes that authenticate themselves; documented next to the Keycloak exception (R22) |
+| R45 | **Default 30 s backend-service timeout on the GCP external Application LB** | High for large uploads | Medium — intermittent 502 | Timeout set explicitly in the edge stack; matching Envoy `BackendTrafficPolicy` |
 
 ## 5. Multi-tenancy and shared environments
 
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|---|
-| R5 | **Shared platform destroyed by an instance teardown** | Low with guards, catastrophic without | Critical | `protected` tag + destroy-selector check + CMDB reference count (§14.4) |
+| R5 | **Shared platform destroyed by an instance teardown** | Low with guards, catastrophic without | Critical | `protected` tag + destroy-selector check + CMDB reference count (§12.4) |
 | R6 | **Producer output rename breaks N consumers** | Medium | High on shared platforms | Treat outputs as a versioned contract; add new outputs alongside old, deprecate over two releases; the CMDB relationship graph tells you who is affected |
 | R11 | **Cluster rebuild invalidates every IRSA/WI binding on a shared platform** | Low | High | Treat cluster replacement as a fleet event; maintain the consumer list in the CMDB; rehearse in an ephemeral environment |
 | R13 | **Shared task execution role on a multi-tenant ECS cluster** | High by default | High — cross-tenant secret exposure | Per-instance execution role scoped to that instance's secret ARNs (§8.4) |
 | R14 | **Cloud Run service deployed with `ingress = ALL`** | Medium | High — bypasses Cloud Armor, WAF and access logs | Globals default + assertion + org policy `constraints/run.allowedIngress` (§7.2) |
-| R29 | **Shared Kafka bus saturated by one tenant** | Medium on `demos` | High — affects every tenant | `KafkaUser` producer/consumer quotas, not just ResourceQuota; `kafka_partitions` budget enforced at PR time (companion §10.3) |
+| R29 | **Shared Kafka bus saturated by one tenant** | Medium on `demos` | High — affects every tenant | `KafkaUser` producer/consumer quotas, not just ResourceQuota; `kafka_partitions` budget enforced at PR time (AM §10.3) |
 | R30 | **Tenant writes unprefixed Kafka topics** | High without admission policy | Medium — silent collision between demos | Mandatory `{{ instance }}-` prefix enforced by the provider; ACLs derived by the `kafka` archetype, never hand-written |
 | R31 | **Demo archetypes accumulate past their usefulness** | Certain | Medium — ranges, identities and quotas leak | `expiresOn` mandatory for `kind: demo`; scheduled job opens a destroy PR; never automatic destruction |
-| R32 | **Each demo provisions its own managed database** | High if `database-platform` is unbound | Medium — a shared demo environment stops being cheap | Bind `database-platform` in shared environments; conditional `data` / `data-tenant` stacks in one manifest (companion §5.5) |
+| R32 | **Each demo provisions its own managed database** | High if `database-platform` is unbound | Medium — a shared demo environment stops being cheap | Bind `database-platform` in shared environments; conditional `data` / `data-tenant` stacks in one manifest (AM §5.5) |
 
 ## 6. Policy and validation
 
@@ -89,13 +98,30 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R35 | **Managed policy add-on adopted, then custom templates needed** | Medium | High — the Azure add-on is mutually exclusive with self-managed Gatekeeper and restricts custom templates | Self-managed Gatekeeper on all three clouds; the `custom-templates` trait makes the limitation a resolution error rather than a discovery (§13.5) |
 | R36 | **Rego rule written but never fires** | High without tests | Medium — false confidence | `conftest verify` on `policy/*_test.rego` in the same job as the gate (§13.3) |
 | R37 | **Serverless runtimes assumed to have the same policy coverage** | Medium | Medium — a control believed universal is absent on Cloud Run and Fargate | Parity gap stated explicitly (§13); cloud control-plane policy substitutes for admission there |
+| R46 | **Upstream Helm chart ships a privileged or root init container** (sysctl, chown) | High | Medium — pod rejected under PSS `restricted`, or pressure to exempt a whole namespace | Disable in the archetype's values; move the requirement to the node (a trait such as `sysctl-max-map-count`); name-scoped exemption only as a last resort |
 
 ## 7. Process and tooling
 
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|---|
 | R10 | **Vendor-sourced comparisons overstated** | — | Medium — wrong tool choice | Much of the Terramate-vs-Terragrunt material in circulation is published by Terramate. Validate the change-detection and outputs-sharing claims yourself in the PoC before committing the organisation |
-| R28 | **Pod secondary range sized for too few nodes** | High without the check | High — immutable; requires cluster rebuild | Platform default of 64 pods per node (`/25` per node, 128 nodes in a `/18`); resolver rejects `max_nodes × block > range` (companion §9.4) |
+| R28 | *Retired — duplicate of R26, merged there. Number not reused.* | — | — | — |
+
+---
+
+## 8. Applications — SonarQube on `qa`
+
+Specific to `docs/proposals/sonarqube-qa/`. Kept here so the phase gate reviews them with the rest.
+
+| # | Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|---|
+| R47 | **Compute engine queue saturated** — Community has one worker for ~800 analyses a day | Medium-high | Medium — CI jobs wait on the quality gate | Analyse `main` only; `cancel-in-progress`; queue alert; measured in V4; Enterprise Edition as the documented exit |
+| R48 | **Analysis run from a pull request is recorded as `main`** | High without a control | Medium — `main` history and gate silently wrong | Reusable workflow triggered only on push to `main`; policy over workflow files |
+| R49 | **OOMKill from three JVMs** whose heaps plus non-heap exceed the container limit | High without the calculation | High — exit 137, nothing in the log | Explicit heaps; limit = Σ heaps + margin; `OOMKilled` alert (developer guide §8.3) |
+| R50 | **Loss of the settings encryption key** (`sonar-secret.txt`) | Low | High — encrypted settings unrecoverable | Secret Manager with `prevent_destroy` and delayed version destruction |
+| R51 | **Global analysis token leaked** from one of 200 repositories | Medium if chosen | High — every project exposed | Per-project tokens with expiry, created by automated onboarding |
+| R52 | **Upgrade runs an irreversible database migration** | Medium | High | Verified CNPG backup before every upgrade; rollback is restore + previous image (developer guide §6) |
+| R53 | **Zone loss strands the zonal persistent volume** | Low | Medium — outage until the zone returns | Accepted for `qa`; regional (HA) disk as the option |
 
 ---
 
