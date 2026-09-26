@@ -1,0 +1,21 @@
+flowchart TB
+    CH["archetypes/sonarqube/chart<br/>one version · one place to review"]
+    SUB["official subchart<br/>sonarqube/sonarqube (pinned)"]
+    CH --> SUB
+
+    subgraph REL["One helm_release per stack · values enable only their part"]
+        R1["secrets<br/>secrets.enabled=true<br/>SecretStore · ExternalSecrets"]
+        R2["data-tenant<br/>database.enabled=true<br/>Cluster · ObjectStore · ScheduledBackup"]
+        R3["firewall<br/>firewall.enabled=true<br/>NetworkPolicies"]
+        R4["app<br/>app.enabled=true<br/>SonarQube StatefulSet"]
+        R5["config<br/>config.enabled=true<br/>Job config-‹hash›"]
+        R6["frontdoor<br/>frontdoor.enabled=true<br/>HTTPRoute · BackendTrafficPolicy"]
+        R7["observability<br/>observability.enabled=true<br/>PodMonitor · PrometheusRule · Probe"]
+    end
+    CH --> R1 & R2 & R3 & R4 & R5 & R6 & R7
+    SUB -. "app only" .-> R4
+
+    NOTE["Changing an alert = observability release<br/>SonarQube is not restarted"]
+    R7 --- NOTE
+    style R4 fill:#e8f5e9
+    style NOTE fill:#fff4e5

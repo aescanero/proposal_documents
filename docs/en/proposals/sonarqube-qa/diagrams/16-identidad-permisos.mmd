@@ -1,0 +1,31 @@
+flowchart TB
+    subgraph ENTRA["Entra ID · identity team"]
+        direction LR
+        G["Entra group<br/>Payments-Devs"]
+        AR["app role<br/>team-payments"]
+        G --> AR
+    end
+    subgraph KC["Keycloak · realm qa"]
+        direction LR
+        MAP["roles claim → group mapper"]
+        KG["group team-payments"]
+        CL["SAML client sonarqube<br/>(sso stack)"]
+        MAP --> KG --> CL
+    end
+    subgraph SQ["SonarQube"]
+        direction LR
+        SG["group team-payments<br/>(created by the config stack)"]
+        PT["permission template<br/>prefix payments_"]
+        PR["projects payments_*"]
+        SG --> PT --> PR
+    end
+    GIT["teams.yaml<br/>PR to the platform"]
+
+    AR -->|"id_token: roles"| MAP
+    CL -->|"SAML assertion: groups"| SG
+    GIT -->|"config Job"| SG
+    GIT -->|"config Job"| PT
+
+    WARN["Without the entry in teams.yaml the group<br/>doesn't exist, and SAML sync ignores it"]
+    SG --- WARN
+    style WARN fill:#fce8e6

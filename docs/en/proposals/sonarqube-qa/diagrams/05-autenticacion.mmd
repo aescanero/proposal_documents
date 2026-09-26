@@ -1,0 +1,33 @@
+sequenceDiagram
+    autonumber
+    actor U as Developer
+    participant LB as GLB + Cloud Armor
+    participant SQ as SonarQube
+    participant KC as Keycloak (realm qa)
+    participant UP as Entra ID
+    actor CI as GitHub Actions
+
+    rect rgb(232, 240, 254)
+    Note over U,UP: People: SAML 2.0 SP-initiated. No OIDC SecurityPolicy on the route
+    U->>LB: GET https://sonar.qa.disasterproject.com
+    LB->>SQ: via Envoy Gateway
+    SQ-->>U: 302 to Keycloak (AuthnRequest)
+    U->>KC: sign in
+    KC->>UP: OIDC redirect (broker)
+    Note over UP: login + MFA + conditional access
+    UP-->>KC: id_token with roles claim (app roles)
+    KC->>KC: roles → groups mapper
+    KC-->>U: POST SAMLResponse (login, email, groups)
+    U->>SQ: POST /oauth2/callback/saml
+    SQ->>SQ: validates signature, syncs groups
+    SQ-->>U: session
+    end
+
+    rect rgb(232, 245, 233)
+    Note over CI,SQ: Machines: project analysis token (repo secret)
+    CI->>LB: POST /api/ce/submit · Bearer squ_…
+    LB->>SQ: same route
+    SQ-->>CI: task id (queued for the single CE worker)
+    CI->>SQ: poll the quality gate (qualitygate.wait)
+    SQ-->>CI: OK / ERROR → job passes or fails
+    end

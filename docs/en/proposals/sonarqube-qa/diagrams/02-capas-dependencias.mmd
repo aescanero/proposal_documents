@@ -1,0 +1,67 @@
+flowchart BT
+    subgraph L0["Layer 0 · landing zone project (new)"]
+        DZ["dns-zone<br/>disasterproject.com, delegates qa.disasterproject.com"]
+        CP["cidr-pool<br/>10.0.0.0/8"]
+        KMS["Cloud KMS"]
+        AR["Artifact Registry"]
+    end
+    subgraph L1["Layer 1 · environment qa · project disasterproject-qa"]
+        NET["network<br/>/17 · Private Google Access"]
+        CERT["cert<br/>Certificate Manager"]
+        WAF["waf<br/>Cloud Armor"]
+        EIP["edge-ip<br/>global IP"]
+        EE["env-edge<br/>backend service · URL map<br/>zone qa.disasterproject.com"]
+    end
+    subgraph L1B["Layer 1b"]
+        CO["cloud-observability<br/>audit only"]
+    end
+    subgraph L2["Layer 2 · runtime"]
+        CL["cluster: gke (Standard)<br/>'sonar' node pool with sysctl"]
+    end
+    subgraph L2B["Layer 2b"]
+        POL["policy-gatekeeper<br/>deny · Ignore"]
+    end
+    subgraph L3["Layer 3 · platform services"]
+        ING["ingress<br/>gateway-envoy-gke"]
+        CRT["certs<br/>cert-manager · internal CA"]
+        SEC["secrets<br/>ESO + Secret Manager"]
+        MONI["monitoring<br/>Prometheus · Grafana · Loki"]
+    end
+    subgraph L4["Layer 4 · middleware"]
+        DBP["database-platform<br/>CloudNativePG"]
+        IDP["oidc-idp<br/>Keycloak"]
+    end
+    subgraph L5["Layer 5"]
+        SQ["sonarqube"]
+    end
+
+    CP --> NET
+    NET --> CO
+    NET --> CL
+    DZ --> EE
+    CERT --> EE
+    WAF --> EE
+    EIP --> EE
+    NET --> EE
+    CL --> POL
+    POL --> ING & CRT & SEC & MONI
+    KMS --> CL
+    CRT --> ING
+    ING -. "NEG name<br/>(upward edge)" .-> EE
+    SEC --> DBP
+    MONI --> DBP
+    DBP --> IDP
+    SEC --> IDP
+    ING --> IDP
+
+    ING -->|"gateway-api, http-route"| SQ
+    IDP -->|"saml-idp (new)"| SQ
+    DBP -->|"cnpg (new)"| SQ
+    SEC --> SQ
+    MONI -->|"prometheus-operator-crds (new)"| SQ
+    CL -->|"sysctl-max-map-count (new)"| SQ
+    AR --> SQ
+
+    style L2B fill:#fff4e5
+    style L5 fill:#e8f5e9
+    style L1B fill:#f5f5f5

@@ -1,0 +1,47 @@
+flowchart LR
+    subgraph ACT["Actors"]
+        DEV(["Developers<br/>browser"])
+        GHA(["GitHub Actions<br/>GitHub-hosted runners<br/>sonarqube-scan-action"])
+        OPS(["Platform team"])
+    end
+
+    ENTRA["Microsoft Entra ID<br/>users · MFA · app roles"]
+
+    subgraph GCP0["Project disasterproject-qa · edge (layer 1)"]
+        DNS["Cloud DNS<br/>*.qa.disasterproject.com"]
+        LB["Global external Application LB<br/>Certificate Manager (wildcard)<br/>Cloud Armor"]
+    end
+
+    subgraph K8S["Project disasterproject-qa · GKE Standard (layer 2)"]
+        GW["Envoy Gateway<br/>standalone NEG<br/>internal TLS from cert-manager"]
+        SQ["SonarQube Community Build<br/>ns sonarqube"]
+        PG[("PostgreSQL<br/>CloudNativePG Cluster")]
+        KC["Keycloak<br/>realm qa · SAML IdP"]
+        ESO["External Secrets Operator"]
+        MON["Prometheus · Alertmanager<br/>Grafana · Loki"]
+        GK["Gatekeeper"]
+    end
+
+    subgraph GCPS["GCP services · disasterproject-qa and landing zone"]
+        GCS[("GCS<br/>CNPG backups · Loki chunks")]
+        GSM[("Secret Manager<br/>qa-sonarqube-*")]
+        KMS["Cloud KMS<br/>state · etcd"]
+        AR["Artifact Registry<br/>own sonarqube image"]
+    end
+
+    DEV --> DNS --> LB --> GW
+    GHA -->|"HTTPS + project token"| LB
+    GW -->|"HTTP 9000"| SQ
+    SQ -->|"JDBC 5432"| PG
+    DEV -. "SAML redirect" .-> KC
+    KC -->|"OIDC broker"| ENTRA
+    ESO -->|"Workload Identity"| GSM
+    ESO -->|"Secrets"| SQ
+    ESO -->|"Secrets"| PG
+    MON -->|"scrape"| SQ
+    MON -->|"scrape"| PG
+    PG -->|"WAL + base backups<br/>Workload Identity"| GCS
+    MON --> GCS
+    AR -->|"pull by digest"| SQ
+    GK -. "admission" .-> SQ
+    OPS --> LB

@@ -1,0 +1,25 @@
+flowchart LR
+    subgraph NS["ns sonarqube"]
+        SQ["SonarQube"]
+        RW["Service<br/>sonarqube-db-rw"]
+        P1[("sonarqube-db-1<br/>primary")]
+        P2[("sonarqube-db-2<br/>sync replica")]
+        KSA["KSA sonarqube-db"]
+        SB["ScheduledBackup<br/>daily"]
+    end
+    subgraph GCP["disasterproject-qa"]
+        BK[("gs://disasterproject-qa-<br/>sonarqube-main-pgbackup<br/>7-day soft delete · no versioning")]
+        SM[("Secret Manager<br/>qa-sonarqube-db")]
+    end
+    OP["CNPG operator<br/>+ barman-cloud plugin"]
+
+    SQ -->|"JDBC"| RW --> P1
+    P1 -->|"replication"| P2
+    P1 -->|"continuous WAL"| BK
+    SB --> OP -->|"base backup"| BK
+    KSA -. "Workload Identity<br/>objectAdmin on this bucket only" .-> BK
+    SM -. "ESO → Secret sonarqube-db<br/>bootstrap.initdb" .-> P1
+
+    RST["Restore: new Cluster<br/>bootstrap.recovery from the bucket (V5)"]
+    BK -.-> RST
+    style RST fill:#fff4e5

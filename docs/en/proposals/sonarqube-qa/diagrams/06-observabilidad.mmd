@@ -1,0 +1,30 @@
+flowchart LR
+    subgraph NS["ns sonarqube"]
+        SQ["SonarQube<br/>/api/monitoring/metrics<br/>logs to stdout"]
+        PG["CNPG · exporter :9187"]
+        PM["PodMonitor sonarqube"]
+        PM2["PodMonitor cnpg"]
+        PR["PrometheusRule<br/>incl. CE queue"]
+    end
+    subgraph MON["ns monitoring"]
+        P["Prometheus<br/>PVC · 15 d retention"]
+        AM["Alertmanager"]
+        G["Grafana<br/>Keycloak OIDC login"]
+        L["Loki"]
+        FB["Fluent Bit DaemonSet"]
+        BB["Blackbox exporter"]
+    end
+    GCS[("GCS<br/>Loki chunks")]
+    CH(["On-call channel"])
+
+    PM --> P
+    PM2 --> P
+    PR --> P
+    P -->|"scrape + passcode"| SQ
+    P --> PG
+    BB -->|"GET https://sonar.qa.disasterproject.com/api/system/status"| SQ
+    P --> BB
+    SQ -. "stdout" .-> FB --> L --> GCS
+    P --> AM --> CH
+    G --> P
+    G --> L

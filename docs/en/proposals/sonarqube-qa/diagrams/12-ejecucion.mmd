@@ -1,0 +1,25 @@
+sequenceDiagram
+    autonumber
+    actor DEV as PR author
+    participant GH as GitHub Actions
+    participant BRK as Intermediate service
+    participant RES as archetypectl
+    participant TM as terramate
+    participant GKE as GKE qa
+
+    DEV->>GH: PR (e.g. new image_digest)
+    GH->>RES: resolve --dry-run
+    RES-->>GH: binding.tm.hcl + claims
+    GH->>TM: generate --check (G0) · conftest (G1) · checkov (G2)
+    GH->>BRK: open(runner ip)
+    GH->>TM: script run tofu preview · sharing ON · mocks ON
+    TM->>GKE: plan (helm, kubernetes)
+    GH->>GH: G3 over plan.json · PR comment
+    GH->>BRK: close(ip)
+    DEV->>GH: approval + merge
+    Note over GH: GitHub Environment qa · required reviewers
+    GH->>BRK: open(runner ip)
+    GH->>TM: script run tofu deploy · sharing ON · mocks OFF
+    TM->>GKE: apply in after order
+    GH->>BRK: close(ip)
+    GH->>GH: CMDB sync

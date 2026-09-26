@@ -1,0 +1,47 @@
+flowchart TD
+    subgraph Z["Phase A · landing zone and environment (all new)"]
+        direction TB
+        LZ["gcp-lz-* · landing zone project<br/>parent dns-zone · KMS · Artifact Registry<br/>GitHub WIF · project disasterproject-qa"] --> N["gcp-qa-network"]
+        N --> CM["gcp-qa-cloudmon"]
+        N --> C["gcp-qa-gke<br/>node pools: general + sonar"]
+    end
+
+    subgraph P["Phase B · qa platform"]
+        direction TB
+        C --> PO["gcp-qa-policy<br/>Gatekeeper"]
+        PO --> CE["gcp-qa-certs<br/>cert-manager + internal CA"]
+        PO --> M["gcp-qa-monitoring"]
+        CE --> S1["gcp-qa-secrets<br/>ESO"]
+        CE --> GW["gcp-qa-gateway"]
+        GW -. "NEG" .-> ED["gcp-qa-edge<br/>IP · Cloud Armor · cert · LB<br/>zone qa.disasterproject.com · wildcard"]
+        S1 --> DB["gcp-qa-postgres-operator<br/>CloudNativePG"]
+        M --> DB
+        DB --> KC["gcp-qa-keycloak<br/>+ its own CNPG Cluster"]
+        S1 --> KC
+        GW --> KC
+    end
+
+    subgraph I["Phase C · instance gcp-qa-sonarqube-main"]
+        direction TB
+        IAM["iam<br/>namespace + KSAs"] --> SEC["secrets<br/>GSM secrets + IAM<br/>+ ExternalSecrets"]
+        IAM --> DATA["data-tenant<br/>bucket + CNPG Cluster<br/>+ ScheduledBackup"]
+        SEC --> DATA
+        DATA --> FW["firewall<br/>NetworkPolicies"]
+        FW --> APP["app<br/>helm_release sonarqube"]
+        SEC --> APP
+        IAM --> SSO["sso<br/>SAML client"]
+        SSO --> APP
+        APP --> CFG["config<br/>groups · permissions · gate"]
+        APP --> FD["frontdoor<br/>HTTPRoute"]
+        APP --> OBS["observability<br/>PodMonitor + rules"]
+    end
+
+    S1 --> SEC
+    DB --> DATA
+    KC --> SSO
+    KC -. "SAML" .-> APP
+    GW --> FD
+    M --> OBS
+
+    style ED fill:#f5f5f5
+    style APP fill:#e8f5e9
