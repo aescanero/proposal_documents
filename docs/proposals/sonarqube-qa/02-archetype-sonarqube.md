@@ -7,13 +7,17 @@
 | **Alcance** | El arquetipo de capa 5 `sonarqube`: estructura en el repositorio, manifiesto, los stacks que lo forman, la plantilla (generador) de cada stack, contratos, ejecución, configuración, políticas, lo que provee y el plan de implementación por fases |
 | **Fuera de alcance** | Las capas 0–4 de `qa` (son de la plataforma; aquí solo aparecen como productores y como requisitos) |
 | **Especificación de referencia** | Arquitectura (§n), modelo de arquetipos (AM §n), guía del desarrollador (DG §n), etapa 1 (E1 §n) |
-| **Diagramas** | `diagrams/11-*` a `diagrams/19-*` (`.mmd` fuente, `.svg` renderizado) |
+| **Diagramas** | `diagrams/11-*` a `diagrams/19-*` (`.mmd` fuente, `.svg` renderizado). `diagrams/20-bloques-presentacion.svg` (1920×1080, para presentaciones) se genera con `20-bloques-presentacion.py`, no con Mermaid |
 
 Los bloques HCL y YAML de este documento son **plantillas de diseño**: fijan la forma, los nombres y los contratos. Las claves exactas del chart oficial de SonarQube y de los proveedores se verifican contra las versiones fijadas antes de escribir código; donde hay duda se marca **(verificar)**.
 
 ---
 
 ## 1. Resumen
+
+![Arquetipo sonarqube en bloques](diagrams/20-bloques-presentacion.svg)
+
+Fuente: [`diagrams/20-bloques-presentacion.py`](diagrams/20-bloques-presentacion.py) — vista de presentación; el detalle está en §5.
 
 | Aspecto | Decisión |
 |---|---|
