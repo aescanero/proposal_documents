@@ -1,0 +1,53 @@
+flowchart BT
+    subgraph L0["Layer 0 · landing zone project"]
+        DZ["dns-zone<br/>disasterproject.com, delegates qa.disasterproject.com"]
+        CP["cidr-pool<br/>10.0.0.0/8"]
+        KMS["Cloud KMS"]
+        AR["Artifact Registry<br/>+ Cloud SQL Auth Proxy image"]
+    end
+    subgraph L1["Layer 1 · environment qa · project disasterproject-qa"]
+        NET["network<br/>/17 · Private Google Access<br/><b>PSA: range qa-psa in zone data</b>"]
+        EE["env-edge · cert · waf · edge-ip<br/>unchanged"]
+    end
+    subgraph L1B["Layer 1b"]
+        CO["cloud-observability<br/>audit + <b>notification channel</b>"]
+    end
+    subgraph L2["Layer 2 · runtime"]
+        CL["cluster: gke (Standard)<br/>node pool 'sonar' with sysctl"]
+    end
+    subgraph L2B["Layer 2b"]
+        POL["policy-gatekeeper"]
+    end
+    subgraph L3["Layer 3 · platform services"]
+        ING["ingress · certs · secrets · monitoring<br/>unchanged"]
+    end
+    subgraph L4["Layer 4 · middleware"]
+        DBP["database-platform<br/><b>UNBOUND in qa</b><br/>CloudNativePG not deployed"]
+        IDP["oidc-idp<br/>Keycloak + its own Cloud SQL"]
+    end
+    subgraph L5["Layer 5 · sonarqube"]
+        SQ["sonarqube 0.2.0"]
+        DATA["data stack<br/>condition: !resolved(database-platform)<br/><b>dedicated Cloud SQL for PostgreSQL</b>"]
+    end
+
+    CP --> NET
+    NET --> CO
+    NET --> CL
+    NET --> EE
+    CL --> POL --> ING
+    KMS --> CL
+    ING --> IDP
+    NET -->|"PSA: private IP"| DATA
+    DATA --> SQ
+    CO -->|"notification_channel_id"| DATA
+    ING -->|"gateway-api, http-route"| SQ
+    IDP -->|"saml-idp"| SQ
+    CL -->|"sysctl-max-map-count"| SQ
+    AR --> SQ
+    DBP -. "unresolved → 'data' generated,<br/>'data-tenant' skipped" .-> DATA
+
+    style DBP fill:#f5f5f5,stroke-dasharray: 5 5
+    style DATA fill:#e8f0fe
+    style L5 fill:#e8f5e9
+    style L2B fill:#fff4e5
+    style L1B fill:#f5f5f5

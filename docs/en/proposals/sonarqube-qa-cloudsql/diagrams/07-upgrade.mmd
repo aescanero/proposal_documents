@@ -1,0 +1,25 @@
+sequenceDiagram
+    autonumber
+    actor OP as Platform
+    participant GH as GitHub Actions
+    participant CS as Cloud SQL
+    participant SQ as SonarQube
+
+    OP->>GH: PR new image_digest
+    GH->>GH: preview + G0–G3
+    OP->>CS: gcloud sql backups create (pre-upgrade-<version>)
+    CS-->>OP: operation DONE · backup id
+    OP->>GH: merge
+    GH->>SQ: helm_release app (atomic)
+    SQ->>CS: startup · DB migration via Auth Proxy
+    alt migration and startup succeed
+        SQ-->>GH: ready · status UP
+    else fails before migrating
+        GH->>SQ: atomic reverts to the previous image
+    else fails after migrating
+        Note over SQ: no image rollback (DG §6)
+        OP->>SQ: scale to 0 replicas
+        OP->>CS: gcloud sql backups restore (id from step 3) · in place
+        CS-->>OP: instance restored · same name
+        OP->>GH: PR with the previous digest
+    end
