@@ -1,0 +1,30 @@
+flowchart TB
+    subgraph PLAT["Platform · secrets-eso-gsm archetype"]
+        P1["CRDs de ESO<br/>resource-policy: keep"]
+        P2["controller + webhook"]
+        P3["Gatekeeper ConstraintTemplates<br/>for SecretStore and ExternalSecret"]
+        P4["outputs: namespace · api_version<br/>store_kind · provider"]
+    end
+
+    subgraph TEN["Each consumer archetype · its secrets stack (gen_secrets.tm.hcl)"]
+        T1["google_secret_manager_secret<br/>per secret"]
+        T2["per-secret secretAccessor<br/>→ principal eso-&lt;arquetipo&gt;"]
+        T3["KSA eso-&lt;arquetipo&gt;<br/>(stack iam)"]
+        T4["SecretStore namespaced"]
+        T5["ExternalSecret per secret"]
+    end
+
+    subgraph VAL["Who writes the values"]
+        V1["ephemeral + secret_data_wo<br/>(same apply, never in state)"]
+        V2["bootstrap script<br/>(keys and certificates)"]
+        V3["another stack of the same archetype<br/>(e.g. data with Cloud SQL)"]
+    end
+
+    PLAT -->|"requires secrets ^2.0.0<br/>traits: [eso]"| TEN
+    VAL --> T1
+
+    NO["Nobody grants secretAccessor<br/>on the project"]
+    NO -.-> T2
+
+    style PLAT fill:#e8f0fe
+    style NO fill:#fce8e6

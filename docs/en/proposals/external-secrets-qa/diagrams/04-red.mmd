@@ -1,0 +1,24 @@
+flowchart LR
+    CP(["GKE control plane<br/>master range"])
+    subgraph NS["ns external-secrets · default-deny ingress + egress"]
+        CTRL["controller<br/>8080 metrics"]
+        WH["webhook<br/>10250 · 8080"]
+    end
+    subgraph MON["ns monitoring"]
+        P["Prometheus"]
+    end
+    API["Kubernetes API"]
+    GAPI[("secretmanager · sts<br/>Private Google Access")]
+    DNS["kube-dns :53"]
+    INET(["Internet"])
+
+    CP -->|"TCP 10250<br/>already opened by GKE"| WH
+    P -->|"TCP 8080"| CTRL
+    P -->|"TCP 8080"| WH
+    CTRL -->|"TCP 443"| API
+    CTRL -->|"TCP 443"| GAPI
+    CTRL -->|"53"| DNS
+    CTRL -.-x|"DENIED"| INET
+
+    style INET fill:#fce8e6
+    style CP fill:#fff4e5
