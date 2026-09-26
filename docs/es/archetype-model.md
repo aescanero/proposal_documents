@@ -1282,7 +1282,8 @@ Los manifiestos de la capa 5 son la recompensa: `webapp-3tier` no nombra ninguna
 | `serverless-runtime` | `cloudrun` | `fargate` | `container-apps` |
 | `policy` | `policy-gatekeeper` | `policy-gatekeeper` | `policy-gatekeeper` |
 | `ingress` | `gateway-envoy-gke` | `gateway-envoy-eks` | `gateway-agfc-aks` o `gateway-envoy-aks` |
-| `certs` | Certificate Manager | ACM | App Gateway certs / Key Vault |
+| `cert` (borde, público) | Certificate Manager | ACM | App Gateway certs / Key Vault |
+| `certs` (dentro del cluster) | `cert-manager` | `cert-manager` | `cert-manager` |
 | `secrets` | Secret Manager | Secrets Manager | Key Vault |
 | `event-bus` | `kafka` (Strimzi) | `kafka` (Strimzi) | `kafka` (Strimzi) |
 | `cloud-observability` | Cloud Monitoring | CloudWatch | Azure Monitor |

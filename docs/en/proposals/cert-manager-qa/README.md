@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 1 |
+| **Status** | Proposal · revision 2 |
 | **Scope** | The layer 3 `cert-manager` archetype on `qa`: which certificates it issues and which it does not, the internal CA, who may request which name, how trust is distributed, renewal and rotation, network, the `certs` contract, stacks, policies, execution and plan |
 | **Why now** | ESO (§4.1), monitoring (§8.3), Keycloak (§4, §7, §8) and SonarQube (S1 §4.5) already request certificates from the internal `ClusterIssuer` and trust its CA, and each one took it for granted |
 | **Reference specification** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -46,7 +46,7 @@ Source: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 | cert-manager's own webhook | cert-manager, self-managed | It cannot request a certificate from itself before it exists |
 | Internet-facing certificates issued by ACME | **Nobody** | No internet egress; the edge already has its certificate |
 
-**Correction to AM §14.2.** The per-cloud provider table assigns "Certificate Manager / ACM / App Gateway certs" to `certs`. That describes the edge `cert` capability, not `certs`: AM itself binds `certs` to `cert-manager` in `demos` (AM §7). The proposal is to split the rows: `cert` → Certificate Manager, ACM, App Gateway certs; `certs` → `cert-manager` on all three clouds, like Kafka or Keycloak (§11).
+**Correction to AM §14.2 (applied).** The per-cloud provider table assigned "Certificate Manager / ACM / App Gateway certs" to `certs`. That described the edge `cert` capability, not `certs`: AM itself binds `certs` to `cert-manager` in `demos` (AM §7). The rows are now split: `cert` → Certificate Manager, ACM, App Gateway certs; `certs` → `cert-manager` on all three clouds, like Kafka or Keycloak (§11).
 
 **GLB → Envoy: encryption, not authentication.** The global external load balancer encrypts traffic to the backend but, unless backend authentication is configured with a `TrustConfig`, does not validate its certificate **(verify, VT8)**. On `qa` this is accepted: the leg runs over Google's network inside the VPC. Turning validation on would tie the internal root to a layer 1 resource, and every root rotation would require changing the edge (DT7).
 
@@ -323,7 +323,7 @@ Source: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 |---|---|---|
 | `registry/traits.yaml` and the `enum` in `schemas/archetype-manifest.schema.json` | `cert-manager` trait, in the same commit and mechanically (R34) | **Applied** |
 | The ESO (§10.1), monitoring (§10.1) and Keycloak (§11.1) proposals | `certs` now requires `traits: [cert-manager]` | **Applied** |
-| AM §14.2 (`docs/en/` and `docs/es/`) | Split `cert` (Certificate Manager, ACM, App Gateway certs) from `certs` (`cert-manager` on all three clouds) | Proposed |
+| AM §14.2 (`docs/en/` and `docs/es/`) | Split `cert` (Certificate Manager, ACM, App Gateway certs) from `certs` (`cert-manager` on all three clouds) | **Applied** |
 | Consumers (`iam` of Keycloak, monitoring and the Gateway) | `trust.disasterproject.com/internal-ca` label on their namespace; use of `internal-ca-bundle` | Proposed, picked up as each is implemented |
 
 ---

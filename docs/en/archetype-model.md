@@ -1281,7 +1281,8 @@ Layer 5 manifests are the payoff: `webapp-3tier` names no cloud. Moving it from 
 | `serverless-runtime` | `cloudrun` | `fargate` | `container-apps` |
 | `policy` | `policy-gatekeeper` | `policy-gatekeeper` | `policy-gatekeeper` |
 | `ingress` | `gateway-envoy-gke` | `gateway-envoy-eks` | `gateway-agfc-aks` or `gateway-envoy-aks` |
-| `certs` | Certificate Manager | ACM | App Gateway certs / Key Vault |
+| `cert` (edge, public) | Certificate Manager | ACM | App Gateway certs / Key Vault |
+| `certs` (in-cluster) | `cert-manager` | `cert-manager` | `cert-manager` |
 | `secrets` | Secret Manager | Secrets Manager | Key Vault |
 | `event-bus` | `kafka` (Strimzi) | `kafka` (Strimzi) | `kafka` (Strimzi) |
 | `cloud-observability` | Cloud Monitoring | CloudWatch | Azure Monitor |
