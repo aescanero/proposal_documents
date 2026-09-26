@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 1 · **variante** de [`../sonarqube-qa/`](../sonarqube-qa/README.md) |
+| **Estado** | Propuesta · revisión 2 · **variante** de [`../sonarqube-qa/`](../sonarqube-qa/README.md) |
 | **Alcance** | Sustituir el `Cluster` de CloudNativePG de SonarQube por una instancia **Cloud SQL for PostgreSQL** dedicada: modelo, instancia, conectividad, identidad, secretos, red, backup, observabilidad, stacks, políticas, ejecución y plan |
 | **Base** | Etapa 1 [`README.md`](../sonarqube-qa/README.md) (E1 §n) y etapa 2 [`02-archetype-sonarqube.md`](../sonarqube-qa/02-archetype-sonarqube.md) (E2 §n). **Todo lo que este documento no menciona queda igual que en la base** |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `developer-guide.md` (DG §n), `risk-register.md` |
@@ -172,7 +172,7 @@ El resto de §6.1 de E2 no cambia. El límite de memoria de 12 GiB es del conten
 | Ámbito | **A nivel de proyecto con condición**: el rol no admite binding sobre la instancia. `resource.type == "sqladmin.googleapis.com/Instance" && resource.name == "projects/disasterproject-qa/instances/qa-sonarqube-main-g1"` |
 | Si VC1 falla | Si el proxy o Cloud SQL no aceptan el principal federado directo: cuenta de servicio `sonarqube-sql@disasterproject-qa`, `roles/iam.workloadIdentityUser` para el KSA y anotación en el KSA. El rol y la condición no cambian |
 
-**La condición de arquitectura §7.4 no funciona tal como está escrita.** Usa `resource.name.endsWith('${var.db_connection_name}')`, pero el nombre de conexión tiene forma `proyecto:región:instancia` y el nombre de recurso que evalúa IAM es `projects/<p>/instances/<i>`. Nunca coincide: el grant queda sin efecto y la conexión se deniega. Aquí se usa la forma correcta (VC2) y se propone corregir §7.4 en los dos idiomas (§12).
+**La condición de arquitectura §7.4 no funcionaba tal como estaba escrita.** Usaba `resource.name.endsWith('${var.db_connection_name}')`, pero el nombre de conexión tiene forma `proyecto:región:instancia` y el nombre de recurso que evalúa IAM es `projects/<p>/instances/<i>`. Nunca coincide: el grant queda sin efecto y la conexión se deniega. Aquí se usa la forma correcta (VC2); §7.4 está corregida en los dos idiomas (§12).
 
 ### 4.3 Acceso humano
 
@@ -636,7 +636,7 @@ La imagen del proxy debe estar en el Artifact Registry de la landing zone (const
 | `postgres-operator` | **No se despliega en `qa`** (§2.2) | — |
 | `keycloak` | Su propio stack `data` con Cloud SQL; reutiliza `gen_data.tm.hcl` | Propuesta de Keycloak |
 | `monitoring-oss` | Opcional: datasource de Cloud Monitoring en Grafana, KSA con `monitoring.viewer` | Dashboards |
-| Arquitectura §7.4 | Corregir la condición de `cloudsql.client` (§4.2, §12) | Todo consumidor de Cloud SQL |
+| Arquitectura §7.4 | Condición de `cloudsql.client` corregida (§4.2, §12) | Todo consumidor de Cloud SQL |
 
 ---
 
@@ -645,7 +645,7 @@ La imagen del proxy debe estar en el Artifact Registry de la landing zone (const
 | Fichero | Cambio | Estado |
 |---|---|---|
 | `schemas/archetype-manifest.schema.json` | Añadir `managed_db_instances` a `capacity`. AM §7 y §8.2 lo definen y el binding de `demos` lo presupuesta, pero el schema no lo listaba y `additionalProperties: false` rechazaba cualquier manifiesto que lo declarara. Es estructura escrita a mano, no un `enum` generado desde `registry/` | **Aplicado** con esta propuesta |
-| `docs/en/terramate-outputs-sharing-architecture.md` §7.4 y su copia en `docs/es/` | Condición de `cloudsql.client`: `resource.name == "projects/<p>/instances/<i>"` en vez de `endsWith(<nombre de conexión>)` | **Propuesto**, pendiente de aprobación |
+| `docs/en/terramate-outputs-sharing-architecture.md` §7.4 y su copia en `docs/es/` | Condición de `cloudsql.client`: `resource.name == "projects/<p>/instances/<i>"` en vez de `endsWith(<nombre de conexión>)` | **Aplicado** |
 | `registry/` | Ningún trait nuevo: el camino gestionado no requiere traits de `database-platform` | — |
 
 ---
@@ -690,7 +690,7 @@ Se suman a R38–R53 de la base. Reciben número `R54+` en `risk-register.md` si
 |---|---|---|---|---|
 | RC1 | **Backups borrados con la instancia** | Baja | Crítico — pérdida total de datos | Backup final 30 días; doble protección de borrado; sin `cloudsql.instances.delete` en identidades de pipeline salvo la de destroy |
 | RC2 | **Mantenimiento reinicia la BD** en horario de uso | Media | Baja — análisis en curso fallan y se reintentan | Ventana domingo 03:00 UTC; VC7 |
-| RC3 | **Condición IAM mal formada** (`endsWith` del nombre de conexión) | Alta si se copia §7.4 | Alta — SonarQube no conecta en el primer despliegue | Forma correcta; regla conftest (§10.2); corrección de §7.4; VC2 |
+| RC3 | **Condición IAM mal formada** (`endsWith` del nombre de conexión) | Alta si se copia §7.4 | Alta — SonarQube no conecta en el primer despliegue | Forma correcta; regla conftest (§10.2); §7.4 corregida; VC2 |
 | RC4 | **Rotación de contraseña desincronizada** | Media | Media — SonarQube sin BD hasta reiniciar con el valor correcto | Un solo valor efímero para los dos lados; esperar a ESO antes de reiniciar (§5) |
 | RC5 | **Nombre de instancia no reutilizable** una semana tras borrarla | Media en restauraciones | Media — la restauración falla al crear la instancia | Sufijo de generación (§3, §7) |
 | RC6 | **Backups en la multirregión `eu`** por omisión | Alta sin `location` | Media — choca con el confinamiento de región | `location` explícito; regla conftest (§10.2) |

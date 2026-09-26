@@ -1470,10 +1470,12 @@ generate_hcl "_service.tf" {
       project = global.project_id
       role    = "roles/cloudsql.client"
       member  = "serviceAccount:${google_service_account.runtime.email}"
-      # cloudsql.client no tiene binding a nivel de recurso; restringe con una condition en su lugar
+      # cloudsql.client no tiene binding a nivel de recurso; restringe con una condition en su lugar.
+      # IAM evalúa projects/<p>/instances/<i>, NO el nombre de conexión <p>:<región>:<i> —
+      # comparar con el nombre de conexión nunca coincide y el grant no hace nada, en silencio.
       condition {
         title      = "only-this-instance"
-        expression = "resource.name.endsWith('${var.db_connection_name}')"
+        expression = "resource.type == \"sqladmin.googleapis.com/Instance\" && resource.name == \"projects/${global.project_id}/instances/${element(split(":", var.db_connection_name), 2)}\""
       }
     }
 
