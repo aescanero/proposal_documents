@@ -7,7 +7,7 @@
 | **Supuesto de datos** | La variante Cloud SQL ([`../sonarqube-qa-cloudsql/`](../sonarqube-qa-cloudsql/README.md), DC1): `database-platform` sin enlazar en `qa`, así que Keycloak trae su propia instancia (DC8 de esa variante). Si DC1 se rechaza, el mismo manifiesto toma el camino `data-tenant` con un `Cluster` CNPG (AM §5.5) y solo cambia §3 |
 | **Consumidores conocidos** | SonarQube por SAML ([`../sonarqube-qa/`](../sonarqube-qa/README.md), E1/E2), Grafana por OIDC, aplicaciones futuras con `SecurityPolicy` OIDC en el Gateway |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `developer-guide.md` (DG §n), `risk-register.md` |
-| **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano |
+| **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano. `diagrams/09-bloques-presentacion.svg` (1920×1080, para presentaciones) se genera con `09-bloques-presentacion.py`, no con Mermaid |
 | **Identificadores propios** | Decisiones `DK1…`, riesgos candidatos `RK1…`, verificaciones `VK1…`. Los riesgos reciben número `R54+` en `risk-register.md` si se adopta; los de la variante Cloud SQL (`RC*`) van delante |
 
 Nada de este documento reabre decisiones de `CLAUDE.md`. Implementa dos de sus trampas como invariantes comprobados: el ciclo de arranque Keycloak ↔ Gateway (R22) y la `SecurityPolicy` que rompe clientes máquina (R44).
@@ -26,6 +26,10 @@ Nada de este documento reabre decisiones de `CLAUDE.md`. Implementa dos de sus t
 | Datos | Cloud SQL for PostgreSQL dedicado, `qa-keycloak-main-g1` (§3) | Mismo generador `gen_data.tm.hcl` que SonarQube |
 | Disponibilidad | **2 réplicas** repartidas entre zonas; BD zonal (§9) | Keycloak caído bloquea el login de todo `qa` salvo el CI de SonarQube |
 | Modelo | `qa` dedicado | Sin budgets de `capacity` aplicados (E1 §0) |
+
+![Arquetipo keycloak en bloques](diagrams/09-bloques-presentacion.svg)
+
+Fuente: [`diagrams/09-bloques-presentacion.py`](diagrams/09-bloques-presentacion.py) — vista de presentación; el detalle está en §11.2.
 
 ---
 
