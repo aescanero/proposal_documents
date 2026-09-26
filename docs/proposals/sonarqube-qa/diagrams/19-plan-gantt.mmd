@@ -1,0 +1,15 @@
+gantt
+    title Plan de implementación del arquetipo sonarqube (estimación, una persona)
+    dateFormat  YYYY-MM-DD
+    axisFormat  %d/%m
+    section Prerrequisitos
+    Fase 0 plataforma y V1 V2 V3 V9     :f0, 2026-10-05, 10d
+    section Arquetipo
+    1 Esqueleto                         :f1, after f0, 4d
+    2 iam secrets data-tenant (V5)      :f2, after f1, 3d
+    3 firewall app frontdoor (V6)       :f3, after f2, 3d
+    4 sso config (V3 V8)                :crit, f4, after f3, 3d
+    5 observability                     :f5, after f3, 2d
+    section Adopción
+    6 Piloto CI 5-10 proyectos (V4)     :f6, after f4, 5d
+    7 Olas de 50 proyectos              :f7, after f6, 20d

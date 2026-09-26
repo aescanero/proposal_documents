@@ -7,7 +7,7 @@
 | **Alcance** | El arquetipo de capa 5 `sonarqube`: estructura en el repositorio, manifiesto, los stacks que lo forman, la plantilla (generador) de cada stack, contratos, ejecución, configuración, políticas, lo que provee y el plan de implementación por fases |
 | **Fuera de alcance** | Las capas 0–4 de `qa` (son de la plataforma; aquí solo aparecen como productores y como requisitos) |
 | **Especificación de referencia** | Arquitectura (§n), modelo de arquetipos (AM §n), guía del desarrollador (DG §n), etapa 1 (E1 §n) |
-| **Diagramas** | `diagrams/11-stacks-arquetipo.mmd`, `diagrams/12-ejecucion.mmd` y sus `.svg` |
+| **Diagramas** | `diagrams/11-*` a `diagrams/19-*` (`.mmd` fuente, `.svg` renderizado) |
 
 Los bloques HCL y YAML de este documento son **plantillas de diseño**: fijan la forma, los nombres y los contratos. Las claves exactas del chart oficial de SonarQube y de los proveedores se verifican contra las versiones fijadas antes de escribir código; donde hay duda se marca **(verificar)**.
 
@@ -96,6 +96,20 @@ imports/
 | Un solo chart del arquetipo, desplegado como **varios `helm_release`** (uno por stack) con `values` que activan solo su parte | Una versión del chart, un sitio para revisar plantillas, y a la vez cada stack con su propio ciclo de vida: cambiar una alerta no redespliega SonarQube |
 | Ningún recurso con CRD se crea con `kubernetes_manifest` | CRD y API server necesarios en plan; rompe las previsualizaciones (R24). Todo CR va en el chart |
 | `binding.tm.hcl` lo escribe el resolver; `instance.tm.hcl` es el único fichero de instancia editado a mano | Lo que decide la plataforma y lo que decide el equipo quedan separados y revisables |
+
+### 2.1 De las fuentes al código generado
+
+![Flujo de generación](diagrams/13-generacion.svg)
+
+Fuente: [`diagrams/13-generacion.mmd`](diagrams/13-generacion.mmd)
+
+Lo único que se edita a mano son las fuentes de la izquierda. Todo lo de la derecha lo producen el resolver y `terramate generate`, se commitea, y G0 falla si alguien lo toca a mano.
+
+### 2.2 Un chart, varios releases
+
+![Chart y releases por stack](diagrams/14-chart-releases.svg)
+
+Fuente: [`diagrams/14-chart-releases.mmd`](diagrams/14-chart-releases.mmd)
 
 ---
 
@@ -451,6 +465,10 @@ spec:
   monitoring: { enablePodMonitor: true }
 ```
 
+![Datos y backups](diagrams/15-datos-backup.svg)
+
+Fuente: [`diagrams/15-datos-backup.mmd`](diagrams/15-datos-backup.mmd)
+
 ### 5.4 `firewall` — NetworkPolicies
 
 | | |
@@ -534,6 +552,10 @@ teams:
     project_prefix: identity_
     permissions: [user, codeviewer, issueadmin, securityhotspotadmin, scan]
 ```
+
+![Identidad y permisos](diagrams/16-identidad-permisos.svg)
+
+Fuente: [`diagrams/16-identidad-permisos.mmd`](diagrams/16-identidad-permisos.mmd)
 
 Alta de un equipo = app role en Entra ID (equipo de identidad) + una entrada en `teams.yaml` (PR a este repositorio). Nada manual en la UI.
 
@@ -656,6 +678,10 @@ Fijar los ajustes SAML en `sonar.properties` los vuelve de solo lectura en la UI
 
 ## 7. Políticas
 
+![Puntos de control](diagrams/17-politicas.svg)
+
+Fuente: [`diagrams/17-politicas.mmd`](diagrams/17-politicas.mmd)
+
 ### 7.1 `assert` en generación (fallan `terramate generate`)
 
 ```hcl
@@ -737,6 +763,10 @@ El orden sale de los `after` (§3). El primer despliegue ejecuta los 9 stacks; l
 
 ### 8.3 Cambio de versión de SonarQube
 
+![Cambio de versión](diagrams/18-upgrade.svg)
+
+Fuente: [`diagrams/18-upgrade.mmd`](diagrams/18-upgrade.mmd)
+
 | Paso | Detalle |
 |---|---|
 | 1 | Nueva imagen construida, escaneada, firmada y promovida (E1 §4.10) |
@@ -781,6 +811,12 @@ Lo que este arquetipo necesita de otros y que todavía no está especificado:
 ---
 
 ## 11. Plan de implementación
+
+![Plan de implementación](diagrams/19-plan-gantt.svg)
+
+Fuente: [`diagrams/19-plan-gantt.mmd`](diagrams/19-plan-gantt.mmd)
+
+Las fechas del diagrama son **ilustrativas** (inicio supuesto el 5 de octubre); lo que vale son duraciones y dependencias. La fase 4 va en rojo: es el camino crítico, porque depende del arquetipo `keycloak`.
 
 | Fase | Contenido | Criterio de salida | Estimación |
 |---|---|---|---|
