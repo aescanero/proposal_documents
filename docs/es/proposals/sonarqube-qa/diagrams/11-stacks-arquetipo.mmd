@@ -15,7 +15,7 @@ flowchart TB
         SSO["sso<br/>ConfigMap client-sonarqube-main-*"]
         APP["app<br/>helm_release sonarqube"]
         CFG["config<br/>Job: grupos · permisos · gate"]
-        FD["frontdoor<br/>HTTPRoute · BackendTrafficPolicy"]
+        FD["frontdoor<br/>HTTPRoute · timeouts.request 120 s"]
         OBS["observability<br/>PodMonitor · reglas · Probe · dashboard"]
     end
 

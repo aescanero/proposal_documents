@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 3 |
+| **Status** | Proposal · revision 4 |
 | **Scope** | The layer 4 `keycloak` archetype on `qa`: installation, data, configuration, `qa` realm with Entra ID as upstream IdP, consumer clients as tenant resources, keys, publishing, network, availability, observability, stacks, policies, execution and plan |
 | **Data assumption** | The Cloud SQL variant ([`../sonarqube-qa-cloudsql/`](../sonarqube-qa-cloudsql/README.md), DC1): `database-platform` unbound on `qa`, so Keycloak brings its own instance (DC8 of that variant). If DC1 is rejected, the same manifest takes the `data-tenant` path with a CNPG `Cluster` (AM §5.5) and only §3 changes |
 | **Known consumers** | SonarQube over SAML ([`../sonarqube-qa/`](../sonarqube-qa/README.md), S1/S2), Grafana over OIDC, future applications with an OIDC `SecurityPolicy` on the Gateway |
@@ -235,9 +235,14 @@ tenant_resources:
   - kind: ConfigMap
     namePrefix: "client-{{ instance }}-"
     maxCount: 3
+  - kind: ReferenceGrant
+    namePrefix: "sp-{{ instance }}"
+    maxCount: 1
 ```
 
 Each `ConfigMap` carries the labels `keycloak.disasterproject.com/realm: qa` and `archetype.disasterproject.com/instance: <instance>`, and the client representation in `data.client.json`. `KeycloakRealmRole` (AM §10.4) is not offered: groups come from Entra (§5.3).
+
+**The `ReferenceGrant`** is created only by a consumer that protects its routes with an OIDC `SecurityPolicy`. Its `provider.backendRefs` points at `keycloak-service`, in **this** namespace, and Envoy Gateway rejects a cross-namespace reference unless the destination authorises it with a `ReferenceGrant` (Envoy Gateway proposal §4.3, VG7). One shape only: name `sp-<instance>`, `from` = `SecurityPolicy` in the instance's namespace, `to` = the `keycloak-service` Service. Gatekeeper rejects any other (§12.3).
 
 ### 6.2 What a client may declare
 
@@ -340,7 +345,7 @@ AM §10.5 and architecture §10.7 require two things; this is how they are met:
 | Invariant | How |
 |---|---|
 | Keycloak's route carries no `SecurityPolicy` | §8.1; assert in the `frontdoor` stack; Gatekeeper constraint that denies a `SecurityPolicy` targeting that route |
-| The Gateway's OIDC discovery resolves through the internal Service, not the public hostname | In each consumer's `SecurityPolicy`: `provider.issuer` = public URL (must match `iss`), and **`provider.backendRefs`** → `keycloak-service.keycloak:8443` with `BackendTLSPolicy`. Envoy requests the public URLs but the connections go to the Service **(verify `backendRefs` support in the OIDC provider in the pinned Envoy Gateway version, VK2)** |
+| The Gateway's OIDC discovery resolves through the internal Service, not the public hostname | In each consumer's `SecurityPolicy`: `provider.issuer` = public URL (must match `iss`), and **`provider.backendRefs`** → `keycloak-service.keycloak:8443` with `BackendTLSPolicy` and the `ReferenceGrant` `sp-<instance>` of §6.1. Envoy requests the public URLs but the connections go to the Service **(verify `backendRefs` support in the OIDC provider in the pinned Envoy Gateway version, VK2)** |
 
 So Envoy needs neither the GLB nor public DNS to talk to Keycloak, and a cold environment starts in the order of the figure. The archetype publishes `internal_service` in its contract so that consumers do not write the name by hand.
 
@@ -427,8 +432,8 @@ requires:
   - capability: policy
     version: "^1.0.0"
   - capability: ingress
-    version: ">=3.0.0 <4.0.0"
-    traits: [gateway-api, http-route]
+    version: ">=3.2.0 <4.0.0"
+    traits: [gateway-api, http-route, backend-tls, cross-namespace-refgrant]
   - capability: certs
     version: "^1.0.0"
     traits: [cert-manager]
@@ -459,6 +464,9 @@ provides:
       - kind: ConfigMap
         namePrefix: "client-{{ instance }}-"
         maxCount: 3
+      - kind: ReferenceGrant
+        namePrefix: "sp-{{ instance }}"
+        maxCount: 1
 
 stacks:
   - name: iam
@@ -587,6 +595,7 @@ assert {
 |---|---|
 | **New:** shape of the client `ConfigMap` | §6.4 |
 | **New:** no `SecurityPolicy` on Keycloak's route | First invariant of R22, at admission too |
+| **New:** shape of the `ReferenceGrant` | Only `sp-<instance>`, `from` = `SecurityPolicy` in that namespace, `to` = the `keycloak-service` Service; no other `ReferenceGrant` in `keycloak` (§6.1) |
 | Existing | PSS `restricted`, mandatory labels, allowed registries (operator, Keycloak, proxy by digest) |
 
 ---

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · stage 1 of N · **stage 1 closed** · revision 12 (aligned with stage 2) |
+| **Status** | Proposal · stage 1 of N · **stage 1 closed** · revision 13 (aligned with stage 2) |
 | **Scope** | What elements a complete `qa` environment needs to run SonarQube Community Build, what each one depends on, and which open source tool covers it |
 | **Out of scope** | Code (generators, contracts, charts), detailed per-pipeline integration, upgrade procedure. Later stages |
 | **Reference specification** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `developer-guide.md` (DG §n), `risk-register.md` |
@@ -125,6 +125,7 @@ Platform tooling unchanged: Terramate, OpenTofu, conftest, Checkov.
 |---|---|---|
 | Cluster | GKE Standard, **regional**, **private nodes**, control-plane endpoint with empty authorized networks by default (§4.13), Workload Identity, `STABLE` release channel, `deletion_protection: true` (§12.6) | Baseline from §5.7 |
 | System logs and metrics | `logging_config`: `SYSTEM_COMPONENTS` only; `monitoring_config`: `SYSTEM_COMPONENTS` and `managed_prometheus.enabled = false` | Workload logs only in Loki and no double metric collection (monitoring proposal §1) |
+| GKE Gateway API | `gateway_api_config { channel = "CHANNEL_DISABLED" }` | The `gateway` archetype installs the CRDs on the standard channel. With GKE's, GKE manages them and pins their version, and the `gke-l7-*` `GatewayClass`es appear, which create load balancers without Cloud Armor (Envoy Gateway proposal §3) |
 | Pods per node | 64 (platform default) | The Autopilot open question does not apply |
 | Node pool `sonar` | 1 **n2-standard-8** node (8 vCPU, 32 GB) in **one zone**, taint `dedicated=sonar:NoSchedule` | Isolates sysctl and memory pressure. Single zone because the PVC is zonal |
 | Sysctl | `node_config.linux_node_config.sysctls = { "vm.max_map_count" = "524288" }` | Removes the privileged init container |
@@ -210,7 +211,7 @@ Backups to GCS via **Workload Identity**: IAM `roles/storage.objectAdmin` on the
 | Internal TLS | GLB → Envoy over HTTPS, certificate from cert-manager's internal CA |
 | Gateway | One per environment, `allowedRoutes.namespaces.from: Selector` (§10.6); standalone NEG `eg-qa-neg` (§10.2, R20) |
 | Backend service timeout | **120 s** (30 s by default): a large project's report upload exceeds it |
-| Envoy | `BackendTrafficPolicy` on the route with a timeout ≥ 120 s. The body-size limit is a `ClientTrafficPolicy` on the **Gateway**: a requirement placed on the `gateway` archetype, not to go below 100 MiB (stage 2 §9) |
+| Envoy | `timeouts.request: 120s` on the `HTTPRoute` (standard channel). No body limit: Envoy does not impose one while streaming (Envoy Gateway proposal §2.2, §2.3) |
 | VPC firewall | GLB health-check ranges (`35.191.0.0/16`, `130.211.0.0/22`) to Envoy's pods — a legitimate `cidr:` selector (AM §6.3) |
 
 Gateway API resources packaged in the chart and deployed with `helm_release`, never `kubernetes_manifest` (R24).

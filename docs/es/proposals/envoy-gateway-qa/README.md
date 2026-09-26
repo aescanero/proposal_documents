@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 1 |
+| **Estado** | Propuesta · revisión 2 |
 | **Alcance** | El arquetipo de capa 3 `gateway-envoy-gke` en `qa`: el camino de una petición desde el GLB hasta el pod, el Gateway único del entorno, quién puede enganchar qué ruta y con qué política, los CRDs de Gateway API, la flota de proxies y su relación con el NEG, tiempos de espera, observabilidad, red, contrato `ingress`, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | SonarQube (E1 §4.5, E2 §5.8), Keycloak (§8), monitorización (Grafana) y cert-manager (§1, §3) ya publican rutas en el Gateway `qa` o le emiten certificados, y cada uno lo daba por hecho. E2 §9 le dejó tres requisitos pendientes |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -134,7 +134,7 @@ Con un Gateway compartido, la precedencia de Gateway API decide entre rutas **de
 | `EnvoyPatchPolicy` | Parchea xDS a mano: cualquier cosa, incluida otra ruta | **Desactivada** en el controlador (`extensionApis.enableEnvoyPatchPolicy: false`) y denegada por Gatekeeper |
 | `Backend` (CRD de Envoy Gateway) | Un backend por IP o FQDN arbitrario: desde el Gateway se llegaría a `169.254.169.254` (servidor de metadatos) o a cualquier IP de la VPC | **Desactivado** (`extensionApis.enableBackend: false`) y denegado |
 | `EnvoyExtensionPolicy` | Wasm, Lua o `ext_proc` corriendo **dentro** del proxy compartido | Gatekeeper: denegada fuera de `envoy-gateway-system` |
-| `Service` de tipo `LoadBalancer` o `NodePort` | Un balanceador de Google al lado del Gateway, sin Cloud Armor (RG5) | Gatekeeper, **regla del arquetipo `policy`** (§11): no es un kind de este arquetipo |
+| `Service` de tipo `LoadBalancer` o `NodePort` | Un balanceador de Google al lado del Gateway, sin Cloud Armor (RG5) | Gatekeeper, **regla del arquetipo `policy`** (§11): no es un kind de este arquetipo. Para protocolos que no son HTTP, excepción por nombre con justificación de negocio (§4.4) |
 
 ### 4.3 Lo que un tenant sí puede crear, con límites
 
@@ -149,6 +149,73 @@ Con un Gateway compartido, la precedencia de Gateway API decide entre rutas **de
 **Ninguna `SecurityPolicy` a nivel de Gateway.** Autenticaría todo, incluido el CI de SonarQube y el propio Keycloak (R22, R44). Lo impide un assert en `proxy` (§9.1).
 
 **Fail-closed.** Con Keycloak caído, una ruta con `SecurityPolicy` deniega (Keycloak DK6). En `qa` no hay ninguna el primer día.
+
+### 4.4 Tráfico que no es HTTP: excepciones a `LoadBalancer` y `NodePort`
+
+![Excepciones L4](diagrams/07-excepciones.svg)
+
+Fuente: [`diagrams/07-excepciones.mmd`](diagrams/07-excepciones.mmd)
+
+El borde de `qa` es un balanceador L7 y solo transporta HTTP(S). La regla por defecto de §4.2 (ningún `Service` `LoadBalancer` ni `NodePort`) deja sin salida a los protocolos que no son HTTP. Para esos casos se admite una **excepción por nombre**, con una justificación de negocio que se revisa en la PR y caduca (DG13).
+
+**Un `NodePort` por sí solo no publica nada.** Los nodos de `qa` son privados y la org policy prohíbe IPs públicas en ellos (E1 §5). Un `NodePort` abre un puerto del rango 30000–32767 en **todos** los nodos, visible solo desde la VPC. Para que un tercero llegue por SSH hace falta un balanceador delante, y la decisión real es cuál:
+
+| Patrón | Qué hay delante | ¿En estado de Terraform? | IP del cliente en la aplicación | Veredicto |
+|---|---|---|---|---|
+| A. `Service` `LoadBalancer` | Un balanceador de red passthrough que crea GKE por cada Service | **No** | Sí | **No se admite**. Lo crea y lo borra un controlador: fuera del estado, sin revisión del borde en la PR y con la IP ligada al ciclo de vida del Service |
+| **B. `NodePort` fijo + balanceador de red passthrough externo en `gcp-qa-edge`** | Backend service regional en Terraform sobre los grupos de instancias de los nodos | Sí | **Sí** | **Por defecto para una excepción**: la IP de origen llega a la aplicación sin cambios, que es lo que piden la auditoría y las listas de origen de un SFTP |
+| C. `ClusterIP` con NEG standalone + balanceador de red proxy externo (TCP) en `gcp-qa-edge` | El mismo modelo que el camino HTTP (§10.2) | Sí, salvo el NEG | Solo con PROXY protocol en la aplicación | Si la aplicación entiende PROXY protocol o no necesita la IP de origen. Solo abre el puerto hacia los pods, no en todos los nodos **(verificar las reglas de Cloud Armor por IP en este balanceador, VG13)** |
+| D. Interno (`networking.gke.io/load-balancer-type: Internal`) | Balanceador interno hacia el hub u on-premise | Según se declare | Sí | Solo si existe el peering (E1 §4.15); pasa por la misma excepción |
+
+**Casos admisibles**: el protocolo no es HTTP y la contraparte no puede cambiarlo.
+
+| Caso | Puerto | Por qué no hay opción implícita | Justificación de negocio exigida | Patrón |
+|---|---|---|---|---|
+| **SFTP con terceros** (bancos, administraciones, proveedores) | 22 publicado; el contenedor escucha en 2222 | El tercero solo entrega o recoge por SFTP; no tiene API ni HTTPS | Contrato o especificación del tercero que lo exige; proceso de negocio que depende del intercambio; volumen y periodicidad; clasificación de los datos | B, con lista de IPs del tercero |
+| **Git por SSH** hacia un servidor Git propio | 22 | Casi nunca: HTTPS con token cubre el caso a través del Gateway | Una herramienta externa que solo admite SSH, identificada por nombre y versión | B; se rechaza si HTTPS sirve |
+| **Clientes Kafka fuera del cluster** (sobre todo en `demos`, AM §7) | 9094 más uno por broker | El protocolo de Kafka es binario y cada cliente habla con cada broker por su dirección | Productores o consumidores que no pueden usar un puente HTTP (Strimzi Kafka Bridge, la opción implícita) por latencia o volumen medidos | C por broker o D; listener externo de Strimzi con TLS y SCRAM o mTLS |
+| **MQTT o AMQP de dispositivos** | 8883, 5671 | Firmware fijado que no habla MQTT sobre WebSocket (la opción implícita, que sí pasa por el Gateway) | Flota de dispositivos, versión de firmware y fecha prevista de actualización | B o C, solo TLS |
+| **UDP** (syslog de equipos de terceros, SIP/RTP) | 514/6514, 5060/… | Ni el GLB ni Envoy transportan UDP en este diseño | Integración con equipos que solo emiten por UDP | B (el passthrough admite UDP) |
+| **mTLS terminado en la aplicación** (certificado de cliente regulado) | 443 en una IP propia | El GLB termina TLS. Su mTLS en el borde (con `TrustConfig`) pasa los datos del certificado en cabeceras, que es la opción implícita y suele bastar | Norma que obliga a que la aplicación valide la cadena completa del cliente, citada | B |
+
+**Nunca es una excepción válida:**
+
+| Petición | Alternativa |
+|---|---|
+| SSH administrativo a nodos o pods | `kubectl exec` con el acceso del pipeline (E1 §4.13), IAP para nodos |
+| Base de datos expuesta a herramientas externas (BI, clientes SQL) | Conectividad privada (patrón D) o exportación; nunca un puerto de base de datos en internet |
+| Depuración, pruebas o "temporal" | Entorno efímero; `kubectl port-forward` |
+| Saltarse Cloud Armor, los timeouts o el tamaño de cuerpo del Gateway | Resolverlo en el Gateway (§2.2, §2.3) |
+| gRPC o WebSocket | Son HTTP: pasan por el Gateway (gRPC con el trait `grpc-route` cuando se ofrezca, §7.1) |
+
+**Cómo se declara.** Un bloque nuevo `exposures` en el manifiesto. Es una extensión del esquema que entra por `registry/`, no a mano (R34); **propuesta, sin aplicar**:
+
+```yaml
+exposures:
+  - name: sftp-partners
+    service: sftp                   # Service del propio namespace
+    protocol: TCP
+    port: 22                        # puerto publicado en el balanceador
+    targetPort: 2222
+    nodePort: 30022                 # fijo en el patrón B: reglas de firewall deterministas
+    pattern: passthrough            # passthrough (B) | proxy (C) | internal (D)
+    sources: [203.0.113.0/28]       # 0.0.0.0/0 solo con public: true y segunda aprobación
+    justification:
+      business_owner: equipo-integraciones
+      reason: "Entrega diaria de ficheros de <tercero> por SFTP (contrato <ref>)"
+      alternative_rejected: "El tercero no ofrece API ni HTTPS (<ref>)"
+      data_classification: confidencial
+      review_by: 2027-03-31
+```
+
+| Control | Dónde | Qué comprueba |
+|---|---|---|
+| Declaración completa | G1 | Todo `Service` `LoadBalancer` o `NodePort` del chart tiene su `exposures`; los campos de `justification` no están vacíos; `review_by` no ha pasado. Una excepción caducada **falla la PR siguiente** y obliga a revisarla |
+| Origen acotado | G1 | `sources` no es `0.0.0.0/0` salvo `public: true`, que exige la aprobación de seguridad además de la de plataforma |
+| Aprobación | `CODEOWNERS` sobre `exposures` | Plataforma y seguridad revisan la PR, como una subida de `capacity` en un entorno compartido (guía del desarrollador, `CLAUDE.md`) |
+| Exención en admisión | Gatekeeper (`policy-gatekeeper`) | La exención es por `namespace/Service`, generada por el resolver en los parámetros del constraint, **nunca por namespace entero**. Tipo A (`LoadBalancer` sin `internal`) siempre denegado |
+| El balanceador | `gcp-qa-edge` | Forwarding rule, backend service y regla de firewall por excepción, con `sources` en la regla. La IP es un claim del entorno (AM §8) |
+| Controles compensatorios | Arquetipo consumidor | Sin Cloud Armor L7, la aplicación autentica con claves, nunca con contraseña (SFTP), registra la IP de origen, y su `NetworkPolicy` solo admite el puerto publicado |
 
 ---
 
@@ -435,12 +502,12 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 |---|---|---|
 | `registry/traits.yaml` y el `enum` de `schemas/archetype-manifest.schema.json` | Trait `backend-tls`, en el mismo commit y de forma mecánica (R34) | **Aplicado** |
 | AM §4.3 (`docs/en/` y `docs/es/`) | Añadir `backend-tls` a la fila Ingress. La copia de lectura tampoco tenía `eso` ni `cert-manager`: filas Secrets y Certs añadidas, porque según el propio AM, si difiere del registro, la tabla es el error | **Aplicado** |
-| Propuesta de Keycloak (§6.1, §8.1, §10) | `ingress` exige `traits: [gateway-api, http-route, backend-tls]`; tenant resource nuevo `ReferenceGrant` `sp-{{ instance }}` (maxCount 1) para las `SecurityPolicy` de los consumidores | Propuesto |
-| SonarQube E2 §5.8 | `timeouts.request: 120s` en la `HTTPRoute` en lugar de una `BackendTrafficPolicy` | Propuesto |
-| SonarQube E2 §9 y §7.4 | Requisito del Gateway cumplido: sin límite de cuerpo (§2.3), `BackendTrafficPolicy` de tenant permitida con límites y `SecurityPolicy` solo en namespaces etiquetados (§9.2) | Propuesto |
-| SonarQube E1 §4.1 | `gateway_api_config.channel = CHANNEL_DISABLED` en la fila de GKE | Propuesto |
-| Propuesta de cert-manager §3 | La política `gateway-backend` sobra si VG1 confirma que el GLB no envía SNI: el certificado del backend queda cubierto por `namespace-services` | Propuesto, pendiente de VG1 |
-| `policy-gatekeeper` | Regla sin `Service` `LoadBalancer` ni `NodePort` fuera de una lista de exenciones | Propuesto |
+| Propuesta de Keycloak (§6.1, §8.2, §11.1, §12.3) | `ingress` `>=3.2.0` con `traits: [gateway-api, http-route, backend-tls, cross-namespace-refgrant]`; tenant resource nuevo `ReferenceGrant` `sp-{{ instance }}` (maxCount 1) para las `SecurityPolicy` de los consumidores, y su constraint de forma | **Aplicado** |
+| SonarQube E2 §5.8 (y el árbol del chart, diagramas 11 y 14) | `timeouts.request: 120s` en la `HTTPRoute` en lugar de una `BackendTrafficPolicy` | **Aplicado** |
+| SonarQube E2 §9, §7.4 y cambios respecto a E1; E1 §4.5 | Requisito del Gateway cumplido: sin límite de cuerpo (§2.3), `BackendTrafficPolicy` de tenant permitida con límites y `SecurityPolicy` solo en namespaces etiquetados (§9.2) | **Aplicado** |
+| SonarQube E1 §4.1 | `gateway_api_config.channel = CHANNEL_DISABLED` en la tabla de GKE | **Aplicado** |
+| Propuesta de cert-manager §3 | La política `gateway-backend` autoriza "el nombre que el GLB espera", pero nadie lo ha fijado. Con el listener sin `hostname` (DG2) y sin validación en el GLB (cert-manager DT7), el nombre del certificado es indiferente y `envoy-qa.envoy-gateway-system.svc` ya lo cubre `namespace-services`: la política sobra. Rellenarla con `*.qa.disasterproject.com` sería peor que quitarla, porque la CA interna firmaría hostnames públicos. Solo haría falta, con un nombre único, si se activa la validación del backend (`TrustConfig`) | Pendiente de VG1 y de DT7 |
+| `policy-gatekeeper`, `registry/` y el esquema de manifiesto, `gcp-qa-edge` | Regla sin `Service` `LoadBalancer` ni `NodePort` salvo excepción por nombre; bloque `exposures` con justificación de negocio y caducidad; un balanceador L4 por excepción en el borde (§4.4) | Propuesto |
 | `gcp-qa-edge` (E1 §4.15) | Health check en el puerto de readiness de Envoy; `connection_draining_timeout_sec: 60`; `after` a `gcp-qa-gateway-proxy`; lee `neg_name` y `health_check` | Propuesto, se recoge al proponer el borde |
 
 ---
@@ -461,6 +528,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | DG10 | Stacks | Propuesta | `controller` y `proxy` separados, `prevent_destroy` en `proxy` | Uno solo |
 | DG11 | Trait `backend-tls` | Propuesta, aplicada al registro | Sí | Sin trait (Keycloak no podría pedirlo) |
 | DG12 | Log de acceso | Propuesta | Sin query string ni cabeceras de credenciales | Formato por defecto |
+| DG13 | Tráfico que no es HTTP | Propuesta | Excepción por nombre, declarada en `exposures`, con justificación de negocio, origen acotado y caducidad; balanceador en `gcp-qa-edge` (patrón B por defecto) | `Service` `LoadBalancer` creado por GKE; prohibición sin excepciones |
 
 ---
 
@@ -478,6 +546,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | RG8 | **Códigos y tokens en los logs** de acceso | Alta con el formato por defecto | Media | `REQ_WITHOUT_QUERY`; sin cabeceras de credenciales |
 | RG9 | **Timeout de 15 s** por defecto en rutas sin `timeouts` | Alta si VG6 lo confirma | Media — análisis grandes cortados | Valor por defecto de 60 s en el Gateway; `timeouts.request` en la ruta |
 | RG10 | **Caducidad de los certificados xDS**: los proxies pierden el plano de control | Media con `certgen` | Alta — configuración congelada y, al reiniciar un proxy, sin configuración | cert-manager (DG9); alertas de cert-manager |
+| RG11 | **Excepción L4 que se vuelve permanente**: un puerto expuesto sin WAF que nadie revisa cuando cambia el negocio | Media | Alta — superficie de ataque sin Cloud Armor | `review_by` que hace fallar la PR siguiente; `sources` acotado; aprobación de seguridad; controles compensatorios (§4.4) |
 
 ---
 
@@ -497,6 +566,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | VG10 | Versión de Envoy Gateway ≥ 1.6, CRDs estándar v1.4, nombres de métricas | `BackendTLSPolicy` `v1` aceptada; alertas de §6 con series reales |
 | VG11 | Subida de 100 MiB a través de GLB, Cloud Armor y Envoy | Sin 413 ni corte |
 | VG12 | PSS `restricted` con los pods del proxy y `shutdown-manager` | Admitidos sin exención |
+| VG13 | Patrones B y C de §4.4 con un servicio SFTP de prueba | B: la IP de origen llega al servidor y una IP fuera de `sources` no conecta. C: reglas de Cloud Armor por IP aplicadas en el balanceador proxy |
 
 ---
 

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · stage 2 · revision 1 |
+| **Status** | Proposal · stage 2 · revision 2 |
 | **Part of** | [`README.md`](README.md) (stage 1: elements and dependencies, closed) |
 | **Scope** | The layer-5 archetype `sonarqube`: repository structure, manifest, the stacks that make it up, each stack's template (generator), contracts, execution, configuration, policies, what it provides, and a phased implementation plan |
 | **Out of scope** | `qa`'s layers 0–4 (they belong to the platform; here they appear only as producers and requirements) |
@@ -36,7 +36,7 @@ Source: [`diagrams/20-bloques-presentacion.py`](diagrams/20-bloques-presentacion
 | PostgreSQL's backup bucket is created by the **archetype itself** (`data-tenant` stack); `object-store` stops being a dependency | AM §5.1: an archetype brings its own data store, and destroying it destroys that store. A shared platform bucket would force prefix-scoped IAM conditions, fragile against `objects.list` |
 | `sso` now runs **before** `app` | SonarQube's URL is deterministic (a hostname claim), so the SAML client can exist before the application does. The first login works as soon as `app` comes up |
 | New `config` stack | Groups, permission templates and quality gate as code. SonarQube stores that configuration in its database and has no native declarative configuration |
-| The request body-size limit is no longer an archetype resource | In Envoy Gateway that limit is a `ClientTrafficPolicy` attached to the **Gateway**, which belongs to the platform. It becomes a requirement on the `gateway` archetype (§9) |
+| The request body-size limit is no longer an archetype resource | Envoy does not limit the body while streaming it; a limit would only appear with filters that buffer it, and the Gateway enables none (Envoy Gateway proposal §2.3). No resource is needed, here or on the Gateway |
 
 ---
 
@@ -55,7 +55,6 @@ archetypes/sonarqube/                        # archetype definition (versioned)
 │       ├── externalsecrets.yaml             # secrets stack
 │       ├── cnpg-cluster.yaml                # data-tenant stack
 │       ├── httproute.yaml                   # frontdoor stack
-│       ├── backendtrafficpolicy.yaml        # frontdoor stack
 │       ├── podmonitor.yaml                  # observability stack
 │       ├── prometheusrule.yaml              # observability stack
 │       ├── probe.yaml                       # observability stack (blackbox)
@@ -568,7 +567,7 @@ Onboarding a team = an Entra ID app role (identity team) + an entry in `teams.ya
 
 | | |
 |---|---|
-| **Resources** | `HTTPRoute` `sonarqube` (host `sonar.qa.disasterproject.com`, `parentRefs` to the `qa` Gateway); `BackendTrafficPolicy` attached to the route: 120 s request timeout |
+| **Resources** | `HTTPRoute` `sonarqube` (host `sonar.qa.disasterproject.com`, `parentRefs` to the `qa` Gateway, section `https`) with `timeouts.request: 120s` on the rule: Gateway API standard channel, no Envoy-specific kind (Envoy Gateway proposal §2.2, §7.2) |
 | **What it does not carry** | **`SecurityPolicy`** (S1 §4.6, R44) — enforced by an `assert` (§7.1) |
 | **Inputs** | None via sharing: the Gateway's name and namespace are globals |
 | **After `app`** | The route points at a Service that already exists |
@@ -735,7 +734,7 @@ assert {
 | PSS `restricted` | Rejects the chart's init containers if anyone re-enables them |
 | Mandatory labels | Namespace, pods and PVC carry `archetype`, `instance`, `app.kubernetes.io/*` |
 | Allowed registries | Only the landing zone's Artifact Registry |
-| **New:** `SecurityPolicy` in application namespaces | Denied except in the namespaces the `gateway` archetype authorises; reinforces R44 at admission |
+| **New:** `SecurityPolicy` in application namespaces | Denied except in namespaces labelled `gateway.disasterproject.com/security-policy: "true"`, which only those requiring the `oidc-security-policy` or `jwt-auth` trait carry (Envoy Gateway proposal §9.2). `sonarqube` does not require it; reinforces R44 at admission |
 | **New:** `ConfigMap` in Keycloak's namespace | A tenant may only create `client-<its instance>-*` (§5.5) |
 
 ---
@@ -797,7 +796,7 @@ What this archetype needs from others, and is not yet specified:
 | `gcp-qa-gke` | Node pool `sonar` with sysctl and taint (S1 §4.1); output `workload_identity_pool` | `app`, `secrets`, `data-tenant` |
 | `keycloak` | `ConfigMap` client reconciler; outputs `saml_sso_url` and `saml_idp_certificate`; `oidc-idp` 4.2.0 | `sso`, `app` |
 | `postgres-operator` | Authorise `Cluster` and `ScheduledBackup` as tenant resources; barman-cloud plugin installed; output `cnpg_version` | `data-tenant` |
-| `gateway-envoy-gke` | The Gateway's `ClientTrafficPolicy` with a body-size limit no lower than 100 MiB; allow `BackendTrafficPolicy` in application namespaces; deny `SecurityPolicy` outside the authorised ones | `frontdoor` |
+| `gateway-envoy-gke` | **Resolved** in the Envoy Gateway proposal (`../envoy-gateway-qa/`): no body limit (§2.3); per-route timeout with `timeouts.request` up to 120 s and 60 s by default on the Gateway (§2.2); tenant `BackendTrafficPolicy` allowed within limits and `SecurityPolicy` only in labelled namespaces (§9.2) | `frontdoor` |
 | `gcp-qa-edge` | Backend-service timeout ≥ 120 s (R45); Cloud Armor exclusions on `/api/ce/submit` | Large analyses |
 | `monitoring-oss` | Rule selector `prometheus=qa`; Grafana dashboard sidecar; blackbox exporter | `observability` |
 | `secrets-eso-gsm` | ESO installed with Workload Identity support in a namespaced `SecretStore` | `secrets` |

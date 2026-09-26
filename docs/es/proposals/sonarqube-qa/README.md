@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 12 (alineada con la etapa 2) |
+| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 13 (alineada con la etapa 2) |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
@@ -125,6 +125,7 @@ Herramientas de plataforma sin cambios: Terramate, OpenTofu, conftest, Checkov.
 |---|---|---|
 | Cluster | GKE Standard **regional**, **nodos privados**, endpoint del plano de control con redes autorizadas vacías por defecto (§4.13), Workload Identity, release channel `STABLE`, `deletion_protection: true` (§12.6) | Línea base de §5.7 |
 | Logs y métricas del sistema | `logging_config`: solo `SYSTEM_COMPONENTS`; `monitoring_config`: `SYSTEM_COMPONENTS` y `managed_prometheus.enabled = false` | Logs de cargas de trabajo solo en Loki y sin doble recogida de métricas (propuesta de monitorización §1) |
+| Gateway API de GKE | `gateway_api_config { channel = "CHANNEL_DISABLED" }` | Los CRDs los instala el arquetipo `gateway` en el canal estándar. Con el de GKE, GKE los gestiona y fija su versión, y aparecen las `GatewayClass` `gke-l7-*`, que crean balanceadores sin Cloud Armor (propuesta de Envoy Gateway §3) |
 | Pods por nodo | 64 (default de plataforma) | No aplica la pregunta abierta de Autopilot |
 | Node pool `sonar` | 1 nodo **n2-standard-8** (8 vCPU, 32 GB) en **una zona**, taint `dedicated=sonar:NoSchedule` | Aísla sysctl y presión de memoria. Zona única porque el PVC es zonal |
 | Sysctl | `node_config.linux_node_config.sysctls = { "vm.max_map_count" = "524288" }` | Elimina el init container privilegiado |
@@ -210,7 +211,7 @@ Backups a GCS con **Workload Identity**: IAM `roles/storage.objectAdmin` sobre e
 | TLS interno | GLB → Envoy por HTTPS con certificado de la CA interna de cert-manager |
 | Gateway | Uno por entorno, `allowedRoutes.namespaces.from: Selector` (§10.6); NEG standalone `eg-qa-neg` (§10.2, R20) |
 | Timeout del backend service | **120 s** (por defecto 30 s): la subida del informe de un proyecto grande los supera |
-| Envoy | `BackendTrafficPolicy` en la ruta con timeout ≥ 120 s. El límite de cuerpo es una `ClientTrafficPolicy` del **Gateway**: requisito al arquetipo `gateway` de no bajar de 100 MiB (etapa 2 §9) |
+| Envoy | `timeouts.request: 120s` en la `HTTPRoute` (canal estándar). Sin límite de cuerpo: Envoy no lo impone mientras transmite (propuesta de Envoy Gateway §2.2, §2.3) |
 | Firewall VPC | Rangos de health check del GLB (`35.191.0.0/16`, `130.211.0.0/22`) hacia los pods de Envoy — selector `cidr:` legítimo (AM §6.3) |
 
 Recursos Gateway API empaquetados en el chart y desplegados con `helm_release`, nunca `kubernetes_manifest` (R24).
