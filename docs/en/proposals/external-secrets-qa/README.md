@@ -330,6 +330,7 @@ requires:
     version: "^1.0.0"
   - capability: certs
     version: "^1.0.0"
+    traits: [cert-manager]
 
 provides:
   - capability: secrets

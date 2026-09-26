@@ -76,3 +76,6 @@ traits:
 
   # --- secrets ---
   - eso                       # secrets provider is External Secrets Operator; SecretStore / ExternalSecret CRDs are installed
+
+  # --- certs ---
+  - cert-manager              # certs provider is cert-manager; Certificate / ClusterIssuer CRDs and cainjector are available

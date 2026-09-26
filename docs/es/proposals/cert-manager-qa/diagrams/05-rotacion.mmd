@@ -1,0 +1,21 @@
+flowchart TB
+    subgraph LEAF["Certificado de hoja · automático"]
+        direction LR
+        L1["día 60 de 90<br/>cert-manager renueva<br/>clave nueva"] --> L2["Secret actualizado"] --> L3{"¿el consumidor<br/>recarga?"}
+        L3 -->|"Envoy (SDS), webhooks,<br/>Keycloak (recarga periódica)"| L4["sin intervención"]
+        L3 -->|"lee al arrancar"| L5["reinicio en el procedimiento<br/>del consumidor"]
+    end
+
+    subgraph ROOT["Raíz de la CA · planificada, cada 10 años o si se compromete"]
+        direction LR
+        R1["1 · raíz nueva<br/>internal-ca-root-2"] --> R2["2 · Bundle con las DOS raíces<br/>trust-manager lo reparte"]
+        R2 --> R3["3 · ClusterIssuer apunta a la nueva<br/>re-emisión de todas las hojas"]
+        R3 --> R4["4 · Bundle solo con la nueva<br/>cuando ninguna hoja use la vieja"]
+    end
+
+    MON["Alertas (en monitoring)<br/>hoja sin Ready 15 min · hoja < 14 días<br/>raíz < 365 días · certificado SERVIDO < 14 días"]
+    MON -.-> LEAF
+    MON -.-> ROOT
+
+    style ROOT fill:#fff4e5
+    style MON fill:#f5f5f5

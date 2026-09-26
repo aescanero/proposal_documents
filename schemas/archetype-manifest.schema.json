@@ -475,6 +475,7 @@
         "acl-authz",
         "arm64",
         "audit-api",
+        "cert-manager",
         "cnpg",
         "cross-namespace-refgrant",
         "custom-templates",

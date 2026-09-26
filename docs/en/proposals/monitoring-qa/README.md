@@ -297,6 +297,7 @@ requires:
     traits: [eso]
   - capability: certs
     version: "^1.0.0"
+    traits: [cert-manager]
   - capability: ingress
     version: ">=3.0.0 <4.0.0"
     traits: [gateway-api, http-route]

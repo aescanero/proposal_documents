@@ -431,6 +431,7 @@ requires:
     traits: [gateway-api, http-route]
   - capability: certs
     version: "^1.0.0"
+    traits: [cert-manager]
   - capability: secrets
     version: "^2.0.0"
     traits: [eso]
