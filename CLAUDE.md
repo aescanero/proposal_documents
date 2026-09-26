@@ -12,12 +12,31 @@ A multi-cloud infrastructure platform built on **Terramate CLI + OpenTofu**, wit
 
 | Half | Document | Answers |
 |---|---|---|
-| **Resolve** | `docs/archetype-model.md` | What may be composed with what — manifests, capabilities, traits, pools, CMDB, resolution |
-| **Generate** | `docs/terramate-outputs-sharing-architecture.md` | How it is generated and applied — generators, outputs sharing, IAM, policy, CI/CD, per-cloud guides |
+| **Resolve** | `archetype-model.md` | What may be composed with what — manifests, capabilities, traits, pools, CMDB, resolution |
+| **Generate** | `terramate-outputs-sharing-architecture.md` | How it is generated and applied — generators, outputs sharing, IAM, policy, CI/CD, per-cloud guides |
 
-Plus `docs/platform-overview.md` (diagram-led map, read first), `docs/risk-register.md` (53 risks by domain, 52 active), `docs/glossary.md` (every term, defined) and `docs/developer-guide.md` (the application developer's half — branching, versioning, build, rollback).
+Plus `platform-overview.md` (diagram-led map, read first), `risk-register.md` (53 risks by domain, 52 active), `glossary.md` (every term, defined) and `developer-guide.md` (the application developer's half — branching, versioning, build, rollback). Each of these lives in **two languages**: `docs/en/<file>.md` and `docs/es/<file>.md`. Below, a bare `docs/<file>.md` reference means "that file, in whichever language you are reading" — both copies say the same thing, so the path is language-neutral by design.
 
 **The seam between the halves is `binding.tm.hcl`.** The resolver writes globals; the generators consume them. Neither knows the other's internals.
+
+---
+
+## Bilingual documentation
+
+Every document under `docs/` exists in **English** (`docs/en/`) and **Spanish** (`docs/es/`), as full, independently readable copies — not a machine-translated shadow of one "real" version. Structure, headings, tables, code blocks and section numbers match exactly between the two, so a section reference (`§9.4`, `AM §5.1`) resolves the same way in either language. What differs is only the prose.
+
+| Kind of document | Written first in | Then translated into |
+|---|---|---|
+| Reference documents (`docs/en/*.md`, `docs/es/*.md` at the top level: `platform-overview.md`, `archetype-model.md`, `terramate-outputs-sharing-architecture.md`, `developer-guide.md`, `risk-register.md`, `glossary.md`) | **English** | Spanish |
+| Design proposals (`docs/en/proposals/`, `docs/es/proposals/`) | **Spanish** | English |
+| This file, the root `README.md`, and the small `registry/`, `schemas/`, `.github/workflows/` READMEs | **English** | Spanish (a `<name>.es.md` sibling, or a bilingual single file where the content is short enough — see the existing files for the pattern) |
+
+Rules that follow from "kept in sync", not just "translated once":
+
+- **A change to a reference document changes both copies in the same commit or the same pull request.** A PR that edits `docs/en/risk-register.md` without touching `docs/es/risk-register.md` is incomplete, not a follow-up for later — the two are one document with two renderings, and letting them drift is exactly the kind of silent divergence this repository's other gates (registry vs. schema, generator vs. Gatekeeper) exist to prevent.
+- **Diagrams are part of the document, not an attachment.** A Mermaid source or a hand-built SVG with labels in one language needs its own rendered copy with labels in the other — never a screenshot of the other language's diagram relabelled, and never one language's diagram left to stand for both. `docs/es/proposals/sonarqube-qa/diagrams/20-bloques-presentacion.py` is the pattern for a hand-built SVG: the generator script travels with the language it renders.
+- **Identifiers stay in English in both copies.** Capability names, trait names, stack IDs, HCL/YAML keys, `kind:` values, environment names — anything that is also a literal string somewhere in the registry, a schema, or generated code — is not translated, in either language. Only prose, table descriptions and comments are. This is why translating code blocks verbatim (not transliterating them) is correct, not an oversight.
+- **A new document is not done until both languages exist.** Adding only `docs/en/foo.md` (or only the Spanish proposal) and deferring the other copy to "a follow-up" is the failure mode this section exists to name and forbid.
 
 ---
 
@@ -67,11 +86,11 @@ The same technology can be both. `postgres-operator` (archetype, provides `datab
 
 1. **Is `max_pods_per_node` settable on Autopilot?** The default of 64 assumes it is.
 2. **Shared VPC or separate VPCs on GCP?** Peering non-transitivity plus the same-VPC backend rule may force Shared VPC. Address plan unchanged either way. Risk R23.
-   **Settled for `qa`: separate VPC.** `qa` is dedicated, so its edge load balancer lives in its own VPC next to the Envoy NEG and nothing routes through the hub; R23 does not arise. Still open for `demos` and any environment whose edge would sit in the hub. See `docs/proposals/sonarqube-qa/README.md` §4.15.
+   **Settled for `qa`: separate VPC.** `qa` is dedicated, so its edge load balancer lives in its own VPC next to the Envoy NEG and nothing routes through the hub; R23 does not arise. Still open for `demos` and any environment whose edge would sit in the hub. See `proposals/sonarqube-qa/README.md` §4.15.
 3. **Kafka partition ceiling** on the intended broker count. The 4000 budget in the `demos` binding is a placeholder.
 4. **Where does resolution run** — a CLI in the repo, or a reusable workflow? Determines whether the project office can validate a demo locally.
 5. **How much Rego is genuinely shared** between conftest and `ConstraintTemplate`s. Measure before planning a single policy codebase.
-6. **Developer guide open questions** — scaffolding tool vs template repository, where the version bump is computed, ephemeral environments opt-in or automatic. Listed in `docs/developer-guide.md` §13.
+6. **Developer guide open questions** — scaffolding tool vs template repository, where the version bump is computed, ephemeral environments opt-in or automatic. Listed in `developer-guide.md` §13.
 
 ---
 
@@ -112,8 +131,8 @@ These are the failure modes that have already been identified. Do not rediscover
 ## Repository layout
 
 ```
-docs/                   reference documents — the specification
-docs/proposals/         design proposals for concrete deployments (not normative)
+docs/en/, docs/es/      reference documents, in English and Spanish (CLAUDE.md, "Bilingual documentation")
+docs/en/proposals/, docs/es/proposals/   design proposals for concrete deployments (not normative)
 schemas/                JSON Schema, GENERATED from registry/
 registry/               SOURCE OF TRUTH for capabilities, traits, zones, labels
 .github/workflows/
@@ -169,7 +188,7 @@ Generated code **is committed to git**, prefixed with `_`, and covered by `CODEO
 
 ## Where to start
 
-Roadmap is in `docs/terramate-outputs-sharing-architecture.md` §16. Current position: **nothing built yet; documentation complete**.
+Roadmap is in `terramate-outputs-sharing-architecture.md` §16. Current position: **nothing built yet; documentation complete**.
 
 **Phase 0 first.** Build a throwaway repository with two stacks and confirm, against a pinned Terramate version:
 
@@ -186,7 +205,7 @@ These are an afternoon's work and they gate everything else.
 
 ## The developer guide
 
-Written: `docs/developer-guide.md`. Java, Python and Node/React; GitFlow; `archetypectl new-app` scaffolding still deferred.
+Written: `developer-guide.md`. Java, Python and Node/React; GitFlow; `archetypectl new-app` scaffolding still deferred.
 
 Settled there, do not reopen:
 

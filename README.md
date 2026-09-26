@@ -7,17 +7,25 @@ GCP, AWS and Azure at parity; designed so a fourth cloud touches only layers 0�
 
 ## Start here
 
+Documentation is **bilingual**: every document exists in English (`docs/en/`) and in Spanish (`docs/es/`), kept in sync. Pick your language:
+
 | Read | For |
 |---|---|
-| [`docs/platform-overview.md`](docs/platform-overview.md) | Diagram-led map of everything. **Start here** |
-| [`docs/archetype-model.md`](docs/archetype-model.md) | What may be composed with what — manifests, capabilities, traits, pools, CMDB, resolution |
-| [`docs/terramate-outputs-sharing-architecture.md`](docs/terramate-outputs-sharing-architecture.md) | How it is generated and applied — generators, outputs sharing, IAM, policy, CI/CD, five runtime guides |
-| [`docs/developer-guide.md`](docs/developer-guide.md) | For application developers — branching, versioning, build, rollback, and the three languages |
-| [`docs/risk-register.md`](docs/risk-register.md) | 53 risks by domain (52 active), reviewed at each phase gate |
-| [`docs/glossary.md`](docs/glossary.md) | Every technical term in the documents above, with its definition |
-| [`docs/proposals/sonarqube-qa/`](docs/proposals/sonarqube-qa/README.md) | Proposal, stage 1: SonarQube Community on `qa` — elements, dependencies, OSS tooling (Spanish) |
-| [`docs/proposals/sonarqube-qa/02-archetype-sonarqube.md`](docs/proposals/sonarqube-qa/02-archetype-sonarqube.md) | Proposal, stage 2: the layer-5 `sonarqube` archetype — stacks, templates, execution, policies, implementation plan (Spanish) |
-| [`CLAUDE.md`](CLAUDE.md) | Decision log: what is settled, what is open, and the traps |
+| [`docs/en/`](docs/en/) | Documentation in **English** |
+| [`docs/es/`](docs/es/) | Documentación en **español** |
+| [`CLAUDE.md`](CLAUDE.md) | Decision log: what is settled, what is open, and the traps. See "Bilingual documentation" for the rule on which language is authored first |
+
+Inside each language folder:
+
+| Read | For |
+|---|---|
+| `platform-overview.md` | Diagram-led map of everything. **Start here** |
+| `archetype-model.md` | What may be composed with what — manifests, capabilities, traits, pools, CMDB, resolution |
+| `terramate-outputs-sharing-architecture.md` | How it is generated and applied — generators, outputs sharing, IAM, policy, CI/CD, five runtime guides |
+| `developer-guide.md` | For application developers — branching, versioning, build, rollback, and the three languages |
+| `risk-register.md` | 53 risks by domain (52 active), reviewed at each phase gate |
+| `glossary.md` | Every technical term in the documents above, with its definition |
+| `proposals/sonarqube-qa/` | Design proposal, in two stages: elements and dependencies, then the layer-5 `sonarqube` archetype and its implementation plan |
 
 The two halves meet at `binding.tm.hcl`: the resolver writes globals, the generators
 consume them.
