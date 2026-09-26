@@ -101,7 +101,7 @@ rect(RX,RY,RW,RH,pal['out'][0],'#a5f3fc',rx=18,sw=1.5)
 text(RX+24,RY+44,"Provee secrets 2.0.0",22,700)
 text(RX+24,RY+70,"trait eso · SecretStore por namespace",15,400,SUB,italic=True)
 items=[("SonarQube","5 secretos","KSA eso-sonarqube"),("Keycloak","5 secretos + clientes OIDC","KSA eso-keycloak"),
-       ("Monitorización","Alertmanager · Grafana","KSA eso-monitoring"),("Stack data (Cloud SQL)","escribe la versión de -db","no lee: solo escribe")]
+       ("Monitorización","Alertmanager · Grafana","KSA eso-monitoring-oss"),("Stack data (Cloud SQL)","escribe la versión de -db","no lee: solo escribe")]
 y=RY+92
 for t,a,b in items:
     rect(RX+20,y,RW-40,128,'#ffffff','#a5f3fc',rx=10,sw=1.5)
