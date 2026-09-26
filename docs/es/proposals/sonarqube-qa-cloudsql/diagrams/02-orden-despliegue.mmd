@@ -1,0 +1,48 @@
+flowchart TD
+    subgraph Z["Fase A · landing zone y entorno"]
+        direction TB
+        LZ["gcp-lz-*<br/>dns-zone padre · KMS · Artifact Registry · WIF GitHub"] --> N["gcp-qa-network<br/><b>+ PSA: rango qa-psa y conexión<br/>servicenetworking</b>"]
+        N --> CM["gcp-qa-cloudmon<br/><b>+ canal de notificación</b>"]
+        N --> C["gcp-qa-gke<br/>node pools: general + sonar"]
+    end
+
+    subgraph P["Fase B · plataforma qa"]
+        direction TB
+        C --> PO["gcp-qa-policy"]
+        PO --> CE["gcp-qa-certs"]
+        PO --> M["gcp-qa-monitoring"]
+        CE --> S1["gcp-qa-secrets"]
+        CE --> GW["gcp-qa-gateway"]
+        GW -. "NEG" .-> ED["gcp-qa-edge"]
+        S1 --> KC["gcp-qa-keycloak<br/><b>+ su propio Cloud SQL</b>"]
+        GW --> KC
+        NOPG["gcp-qa-postgres-operator<br/><b>NO SE DESPLIEGA</b>"]
+    end
+
+    subgraph I["Fase C · instancia gcp-qa-sonarqube-main"]
+        direction TB
+        IAM["iam<br/>namespace + KSAs"] --> SEC["secrets<br/>secretos GSM + IAM<br/>+ ExternalSecrets"]
+        SEC --> DATA["<b>data</b><br/>Cloud SQL · BD · usuario<br/>versión del secreto · IAM · alertas"]
+        IAM --> DATA
+        DATA --> FW["firewall<br/>NetworkPolicies"]
+        FW --> APP["app<br/>SonarQube + sidecar Auth Proxy"]
+        SEC --> APP
+        IAM --> SSO["sso"]
+        SSO --> APP
+        APP --> CFG["config"]
+        APP --> FD["frontdoor"]
+        APP --> OBS["observability"]
+    end
+
+    N -->|"after (PSA debe existir)"| DATA
+    C -->|"workload_identity_pool"| DATA
+    CM -->|"notification_channel_id"| DATA
+    S1 --> SEC
+    KC --> SSO
+    GW --> FD
+    M --> OBS
+
+    style NOPG fill:#f5f5f5,stroke-dasharray: 5 5
+    style DATA fill:#e8f0fe
+    style APP fill:#e8f5e9
+    style ED fill:#f5f5f5

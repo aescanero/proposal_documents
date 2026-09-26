@@ -26,6 +26,7 @@ Inside each language folder:
 | `risk-register.md` | 53 risks by domain (52 active), reviewed at each phase gate |
 | `glossary.md` | Every technical term in the documents above, with its definition |
 | `proposals/sonarqube-qa/` | Design proposal, in two stages: elements and dependencies, then the layer-5 `sonarqube` archetype and its implementation plan |
+| `proposals/sonarqube-qa-cloudsql/` | Variant of the above: SonarQube's PostgreSQL on Cloud SQL instead of CloudNativePG, by leaving `database-platform` unbound in `qa` |
 
 The two halves meet at `binding.tm.hcl`: the resolver writes globals, the generators
 consume them.

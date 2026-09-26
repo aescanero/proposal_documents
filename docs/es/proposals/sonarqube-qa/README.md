@@ -7,6 +7,7 @@
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
 | **Etapa 2** | [`02-archetype-sonarqube.md`](02-archetype-sonarqube.md): arquetipo, stacks, plantillas y plan de implementación. Donde difieren, manda la etapa 2 |
+| **Variante** | [`../sonarqube-qa-cloudsql/`](../sonarqube-qa-cloudsql/README.md): PostgreSQL en Cloud SQL en vez de CloudNativePG (reabre D2) |
 | **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano |
 
 Nada de este documento reabre decisiones de `CLAUDE.md`. Donde SonarQube choca con una de ellas (PSS `restricted`, OIDC en el Gateway, `database-platform`), se dice y se propone cómo encajar sin cambiarla.
