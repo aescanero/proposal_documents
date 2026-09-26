@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 1 |
+| **Status** | Proposal · revision 2 |
 | **Scope** | The layer 4 `keycloak` archetype on `qa`: installation, data, configuration, `qa` realm with Entra ID as upstream IdP, consumer clients as tenant resources, keys, publishing, network, availability, observability, stacks, policies, execution and plan |
 | **Data assumption** | The Cloud SQL variant ([`../sonarqube-qa-cloudsql/`](../sonarqube-qa-cloudsql/README.md), DC1): `database-platform` unbound on `qa`, so Keycloak brings its own instance (DC8 of that variant). If DC1 is rejected, the same manifest takes the `data-tenant` path with a CNPG `Cluster` (AM §5.5) and only §3 changes |
 | **Known consumers** | SonarQube over SAML ([`../sonarqube-qa/`](../sonarqube-qa/README.md), S1/S2), Grafana over OIDC, future applications with an OIDC `SecurityPolicy` on the Gateway |
@@ -194,7 +194,7 @@ The realm's base configuration is code: a document in the archetype chart applie
 
 ### 5.3 From app roles to groups, without configuring each role
 
-S1 §4.6 proposed one *claim to group* mapper per app role. Here it is simplified (DK5):
+S1 §4.6 originally proposed one *claim to group* mapper per app role; it was simplified as follows (DK5), and S1 §4.6 now reflects it:
 
 | Step | Mechanism |
 |---|---|
@@ -224,7 +224,7 @@ Source: [`diagrams/05-clientes-tenant.mmd`](diagrams/05-clientes-tenant.mmd)
 
 ### 6.1 The tenant resource
 
-AM §10.4 names `KeycloakClient` as the tenant resource. That CRD belonged to the old operator; the current one does not have it (S2 §5.5). The manifest declares what is actually created:
+AM §10.4 named `KeycloakClient` as the tenant resource. That CRD belonged to the old operator; the current one does not have it (S2 §5.5). AM §10.4 is now updated. The manifest declares what is actually created:
 
 ```yaml
 tenant_resources:
@@ -631,8 +631,8 @@ It stops at the Cloud SQL instance (double protection) and at `qa-keycloak-realm
 | Document | Change | Status |
 |---|---|---|
 | S2 §5 (`app` `stack.tm.hcl` pattern), in `docs/es/` and `docs/en/` | `after` to `/stacks/platforms/gcp/qa/keycloak` → `/stacks/archetypes/keycloak/instances/main/realm`: Keycloak is layer 4 and lives in `stacks/archetypes/` (`CLAUDE.md`, layout) | **Applied** with this proposal |
-| S1 §4.6, row "Mapping in Keycloak" | Per-role mapper → import of the `roles` claim as an attribute (§5.3) | Proposed |
-| AM §10.4 | `keycloak` tenant resource: `KeycloakClient`, `KeycloakRealmRole` → `ConfigMap` with prefix `client-{{ instance }}-` | Proposed |
+| S1 §4.6, rows "Mapping in Keycloak" and "Toward SonarQube", and S2 §5.5 | Per-role mapper → import of the `roles` claim as an attribute (§5.3) | **Applied** |
+| AM §10.4, and S2 §5.5 and §7.2 | `keycloak` tenant resource: `KeycloakClient`, `KeycloakRealmRole` → `ConfigMap` with prefix `client-{{ instance }}-` | **Applied** |
 | `registry/` | No new trait | — |
 
 ---

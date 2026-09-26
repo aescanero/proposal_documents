@@ -956,7 +956,7 @@ The same pattern covers any operator-backed shared service:
 | `kafka` | `event-bus` | `KafkaTopic`, `KafkaUser` |
 | `postgres-operator` | `database-platform` | `Database`, `Role` |
 | `redis-operator` | `cache` | `RedisInstance` |
-| `keycloak` | `oidc-idp` | `KeycloakClient`, `KeycloakRealmRole` |
+| `keycloak` | `oidc-idp` | `ConfigMap` named `client-{{ instance }}-*`, reconciled into a client by keycloak-config-cli. The current Keycloak Operator has no client CRD; groups come from the upstream IdP, so no role resource is offered |
 
 An assertion closes the whole class of failure:
 

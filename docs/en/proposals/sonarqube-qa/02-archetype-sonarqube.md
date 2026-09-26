@@ -488,14 +488,14 @@ Source: [`diagrams/15-datos-backup.mmd`](diagrams/15-datos-backup.mmd)
 | | |
 |---|---|
 | **Purpose** | Register SonarQube as the `qa` realm's SAML client and map Entra ID roles → groups |
-| **Tenant resource** | `KeycloakClient` in Keycloak's namespace (`creates_tenant_resources: [oidc-idp]`) |
+| **Tenant resource** | `ConfigMap` `client-sonarqube-main-saml` in Keycloak's namespace (`creates_tenant_resources: [oidc-idp]`; AM §10.4) |
 | **Proposed implementation** | The `keycloak` archetype reconciles clients via **keycloak-config-cli** from `ConfigMap`s labelled `keycloak.disasterproject.com/realm=qa` in its own namespace. This stack creates that `ConfigMap` with the client's JSON |
 | **Why not Keycloak's OpenTofu provider** | It needs Keycloak admin credentials in the pipeline: the pipeline would read a secret, exactly what S1 §4.3 forbids |
-| **Client contents** | `clientId: https://sonar.qa.disasterproject.com` · `saml` protocol · ACS `https://sonar.qa.disasterproject.com/oauth2/callback/saml` · signed assertions · mappers `login`, `name`, `email`, `groups` (Keycloak groups, sourced from Entra's app roles, S1 §4.6) |
+| **Client contents** | `clientId: https://sonar.qa.disasterproject.com` · `saml` protocol · ACS `https://sonar.qa.disasterproject.com/oauth2/callback/saml` · signed assertions · mappers `login`, `name`, `email`, `groups` (the `entra_roles` user attribute, imported from Entra's `roles` claim, S1 §4.6) |
 | **Inputs** | `cluster_*` (gke) |
 | **Requirement on the `keycloak` archetype** | A `ConfigMap` reconciler; **new outputs** `saml_sso_url` and `saml_idp_certificate` (a public certificate, safe to share): a MINOR bump of the `oidc-idp` contract → 4.2.0 (AM §4.5) |
 
-A divergence to resolve when the `keycloak` archetype is designed: AM §10.4 names the tenant resource as the `KeycloakClient` CRD, which belonged to the old operator. The current Keycloak Operator only imports whole realms (`KeycloakRealmImport`), with no reconciliation of changes. This proposal keeps the **logical name** `KeycloakClient` and changes the implementation to `ConfigMap` + keycloak-config-cli. Gatekeeper restricts, inside Keycloak's namespace, which `ConfigMap`s each tenant may create (prefix `client-<instance>-`), because RBAC does not filter by name.
+Resolved in the Keycloak proposal (`../keycloak-qa/`, §6) and in AM §10.4: the `KeycloakClient` CRD belonged to the old operator, and the current Keycloak Operator only imports whole realms (`KeycloakRealmImport`), with no reconciliation of changes. The tenant resource is therefore a `ConfigMap` with prefix `client-<instance>-`, reconciled by keycloak-config-cli. Every `qa` stack applies with the same pipeline identity, so the real control on what a tenant declares is conftest against the claims ledger; Gatekeeper checks the shape.
 
 ### 5.6 `app` — SonarQube
 
@@ -715,7 +715,7 @@ assert {
 |---|---|---|
 | `input` ↔ `after` | existing (R2) | §5.10's table against each stack's `after` |
 | Secret by reference | existing (R8) | No `secrets` `output` exports a value; only `secret_ids` |
-| Authorised tenant resources | existing (AM §10.4) | `data-tenant` and `sso` declare `creates_tenant_resources`, and the provider authorises `Cluster`, `ScheduledBackup`, `KeycloakClient` |
+| Authorised tenant resources | existing (AM §10.4) | `data-tenant` and `sso` declare `creates_tenant_resources`, and the provider authorises `Cluster`, `ScheduledBackup` and the `ConfigMap` `client-<instance>-*` |
 | **New:** no secret values in state | R40 | `plan.json` (G3) contains no `secret_data` in the clear; only `secret_data_wo` |
 | **New:** IAM per resource | S1 §4.3 | No `google_project_iam_*` with `secretmanager.*` in archetype stacks |
 

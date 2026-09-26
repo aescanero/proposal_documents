@@ -12,7 +12,7 @@ flowchart TB
         SEC["secrets<br/>Secret Manager · IAM per secret<br/>SecretStore · ExternalSecrets"]
         DATA["data-tenant<br/>bucket · IAM · CNPG Cluster<br/>ScheduledBackup"]
         FW["firewall<br/>NetworkPolicies"]
-        SSO["sso<br/>KeycloakClient (ConfigMap)"]
+        SSO["sso<br/>ConfigMap client-sonarqube-main-*"]
         APP["app<br/>helm_release sonarqube"]
         CFG["config<br/>Job: groups · permissions · gate"]
         FD["frontdoor<br/>HTTPRoute · BackendTrafficPolicy"]

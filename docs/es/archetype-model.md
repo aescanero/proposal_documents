@@ -957,7 +957,7 @@ El mismo patrón cubre cualquier servicio compartido respaldado por un operador:
 | `kafka` | `event-bus` | `KafkaTopic`, `KafkaUser` |
 | `postgres-operator` | `database-platform` | `Database`, `Role` |
 | `redis-operator` | `cache` | `RedisInstance` |
-| `keycloak` | `oidc-idp` | `KeycloakClient`, `KeycloakRealmRole` |
+| `keycloak` | `oidc-idp` | `ConfigMap` con nombre `client-{{ instance }}-*`, que keycloak-config-cli reconcilia como cliente. El Keycloak Operator actual no tiene CRD de cliente; los grupos vienen del IdP de origen, así que no se ofrece recurso de roles |
 
 Una aserción cierra toda la clase de fallo:
 

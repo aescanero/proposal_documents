@@ -14,7 +14,7 @@ flowchart TB
         DATA["<b>data</b> (GCP only)<br/>Cloud SQL · DB · user<br/>qa-sonarqube-db version<br/>conditional cloudsql.client · alerts"]
         SKIP["data-tenant<br/><i>skipped: database-platform unbound</i>"]
         FW["firewall<br/>NetworkPolicies"]
-        SSO["sso<br/>KeycloakClient (ConfigMap)"]
+        SSO["sso<br/>ConfigMap client-sonarqube-main-*"]
         APP["app<br/>helm_release sonarqube<br/>+ Cloud SQL Auth Proxy sidecar"]
         CFG["config"]
         FD["frontdoor"]

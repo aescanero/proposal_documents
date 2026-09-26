@@ -236,8 +236,8 @@ SonarQube's `HTTPRoute` carries **no OIDC `SecurityPolicy`**, same as Keycloak's
 | Entra ID registration | One *app registration* `keycloak-qa`, redirect URI `https://sso.qa.disasterproject.com/realms/qa/broker/entra/endpoint` | A single trust point with Entra for every `qa` application |
 | Keycloak's credential to Entra | **Certificate** (signed client assertion), not a client secret | Entra client secrets expire (≤ 24 months) and tend to expire in production without warning. Private key in Secret Manager (`qa-keycloak-entra-cert`) |
 | Groups | **App roles** on the app registration (`sonar-administrators`, `sonar-users`, `team-<x>`), assigned to Entra groups | Entra's `groups` claim carries **GUIDs**, not names, and beyond 200 groups it is replaced by an *overage* that requires a Graph call. The `roles` claim carries stable names scoped to this application only |
-| Mapping in Keycloak | A *claim to group* mapper per role → Keycloak group; `force` sync on every login | A membership change in Entra takes effect on the next login |
-| Toward SonarQube | SAML with the `groups` attribute = Keycloak groups | Unchanged from the earlier design |
+| Mapping in Keycloak | An *Attribute Importer* mapper copies the `roles` claim into the multi-valued user attribute `entra_roles`; `force` sync on every login. No mapper per role and no Keycloak groups (Keycloak proposal §5.3) | A membership change in Entra takes effect on the next login. Onboarding a team touches Entra and `teams.yaml` only |
+| Toward SonarQube | SAML with the `groups` attribute = the values of `entra_roles` | SonarQube receives the same `groups` attribute it expected |
 | Network | Keycloak needs **egress** to `login.microsoftonline.com` (back-channel code exchange) via Cloud NAT | SonarQube still needs no network path to Keycloak or Entra |
 
 Keycloak stays as the intermediary (D4) even though SonarQube could do SAML directly against Entra ID: Grafana and future `qa` applications use the same realm, and Envoy's OIDC `SecurityPolicy` for the rest of the applications was designed against Keycloak. The cost is that Keycloak sits on the login critical path.
