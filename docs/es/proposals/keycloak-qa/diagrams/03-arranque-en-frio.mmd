@@ -1,0 +1,23 @@
+flowchart LR
+    subgraph B["Fase B · plataforma qa, en este orden"]
+        direction TB
+        GW["1 · gcp-qa-gateway<br/>Gateway qa"]
+        KAPP["2 · keycloak · app<br/>Service keycloak-service:8443<br/>certificado de la CA interna"]
+        KFD["3 · keycloak · frontdoor<br/>HTTPRoute /realms/qa y /resources<br/><b>sin SecurityPolicy</b> (R22)"]
+        KRLM["4 · keycloak · realm<br/>realm qa · IdP entra"]
+        GW --> KFD
+        KAPP --> KFD
+        KAPP --> KRLM
+    end
+    subgraph C["Fase C y posteriores · consumidores"]
+        direction TB
+        SQ["sonarqube · sso<br/>ConfigMap client-sonarqube-main-*"]
+        SP["app X · frontdoor<br/>HTTPRoute + SecurityPolicy OIDC"]
+    end
+
+    KRLM --> SQ
+    KRLM --> SP
+    SP -. "back-channel: discovery, JWKS, token<br/>backendRefs → Service interno" .-> KAPP
+    SP -. "navegador: authorization endpoint<br/>hostname público" .-> KFD
+
+    style KFD fill:#e8f0fe

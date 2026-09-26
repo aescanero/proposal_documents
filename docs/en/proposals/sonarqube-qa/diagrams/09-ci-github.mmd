@@ -1,0 +1,21 @@
+sequenceDiagram
+    autonumber
+    participant DEV as Developer
+    participant GH as GitHub (200-project repo)
+    participant GHA as GitHub Actions
+    participant SQ as SonarQube (web)
+    participant CE as Compute Engine<br/>1 worker, FIFO queue
+    participant DB as PostgreSQL
+
+    DEV->>GH: merge to main
+    GH->>GHA: push to main (NOT pull_request)
+    Note over GHA: concurrency: sonar-${{ github.repository }}<br/>cancel-in-progress: true
+    GHA->>GHA: build + tests + coverage
+    GHA->>SQ: sonarqube-scan-action · POST /api/ce/submit
+    SQ->>CE: queues the task
+    Note over CE: with 200 projects, at peak hours<br/>the queue is the bottleneck
+    CE->>DB: processes the report, persists it
+    CE->>SQ: indexes into ES
+    GHA->>SQ: waits on the quality gate (timeout 300 s)
+    SQ-->>GHA: OK / ERROR
+    GHA-->>GH: green / red check on the main commit

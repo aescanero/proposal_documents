@@ -295,6 +295,10 @@
         "pvc_gib": {
           "type": "integer",
           "minimum": 0
+        },
+        "managed_db_instances": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },

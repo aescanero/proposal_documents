@@ -1,0 +1,19 @@
+flowchart TB
+    subgraph NODE["'sonar' node pool · n2-standard-8 (8 vCPU · 32 GB) · taint dedicated=sonar:NoSchedule<br/>linux_node_config.sysctls: vm.max_map_count=524288"]
+        subgraph POD["Pod sonarqube-0 · StatefulSet 1 replica · request 4 vCPU / 12 GiB · limit 12 GiB, no CPU limit<br/>runAsNonRoot uid 1000 · seccomp RuntimeDefault · drop ALL · unprivileged"]
+            direction LR
+            W["JVM web<br/>-Xmx2g"]
+            CE["JVM compute engine<br/>-Xmx3g · 1 worker"]
+            ES["JVM search · ES<br/>-Xmx3g + mmap"]
+        end
+        V1[("PVC 50 GiB hyperdisk-balanced<br/>/opt/sonarqube/data · ES indices")]
+        V2[("emptyDir temp and logs")]
+        V3[("Secret sonar-secret.txt")]
+    end
+    X1["privileged initSysctl · DISABLED"]
+    X2["initFs as root · DISABLED"]
+    POD --- V1 & V2 & V3
+    X1 -.-x POD
+    X2 -.-x POD
+    style X1 fill:#fce8e6
+    style X2 fill:#fce8e6

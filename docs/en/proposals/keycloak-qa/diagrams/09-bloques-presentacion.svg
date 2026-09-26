@@ -1,0 +1,233 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080" role="img" aria-label="keycloak archetype: blocks and stacks">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9ca3af"/></marker><filter id="sh" x="-5%" y="-5%" width="110%" height="115%"><feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#111827" flood-opacity="0.08"/></filter></defs>
+<rect width="1920" height="1080" fill="#ffffff"/>
+<text x="60" y="72" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="40" font-weight="800" fill="#1f2937" text-anchor="start">Keycloak — layer-4 archetype, oidc-idp provider</text>
+<text x="60" y="108" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="400" fill="#4b5563" text-anchor="start">Instance keycloak-main · environment qa · GCP disasterproject-qa · europe-west1 · 9 stacks · realm qa · Entra ID upstream</text>
+<rect x="60" y="124" width="120" height="5" rx="2" fill="#2563eb"/>
+<rect x="40" y="160" width="330" height="670" rx="18" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="64" y="204" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="22" font-weight="700" fill="#1f2937" text-anchor="start">Consumes from the platform</text>
+<text x="64" y="230" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start" font-style="italic">one capability, one provider</text>
+<rect x="60" y="252" width="290" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="78" y="284" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">cluster</text>
+<text x="78" y="309" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">GKE Standard · 2 zones</text>
+<rect x="60" y="333" width="290" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="78" y="365" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">policy</text>
+<text x="78" y="390" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">Gatekeeper · PSS restricted</text>
+<rect x="60" y="414" width="290" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="78" y="446" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">ingress</text>
+<text x="78" y="471" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">Envoy Gateway · Gateway API</text>
+<rect x="60" y="495" width="290" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="78" y="527" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">certs</text>
+<text x="78" y="552" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">cert-manager · internal CA</text>
+<rect x="60" y="576" width="290" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="78" y="608" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">secrets</text>
+<text x="78" y="633" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">ESO + Secret Manager</text>
+<rect x="60" y="657" width="290" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="78" y="689" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">monitoring</text>
+<text x="78" y="714" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">Prometheus · Grafana · Loki</text>
+<rect x="60" y="738" width="290" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="78" y="770" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">database-platform</text>
+<text x="78" y="795" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">unbound → its own Cloud SQL</text>
+<g filter="url(#sh)">
+<rect x="420" y="160" width="1100" height="670" rx="22" fill="#fbfcff" stroke="#2563eb" stroke-width="3"/>
+</g>
+<text x="450" y="204" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="24" font-weight="800" fill="#2563eb" text-anchor="start">archetypes/keycloak</text>
+<text x="1490" y="204" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="17" font-weight="500" fill="#4b5563" text-anchor="end">kind: catalog · layer 4 · v4.2.0</text>
+<text x="450" y="250" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="17" font-weight="700" fill="#2563eb" text-anchor="start">1 · Foundation</text>
+<line x1="450" y1="260" x2="695" y2="260" stroke="#2563eb" stroke-width="2" opacity="0.35"/>
+<text x="720" y="250" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="17" font-weight="700" fill="#c2410c" text-anchor="start">2 · Network and operator</text>
+<line x1="720" y1="260" x2="965" y2="260" stroke="#c2410c" stroke-width="2" opacity="0.35"/>
+<text x="990" y="250" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="17" font-weight="700" fill="#15803d" text-anchor="start">3 · Server</text>
+<line x1="990" y1="260" x2="1235" y2="260" stroke="#15803d" stroke-width="2" opacity="0.35"/>
+<text x="1260" y="250" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="17" font-weight="700" fill="#7e22ce" text-anchor="start">4 · Realm and operations</text>
+<line x1="1260" y1="260" x2="1505" y2="260" stroke="#7e22ce" stroke-width="2" opacity="0.35"/>
+<rect x="450" y="274" width="245" height="170" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>
+<rect x="450" y="274" width="245" height="46" rx="12" fill="#eaf1ff"/>
+<rect x="450" y="308" width="245" height="12" fill="#eaf1ff"/>
+<line x1="450" y1="320" x2="695" y2="320" stroke="#2563eb" stroke-width="1"/>
+<circle cx="474" cy="297" r="14" fill="#2563eb"/>
+<text x="474" y="303" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+<text x="498" y="305" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#2563eb" text-anchor="start">iam</text>
+<text x="466" y="350" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">Namespace and identities</text>
+<circle cx="472" cy="373" r="3" fill="#2563eb"/>
+<text x="482" y="378" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">namespace keycloak</text>
+<circle cx="472" cy="397" r="3" fill="#2563eb"/>
+<text x="482" y="402" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">PSS restricted</text>
+<circle cx="472" cy="421" r="3" fill="#2563eb"/>
+<text x="482" y="426" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">KSA: keycloak · eso · config</text>
+<rect x="450" y="458" width="245" height="170" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>
+<rect x="450" y="458" width="245" height="46" rx="12" fill="#eaf1ff"/>
+<rect x="450" y="492" width="245" height="12" fill="#eaf1ff"/>
+<line x1="450" y1="504" x2="695" y2="504" stroke="#2563eb" stroke-width="1"/>
+<circle cx="474" cy="481" r="14" fill="#2563eb"/>
+<text x="474" y="487" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+<text x="498" y="489" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#2563eb" text-anchor="start">secrets</text>
+<text x="466" y="534" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">Secrets by reference</text>
+<circle cx="472" cy="557" r="3" fill="#2563eb"/>
+<text x="482" y="562" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">DB · admin · config-cli</text>
+<circle cx="472" cy="581" r="3" fill="#2563eb"/>
+<text x="482" y="586" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">signing key · Entra</text>
+<circle cx="472" cy="605" r="3" fill="#2563eb"/>
+<text x="482" y="610" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">ESO → K8s Secrets</text>
+<rect x="450" y="642" width="245" height="170" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>
+<rect x="450" y="642" width="245" height="46" rx="12" fill="#eaf1ff"/>
+<rect x="450" y="676" width="245" height="12" fill="#eaf1ff"/>
+<line x1="450" y1="688" x2="695" y2="688" stroke="#2563eb" stroke-width="1"/>
+<circle cx="474" cy="665" r="14" fill="#2563eb"/>
+<text x="474" y="671" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+<text x="498" y="673" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#2563eb" text-anchor="start">data</text>
+<text x="466" y="718" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">Dedicated Cloud SQL</text>
+<circle cx="472" cy="741" r="3" fill="#2563eb"/>
+<text x="482" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">qa-keycloak-main-g1</text>
+<circle cx="472" cy="765" r="3" fill="#2563eb"/>
+<text x="482" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">private IP · 7-day PITR</text>
+<circle cx="472" cy="789" r="3" fill="#2563eb"/>
+<text x="482" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">shared gen_data.tm.hcl</text>
+<rect x="720" y="274" width="245" height="170" rx="12" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>
+<rect x="720" y="274" width="245" height="46" rx="12" fill="#fff5e6"/>
+<rect x="720" y="308" width="245" height="12" fill="#fff5e6"/>
+<line x1="720" y1="320" x2="965" y2="320" stroke="#c2410c" stroke-width="1"/>
+<circle cx="744" cy="297" r="14" fill="#c2410c"/>
+<text x="744" y="303" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+<text x="768" y="305" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#c2410c" text-anchor="start">firewall</text>
+<text x="736" y="350" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">Closed network by default</text>
+<circle cx="742" cy="373" r="3" fill="#c2410c"/>
+<text x="752" y="378" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">default-deny ingress and egress</text>
+<circle cx="742" cy="397" r="3" fill="#c2410c"/>
+<text x="752" y="402" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">JGroups between pods</text>
+<circle cx="742" cy="421" r="3" fill="#c2410c"/>
+<text x="752" y="426" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">Entra by FQDN via NAT</text>
+<rect x="720" y="458" width="245" height="170" rx="12" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>
+<rect x="720" y="458" width="245" height="46" rx="12" fill="#fff5e6"/>
+<rect x="720" y="492" width="245" height="12" fill="#fff5e6"/>
+<line x1="720" y1="504" x2="965" y2="504" stroke="#c2410c" stroke-width="1"/>
+<circle cx="744" cy="481" r="14" fill="#c2410c"/>
+<text x="744" y="487" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+<text x="768" y="489" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#c2410c" text-anchor="start">operator</text>
+<text x="736" y="534" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">Keycloak Operator</text>
+<circle cx="742" cy="557" r="3" fill="#c2410c"/>
+<text x="752" y="562" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">keycloak namespace only</text>
+<circle cx="742" cy="581" r="3" fill="#c2410c"/>
+<text x="752" y="586" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">CRDs in templates/</text>
+<circle cx="742" cy="605" r="3" fill="#c2410c"/>
+<text x="752" y="610" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">resource-policy: keep</text>
+<rect x="720" y="642" width="245" height="170" rx="12" fill="#fffaf3" stroke="#c2410c" stroke-width="1.5" stroke-dasharray="6 5"/>
+<text x="736" y="676" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="700" fill="#c2410c" text-anchor="start">Bootstrap cycle (R22)</text>
+<text x="736" y="706" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">Its route carries no</text>
+<text x="736" y="730" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">SecurityPolicy, and</text>
+<text x="736" y="754" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">consumers reach it via</text>
+<text x="736" y="778" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">the internal Service.</text>
+<rect x="990" y="274" width="245" height="538" rx="12" fill="#ffffff" stroke="#15803d" stroke-width="3"/>
+<rect x="990" y="274" width="245" height="46" rx="12" fill="#e9f7ee"/>
+<rect x="990" y="308" width="245" height="12" fill="#e9f7ee"/>
+<line x1="990" y1="320" x2="1235" y2="320" stroke="#15803d" stroke-width="1"/>
+<circle cx="1014" cy="297" r="14" fill="#15803d"/>
+<text x="1014" y="303" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">6</text>
+<text x="1038" y="305" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#15803d" text-anchor="start">app</text>
+<text x="1006" y="350" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="600" fill="#1f2937" text-anchor="start">Keycloak CR · 2 replicas</text>
+<text x="1006" y="372" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">optimised image · by digest</text>
+<rect x="1006" y="392" width="213" height="62" rx="8" fill="#e9f7ee" stroke="#15803d" stroke-width="1.2"/>
+<text x="1020" y="418" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="15" font-weight="700" fill="#1f2937" text-anchor="start">Pod keycloak-0</text>
+<text x="1020" y="440" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">zone a · 2 GiB</text>
+<rect x="1006" y="464" width="213" height="62" rx="8" fill="#e9f7ee" stroke="#15803d" stroke-width="1.2"/>
+<text x="1020" y="490" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="15" font-weight="700" fill="#1f2937" text-anchor="start">Pod keycloak-1</text>
+<text x="1020" y="512" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">zone b · 2 GiB</text>
+<rect x="1006" y="536" width="213" height="62" rx="8" fill="#ffffff" stroke="#15803d" stroke-width="1.2"/>
+<text x="1020" y="562" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="700" fill="#1f2937" text-anchor="start">Auth Proxy sidecar</text>
+<text x="1020" y="584" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="13" font-weight="400" fill="#4b5563" text-anchor="start">unsupported.podTemplate</text>
+<text x="1006" y="622" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="600" fill="#15803d" text-anchor="start">HTTPS 8443 · management 9000</text>
+<rect x="1006" y="642" width="213" height="52" rx="8" fill="#ffffff" stroke="#15803d" stroke-width="1.2" stroke-dasharray="4 4"/>
+<text x="1020" y="664" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="600" fill="#1f2937" text-anchor="start">persistent sessions</text>
+<text x="1020" y="684" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="13" font-weight="400" fill="#4b5563" text-anchor="start">in DB · jdbc-ping cache</text>
+<rect x="1006" y="706" width="213" height="74" rx="8" fill="#f9fafb" stroke="#9ca3af" stroke-width="1.2"/>
+<text x="1020" y="730" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="14" font-weight="700" fill="#1f2937" text-anchor="start">node pool general</text>
+<text x="1020" y="751" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="13" font-weight="400" fill="#4b5563" text-anchor="start">spread across zones</text>
+<text x="1020" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="13" font-weight="400" fill="#4b5563" text-anchor="start">PDB minAvailable 1</text>
+<rect x="1260" y="274" width="245" height="170" rx="12" fill="#ffffff" stroke="#7e22ce" stroke-width="2"/>
+<rect x="1260" y="274" width="245" height="46" rx="12" fill="#f4ecff"/>
+<rect x="1260" y="308" width="245" height="12" fill="#f4ecff"/>
+<line x1="1260" y1="320" x2="1505" y2="320" stroke="#7e22ce" stroke-width="1"/>
+<circle cx="1284" cy="297" r="14" fill="#7e22ce"/>
+<text x="1284" y="303" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">7</text>
+<text x="1308" y="305" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#7e22ce" text-anchor="start">realm</text>
+<text x="1276" y="350" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">Realm qa as code</text>
+<circle cx="1282" cy="373" r="3" fill="#7e22ce"/>
+<text x="1292" y="378" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">IdP entra · private_key_jwt</text>
+<circle cx="1282" cy="397" r="3" fill="#7e22ce"/>
+<text x="1292" y="402" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">roles → entra_roles</text>
+<circle cx="1282" cy="421" r="3" fill="#7e22ce"/>
+<text x="1292" y="426" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">reconciler every 5 min</text>
+<rect x="1260" y="458" width="245" height="170" rx="12" fill="#ffffff" stroke="#7e22ce" stroke-width="2"/>
+<rect x="1260" y="458" width="245" height="46" rx="12" fill="#f4ecff"/>
+<rect x="1260" y="492" width="245" height="12" fill="#f4ecff"/>
+<line x1="1260" y1="504" x2="1505" y2="504" stroke="#7e22ce" stroke-width="1"/>
+<circle cx="1284" cy="481" r="14" fill="#7e22ce"/>
+<text x="1284" y="487" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">8</text>
+<text x="1308" y="489" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#7e22ce" text-anchor="start">frontdoor</text>
+<text x="1276" y="534" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">Publishing</text>
+<circle cx="1282" cy="557" r="3" fill="#7e22ce"/>
+<text x="1292" y="562" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">sso.qa.disasterproject.com</text>
+<circle cx="1282" cy="581" r="3" fill="#7e22ce"/>
+<text x="1292" y="586" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">only /realms/qa and /resources</text>
+<circle cx="1282" cy="605" r="3" fill="#7e22ce"/>
+<text x="1292" y="610" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">no /admin, no master</text>
+<rect x="1260" y="642" width="245" height="170" rx="12" fill="#ffffff" stroke="#7e22ce" stroke-width="2"/>
+<rect x="1260" y="642" width="245" height="46" rx="12" fill="#f4ecff"/>
+<rect x="1260" y="676" width="245" height="12" fill="#f4ecff"/>
+<line x1="1260" y1="688" x2="1505" y2="688" stroke="#7e22ce" stroke-width="1"/>
+<circle cx="1284" cy="665" r="14" fill="#7e22ce"/>
+<text x="1284" y="671" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">9</text>
+<text x="1308" y="673" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#7e22ce" text-anchor="start">observability</text>
+<text x="1276" y="718" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">Operations</text>
+<circle cx="1282" cy="741" r="3" fill="#7e22ce"/>
+<text x="1292" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">external and internal probes</text>
+<circle cx="1282" cy="765" r="3" fill="#7e22ce"/>
+<text x="1292" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">login and broker errors</text>
+<circle cx="1282" cy="789" r="3" fill="#7e22ce"/>
+<text x="1292" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">cert. expiry (R42)</text>
+<path d="M701.5,529.0 L713.5,543.0 L701.5,557.0" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M971.5,529.0 L983.5,543.0 L971.5,557.0" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1241.5,529.0 L1253.5,543.0 L1241.5,557.0" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="374" y1="495.0" x2="414" y2="495.0" stroke="#9ca3af" stroke-width="3" marker-end="url(#ah)"/>
+<rect x="1570" y="160" width="310" height="670" rx="18" fill="#ecfeff" stroke="#a5f3fc" stroke-width="1.5"/>
+<text x="1594" y="204" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="22" font-weight="700" fill="#1f2937" text-anchor="start">Provides oidc-idp 4.2.0</text>
+<text x="1594" y="230" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start" font-style="italic">trait saml-idp · tenant: ConfigMap</text>
+<rect x="1590" y="252" width="270" height="128" rx="10" fill="#fffdf0" stroke="#a16207" stroke-width="1.5"/>
+<text x="1608" y="288" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="700" fill="#a16207" text-anchor="start">Entra ID (upstream)</text>
+<text x="1608" y="320" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">MFA · conditional access</text>
+<text x="1608" y="348" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">app roles → claim roles</text>
+<rect x="1590" y="394" width="270" height="128" rx="10" fill="#ffffff" stroke="#a5f3fc" stroke-width="1.5"/>
+<text x="1608" y="430" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="700" fill="#0e7490" text-anchor="start">SonarQube</text>
+<text x="1608" y="462" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">SAML · team-* groups</text>
+<text x="1608" y="490" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">ConfigMap client-sonarqube-*</text>
+<rect x="1590" y="536" width="270" height="128" rx="10" fill="#ffffff" stroke="#a5f3fc" stroke-width="1.5"/>
+<text x="1608" y="572" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="700" fill="#0e7490" text-anchor="start">Grafana</text>
+<text x="1608" y="604" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">confidential OIDC</text>
+<text x="1608" y="632" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">secret owned by the consumer</text>
+<rect x="1590" y="678" width="270" height="128" rx="10" fill="#ffffff" stroke="#a5f3fc" stroke-width="1.5"/>
+<text x="1608" y="714" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="700" fill="#0e7490" text-anchor="start">Apps on the Gateway</text>
+<text x="1608" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">SecurityPolicy OIDC</text>
+<text x="1608" y="774" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">backendRefs to the Service</text>
+<line x1="1526" y1="495.0" x2="1564" y2="495.0" stroke="#9ca3af" stroke-width="3" marker-end="url(#ah)"/>
+<text x="60" y="888" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="20" font-weight="700" fill="#1f2937" text-anchor="start">Controls</text>
+<rect x="60" y="906" width="344" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="78" y="936" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="17" font-weight="700" fill="#374151" text-anchor="start">assert</text>
+<text x="78" y="962" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">route without SecurityPolicy · paths</text>
+<path d="M408,936 l8,7 l-8,7" fill="none" stroke="#9ca3af" stroke-width="2.5"/>
+<rect x="424" y="906" width="344" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="442" y="936" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="17" font-weight="700" fill="#374151" text-anchor="start">G1 conftest</text>
+<text x="442" y="962" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">redirectUris ⊆ claims · backendRefs</text>
+<path d="M772,936 l8,7 l-8,7" fill="none" stroke="#9ca3af" stroke-width="2.5"/>
+<rect x="788" y="906" width="344" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="806" y="936" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="17" font-weight="700" fill="#374151" text-anchor="start">Gatekeeper</text>
+<text x="806" y="962" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">shape of the client ConfigMap</text>
+<path d="M1136,936 l8,7 l-8,7" fill="none" stroke="#9ca3af" stroke-width="2.5"/>
+<rect x="1152" y="906" width="344" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="1170" y="936" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="17" font-weight="700" fill="#374151" text-anchor="start">G3 plan.json</text>
+<text x="1170" y="962" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">no secrets in state</text>
+<path d="M1500,936 l8,7 l-8,7" fill="none" stroke="#9ca3af" stroke-width="2.5"/>
+<rect x="1516" y="906" width="344" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="1534" y="936" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="17" font-weight="700" fill="#374151" text-anchor="start">Checkov</text>
+<text x="1534" y="962" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">private, protected Cloud SQL</text>
+<text x="1860" y="1060" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="13" font-weight="400" fill="#9ca3af" text-anchor="end">docs/en/proposals/keycloak-qa/README.md</text>
+</svg>

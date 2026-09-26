@@ -1,0 +1,19 @@
+flowchart LR
+    subgraph A["1 · assert · terramate generate"]
+        A1["image by digest<br/>Σ heaps ≤ limit<br/>no privileged init containers<br/>no SecurityPolicy"]
+    end
+    subgraph G1["2 · G1 · conftest · structure"]
+        G11["input ↔ after<br/>secrets by reference<br/>authorised tenant resources<br/>IAM per resource"]
+    end
+    subgraph G2["3 · G2 · Checkov · HCL"]
+        G21["uniform, private bucket<br/>exception: versioning<br/>(breaks barman's purge)"]
+    end
+    subgraph G3["4 · G3 · plan.json"]
+        G31["no secret_data in the clear<br/>only secret_data_wo"]
+    end
+    subgraph GK["5 · Gatekeeper · admission"]
+        GK1["PSS restricted · labels<br/>allowed registry<br/>SecurityPolicy denied<br/>ConfigMap client-‹instance›-*"]
+    end
+    A --> G1 --> G2 --> G3 --> GK
+    style A fill:#e8f0fe
+    style GK fill:#fff4e5

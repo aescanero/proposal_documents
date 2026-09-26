@@ -1,0 +1,29 @@
+flowchart LR
+    subgraph INST["Cloud SQL · qa-sonarqube-main-g1 · europe-west1-b · ZONAL"]
+        DB[("PostgreSQL<br/>DB sonarqube<br/>user sonarqube")]
+    end
+    subgraph BK["Backups managed by Cloud SQL · location europe-west1"]
+        AUTO[("Daily automated<br/>14 retained")]
+        WAL[("Transaction logs<br/>PITR 7 days")]
+        OND[("On demand<br/>before each upgrade")]
+        FIN[("Final backup on deletion<br/>30 days")]
+    end
+    SM[("Secret Manager<br/>qa-sonarqube-db")]
+    DS["data stack<br/>a single ephemeral value"]
+
+    DB --> AUTO
+    DB --> WAL
+    DB --> OND
+    DB -. "if the instance is deleted" .-> FIN
+    DS -->|"password_wo"| DB
+    DS -->|"secret_data_wo"| SM
+
+    R1["Upgrade rollback<br/>in-place restore of the on-demand backup<br/>same name, same connection"]
+    R2["PITR or data incident<br/>clone to qa-sonarqube-main-g2<br/>PR: db.generation = 2 + clone"]
+    OND -.-> R1
+    WAL -.-> R2
+    AUTO -.-> R2
+
+    style R1 fill:#fff4e5
+    style R2 fill:#fff4e5
+    style FIN fill:#f5f5f5

@@ -1,13 +1,21 @@
-# Documentation
+# Documentation / Documentación
 
-| Document | Answers |
+This repository's documentation is maintained in **two languages, kept in sync**: every document exists in both, and neither is a lesser copy of the other.
+
+| | |
 |---|---|
-| [`platform-overview.md`](platform-overview.md) | Diagram-led map of the whole set. **Read first** |
-| [`archetype-model.md`](archetype-model.md) | *Resolve* — what may be composed with what: manifests, capabilities, traits, pools, CMDB, resolution |
-| [`terramate-outputs-sharing-architecture.md`](terramate-outputs-sharing-architecture.md) | *Generate* — how it is generated and applied: generators, outputs sharing, IAM, policy, CI/CD, five runtime guides |
-| [`developer-guide.md`](developer-guide.md) | The application developer's half: branching, versioning, build, rollback |
-| [`risk-register.md`](risk-register.md) | 53 risks by domain (52 active), reviewed at each phase gate |
-| [`glossary.md`](glossary.md) | Every term used above, defined |
-| [`proposals/`](proposals/) | Design proposals for concrete deployments. Not normative: where a proposal settles something, `CLAUDE.md` records it |
+| [`en/`](en/) | **English — source language.** New reference documents (`docs/`) are written here first |
+| [`es/`](es/) | **Español — idioma fuente para propuestas.** Las nuevas propuestas de diseño (`docs/*/proposals/`) se escriben aquí primero |
 
-Section references: a bare `§n` means the architecture document; `AM §n` (or "companion §n") the archetype model; `DG §n` the developer guide.
+See `CLAUDE.md`, "Bilingual documentation" / "Documentación bilingüe", for the rule on which language is authored first for each kind of document, and what "kept in sync" requires.
+
+---
+
+Esta documentación se mantiene en **dos idiomas, sincronizados**: cada documento existe en ambos, y ninguno es una copia de segunda del otro.
+
+| | |
+|---|---|
+| [`en/`](en/) | **Inglés — idioma fuente.** Los documentos de referencia nuevos (`docs/`) se escriben primero aquí |
+| [`es/`](es/) | **Español — idioma fuente para propuestas.** Las propuestas de diseño nuevas (`docs/*/proposals/`) se escriben primero aquí |
+
+Ver `CLAUDE.md`, "Bilingual documentation", para la regla de qué idioma se escribe primero según el tipo de documento, y qué exige "sincronizados".

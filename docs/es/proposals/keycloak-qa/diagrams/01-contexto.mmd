@@ -1,0 +1,41 @@
+flowchart LR
+    U(["Personas"])
+    CI(["GitHub Actions"])
+
+    subgraph ENTRA["Microsoft Entra ID · equipo de identidad"]
+        APP["app registration keycloak-qa<br/>app roles · MFA · acceso condicional"]
+    end
+
+    subgraph EDGE["disasterproject-qa · borde"]
+        GLB["GLB + Cloud Armor<br/>*.qa.disasterproject.com"]
+        GW["Envoy Gateway · Gateway qa"]
+    end
+
+    subgraph KC["ns keycloak · arquetipo keycloak (capa 4)"]
+        K["Keycloak × 2<br/>realm qa<br/>sso.qa.disasterproject.com"]
+        R["Reconciliador<br/>keycloak-config-cli"]
+    end
+
+    CSQL[("Cloud SQL<br/>qa-keycloak-main-g1")]
+
+    subgraph CONS["Consumidores de oidc-idp"]
+        SQ["SonarQube<br/>SAML"]
+        GF["Grafana<br/>OIDC"]
+        SP["Apps con SecurityPolicy<br/>OIDC en el Gateway"]
+    end
+
+    U --> GLB --> GW
+    GW -->|"/realms/qa · sin SecurityPolicy"| K
+    GW -->|"HTTPRoute + SecurityPolicy"| SP
+    GW --> SQ
+    GW --> GF
+    K <-->|"OIDC broker<br/>private_key_jwt"| APP
+    K --- CSQL
+    R -->|"clientes desde ConfigMaps"| K
+    SQ -. "SAML front-channel" .-> K
+    GF -. "OIDC" .-> K
+    SP -. "OIDC · backendRefs en el cluster" .-> K
+    CI -->|"token de proyecto<br/>no pasa por Keycloak"| SQ
+
+    style K fill:#e8f0fe
+    style CI fill:#f5f5f5

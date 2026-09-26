@@ -1,0 +1,28 @@
+flowchart LR
+    subgraph GKE["GKE · VPC qa · ns sonarqube"]
+        subgraph POD["Pod sonarqube-0 · KSA sonarqube"]
+            SQ["SonarQube<br/>jdbc:postgresql://127.0.0.1:5432/sonarqube"]
+            PX["Cloud SQL Auth Proxy<br/>native sidecar<br/>--private-ip · --port 5432"]
+        end
+        MDS["GKE metadata server<br/>Workload Identity"]
+    end
+
+    subgraph GAPI["Google APIs · Private Google Access"]
+        ADM["sqladmin.googleapis.com<br/>instance metadata<br/>ephemeral certificate"]
+    end
+
+    subgraph SN["Service producer network · PSA peering"]
+        CSQL[("Cloud SQL for PostgreSQL<br/>qa-sonarqube-main-g1<br/>private IP from range qa-psa<br/>ipv4_enabled = false")]
+    end
+
+    IAMC{{"roles/cloudsql.client<br/>condition: resource.name ==<br/>projects/disasterproject-qa/<br/>instances/qa-sonarqube-main-g1"}}
+
+    SQ -->|"TCP 5432 · localhost · no TLS"| PX
+    PX -->|"federated token"| MDS
+    PX -->|"HTTPS 443"| ADM
+    ADM -. "checks" .-> IAMC
+    PX ==>|"TCP 3307 · TLS 1.3 · ephemeral certificate"| CSQL
+    SQ -. "password of user sonarqube<br/>(Secret sonarqube-db, via ESO)" .-> CSQL
+
+    style CSQL fill:#e8f0fe
+    style IAMC fill:#fff4e5

@@ -1,0 +1,33 @@
+flowchart LR
+    subgraph EGW["ns envoy-gateway-system"]
+        ENV["Envoy proxy"]
+    end
+    subgraph NS["ns sonarqube · default-deny ingress + egress"]
+        subgraph POD["Pod sonarqube-0"]
+            SQ["SonarQube"]
+            PX["Auth Proxy"]
+        end
+    end
+    subgraph MON["ns monitoring"]
+        P["Prometheus"]
+    end
+    subgraph SYS["ns kube-system"]
+        DNS["kube-dns :53"]
+    end
+    GFE(["GLB · rangos de health check<br/>35.191.0.0/16 · 130.211.0.0/22"])
+    PSA[("Rango PSA qa-psa<br/>Cloud SQL IP privada")]
+    GAPI[("sqladmin.googleapis.com<br/>Private Google Access")]
+    INET(["Internet"])
+
+    GFE -->|"TCP 8443 (firewall VPC)"| ENV
+    ENV -->|"TCP 9000"| SQ
+    P -->|"TCP 9000"| SQ
+    P -->|"TCP 9090 métricas"| PX
+    PX -->|"TCP 3307 · ipBlock = rango PSA"| PSA
+    PX -->|"TCP 443"| GAPI
+    SQ -->|"53"| DNS
+    PX -->|"53"| DNS
+    SQ -.-x|"DENEGADO"| INET
+
+    style INET fill:#fce8e6
+    style PSA fill:#e8f0fe

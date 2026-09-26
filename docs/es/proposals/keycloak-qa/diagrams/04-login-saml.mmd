@@ -1,0 +1,22 @@
+sequenceDiagram
+    autonumber
+    actor U as Persona
+    participant SQ as SonarQube
+    participant K as Keycloak (realm qa)
+    participant E as Entra ID
+
+    U->>SQ: GET https://sonar.qa.disasterproject.com
+    SQ-->>U: redirección con AuthnRequest SAML
+    U->>K: /realms/qa/protocol/saml
+    Note over K: Identity Provider Redirector<br/>defaultProvider = entra
+    K-->>U: redirección a Entra (OIDC, code flow)
+    U->>E: login · MFA · acceso condicional
+    E-->>U: redirección con code
+    U->>K: /realms/qa/broker/entra/endpoint?code=…
+    K->>E: token endpoint · private_key_jwt (back-channel, Cloud NAT)
+    E-->>K: id_token con claim roles
+    Note over K: claim roles → atributo entra_roles<br/>syncMode FORCE
+    K-->>U: SAMLResponse firmada (grupos)
+    U->>SQ: POST /oauth2/callback/saml
+    Note over SQ: valida la firma con<br/>saml_idp_certificate
+    SQ-->>U: sesión con grupos team-*

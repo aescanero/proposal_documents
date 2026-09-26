@@ -1,0 +1,25 @@
+sequenceDiagram
+    autonumber
+    actor OP as Platform
+    participant GH as GitHub Actions
+    participant CNPG as CNPG
+    participant BK as Backup bucket
+    participant SQ as SonarQube
+
+    OP->>GH: PR new image_digest
+    GH->>GH: preview + G0–G3
+    OP->>CNPG: On-demand backup
+    CNPG->>BK: base backup
+    CNPG-->>OP: Backup completed
+    OP->>GH: merge
+    GH->>SQ: helm_release app (atomic)
+    SQ->>SQ: startup · DB migration
+    alt migration and startup succeed
+        SQ-->>GH: ready · status UP
+    else fails before migrating
+        GH->>SQ: atomic rolls back to the previous image
+    else fails after migrating
+        Note over SQ: no image rollback (DG §6)
+        OP->>CNPG: new Cluster from the backup
+        OP->>GH: PR with the previous digest
+    end

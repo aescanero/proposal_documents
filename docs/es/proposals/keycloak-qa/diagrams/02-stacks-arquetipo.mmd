@@ -1,0 +1,46 @@
+flowchart TB
+    subgraph PLAT["Productores de plataforma (qa)"]
+        NET["gcp-qa-network<br/>(globals: VPC, rango PSA)"]
+        GKE["gcp-qa-gke<br/>endpoint · CA · WI pool"]
+        CMON["gcp-qa-cloudmon<br/>notification_channel_id"]
+        GW["gcp-qa-gateway<br/>(globals)"]
+        CRT["gcp-qa-certs<br/>(global: ClusterIssuer interno)"]
+    end
+
+    subgraph INST["Instancia gcp-qa-keycloak-main · stacks/archetypes/keycloak/instances/main"]
+        IAM["iam<br/>namespace · KSAs"]
+        SEC["secrets<br/>Secret Manager · ExternalSecrets"]
+        DATA["data<br/>Cloud SQL (gen_data.tm.hcl)"]
+        FW["firewall<br/>NetworkPolicies"]
+        OP["operator<br/>Keycloak Operator + CRDs"]
+        APP["app<br/>Keycloak CR · sidecar Auth Proxy<br/>Certificate interno"]
+        RLM["realm<br/>realm qa · IdP entra · claves<br/>reconciliador (CronJob)"]
+        FD["frontdoor<br/>HTTPRoute sin SecurityPolicy<br/>BackendTLSPolicy"]
+        OBS["observability<br/>PodMonitor · reglas · Probe<br/>x509-certificate-exporter"]
+    end
+
+    subgraph OUT["provides oidc-idp 4.2.0"]
+        O1["issuer_url · realm_name<br/>saml_sso_url · saml_idp_certificate"]
+        O2["internal_service"]
+    end
+
+    IAM --> SEC --> DATA --> FW
+    IAM --> OP --> APP
+    FW --> APP
+    SEC --> APP
+    APP --> RLM
+    APP --> FD
+    APP --> OBS
+    RLM --> O1
+    APP --> O2
+
+    NET -. "after" .-> DATA
+    GKE -. "sharing + after" .-> IAM
+    GKE -.-> DATA
+    CMON -. "sharing + after" .-> DATA
+    GW -. "global" .-> FD
+    CRT -. "global" .-> APP
+
+    style RLM fill:#e8f0fe
+    style OUT fill:#e8f5e9
+    style PLAT fill:#f5f5f5
