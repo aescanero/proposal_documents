@@ -1,0 +1,35 @@
+flowchart LR
+    subgraph BOOT["Bootstrap script · once per key, outside OpenTofu"]
+        GEN["generates RSA 3072 key pair<br/>+ self-signed certificate"]
+    end
+
+    subgraph SM["Secret Manager · disasterproject-qa"]
+        S1[("qa-keycloak-realm-signing<br/>private key + certificate")]
+        S2[("qa-keycloak-entra-cert<br/>private key + certificate")]
+    end
+
+    subgraph GIT["Git · instance.tm.hcl"]
+        C1["saml_idp_certificate<br/>PUBLIC certificate"]
+    end
+
+    subgraph K["Keycloak · realm qa"]
+        KP1["rsa key provider<br/>signs SAML and tokens"]
+        KP2["IdP entra<br/>private_key_jwt"]
+    end
+
+    ENTRA["Entra ID<br/>app registration keycloak-qa<br/>several certificates at once"]
+    SQ["SonarQube<br/>sonar.auth.saml.certificate.secured"]
+    X509["x509-certificate-exporter<br/>alert at 30 days (R42)"]
+
+    GEN --> S1
+    GEN --> S2
+    GEN -->|"public certificate"| C1
+    GEN -->|"public certificate<br/>uploaded by identity team"| ENTRA
+    S1 -->|"reconciler"| KP1
+    S2 -->|"reconciler"| KP2
+    C1 -->|"contract output → sharing"| SQ
+    KP2 <-->|"client assertion"| ENTRA
+    S2 -. "ESO → Secret" .-> X509
+
+    style C1 fill:#e8f5e9
+    style X509 fill:#fff4e5

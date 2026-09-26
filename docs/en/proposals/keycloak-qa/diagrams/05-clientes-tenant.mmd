@@ -1,0 +1,28 @@
+flowchart LR
+    subgraph T["A consumer's sso stack (e.g. sonarqube-main)"]
+        CM["ConfigMap<br/>client-sonarqube-main-saml<br/>label realm=qa · instance=sonarqube-main"]
+        TS["Secret qa-&lt;instance&gt;-oidc<br/>confidential OIDC clients only<br/>IAM: secretAccessor a keycloak-config"]
+    end
+
+    subgraph CTRL["Controls"]
+        G1["conftest (G1)<br/>redirectUris ⊆ hostnames claimed<br/>by the same instance (ledger)"]
+        GK["Gatekeeper (admission)<br/>prefix = instance label<br/>field allowlist · no master realm"]
+    end
+
+    subgraph KNS["ns keycloak"]
+        CJ["CronJob keycloak-config<br/>every 5 min · concurrencyPolicy Forbid"]
+        MRG["1 · merges every ConfigMap<br/>into a single realm document"]
+        KCC["2 · keycloak-config-cli<br/>remote state: manages only<br/>what it created"]
+        K["Keycloak · realm qa"]
+    end
+    SM[("Secret Manager")]
+
+    CM --> G1
+    CM --> GK --> CJ
+    CJ --> MRG --> KCC --> K
+    TS --> SM
+    KCC -->|"reads the client secret<br/>under its own identity"| SM
+
+    style G1 fill:#fff4e5
+    style GK fill:#fff4e5
+    style KCC fill:#e8f0fe

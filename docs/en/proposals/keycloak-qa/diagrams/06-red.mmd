@@ -1,0 +1,38 @@
+flowchart LR
+    subgraph EGW["ns envoy-gateway-system"]
+        ENV["Envoy proxy<br/>routes + SecurityPolicy backendRefs"]
+    end
+    subgraph NS["ns keycloak · default-deny ingress + egress"]
+        subgraph POD["Pods keycloak-0/1"]
+            K["Keycloak<br/>8443 · 9000 management"]
+            PX["Auth Proxy"]
+        end
+        CJ["Reconciler"]
+        OPR["Operator"]
+    end
+    subgraph MON["ns monitoring"]
+        P["Prometheus"]
+    end
+    subgraph OTHER["ns grafana or other consumers"]
+        GF["back-channel OIDC"]
+    end
+    DNS["kube-dns :53"]
+    PSA[("PSA range qa-psa<br/>Cloud SQL")]
+    GAPI[("sqladmin · secretmanager<br/>Private Google Access")]
+    NAT(["login.microsoftonline.com<br/>via Cloud NAT"])
+    API["Kubernetes API"]
+
+    ENV -->|"TCP 8443"| K
+    GF -->|"TCP 8443"| K
+    P -->|"TCP 9000 /metrics"| K
+    K <-->|"TCP 7800 · 57800<br/>JGroups (jdbc-ping)"| K
+    CJ -->|"TCP 8443"| K
+    PX -->|"TCP 3307"| PSA
+    PX -->|"TCP 443"| GAPI
+    CJ -->|"TCP 443"| GAPI
+    K -->|"TCP 443 · FQDN"| NAT
+    OPR -->|"TCP 443"| API
+    K -->|"53"| DNS
+
+    style NAT fill:#fff4e5
+    style PSA fill:#e8f0fe
