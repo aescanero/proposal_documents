@@ -16,6 +16,7 @@ GCP, AWS and Azure at parity; designed so a fourth cloud touches only layers 0�
 | [`docs/risk-register.md`](docs/risk-register.md) | 53 risks by domain (52 active), reviewed at each phase gate |
 | [`docs/glossary.md`](docs/glossary.md) | Every technical term in the documents above, with its definition |
 | [`docs/proposals/sonarqube-qa/`](docs/proposals/sonarqube-qa/README.md) | Proposal, stage 1: SonarQube Community on `qa` — elements, dependencies, OSS tooling (Spanish) |
+| [`docs/proposals/sonarqube-qa/02-archetype-sonarqube.md`](docs/proposals/sonarqube-qa/02-archetype-sonarqube.md) | Proposal, stage 2: the layer-5 `sonarqube` archetype — stacks, templates, execution, policies, implementation plan (Spanish) |
 | [`CLAUDE.md`](CLAUDE.md) | Decision log: what is settled, what is open, and the traps |
 
 The two halves meet at `binding.tm.hcl`: the resolver writes globals, the generators

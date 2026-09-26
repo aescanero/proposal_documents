@@ -14,8 +14,7 @@ flowchart TD
         CE --> S1["gcp-qa-secrets<br/>ESO"]
         CE --> GW["gcp-qa-gateway"]
         GW -. "NEG" .-> ED["gcp-qa-edge<br/>IP · Cloud Armor · cert · LB<br/>zona qa.disasterproject.com · wildcard"]
-        S1 --> OB["gcp-qa-objects<br/>buckets GCS"]
-        OB --> DB["gcp-qa-postgres-operator<br/>CloudNativePG"]
+        S1 --> DB["gcp-qa-postgres-operator<br/>CloudNativePG"]
         M --> DB
         DB --> KC["gcp-qa-keycloak<br/>+ su propio Cluster CNPG"]
         S1 --> KC
@@ -24,13 +23,15 @@ flowchart TD
 
     subgraph I["Fase C · instancia gcp-qa-sonarqube-main"]
         direction TB
-        IAM["iam<br/>KSA + IAM en bucket"] --> SEC["secrets<br/>secretos GSM + IAM<br/>+ ExternalSecrets"]
-        IAM --> DATA["data-tenant<br/>CNPG Cluster + ScheduledBackup"]
+        IAM["iam<br/>namespace + KSAs"] --> SEC["secrets<br/>secretos GSM + IAM<br/>+ ExternalSecrets"]
+        IAM --> DATA["data-tenant<br/>bucket + CNPG Cluster<br/>+ ScheduledBackup"]
         SEC --> DATA
         DATA --> FW["firewall<br/>NetworkPolicies"]
         FW --> APP["app<br/>helm_release sonarqube"]
         SEC --> APP
-        APP --> SSO["sso<br/>cliente SAML"]
+        IAM --> SSO["sso<br/>cliente SAML"]
+        SSO --> APP
+        APP --> CFG["config<br/>grupos · permisos · gate"]
         APP --> FD["frontdoor<br/>HTTPRoute"]
         APP --> OBS["observability<br/>PodMonitor + reglas"]
     end
@@ -38,6 +39,7 @@ flowchart TD
     S1 --> SEC
     DB --> DATA
     KC --> SSO
+    KC -. "SAML" .-> APP
     GW --> FD
     M --> OBS
 

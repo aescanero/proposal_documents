@@ -215,8 +215,6 @@ repo/
 
 An instance's stack directories are **generated from the archetype's `stacks[]`**, and a stack whose `condition` is false has no directory at all. `binding.tm.hcl` is the resolver's output, never hand-edited.
 
-An instance's stack directories are **generated from the archetype's `stacks[]`**, and a stack whose `condition` is false has no directory at all. `binding.tm.hcl` is the resolver's output, never hand-edited.
-
 Three rules that make this layout work:
 
 - **`imports/` contains no stacks.** Terramate must never orchestrate anything under it. It holds only `generate_hcl`, `globals` and contract blocks that stacks import.

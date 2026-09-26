@@ -1,0 +1,39 @@
+flowchart TB
+    subgraph PLAT["Productores de plataforma (qa)"]
+        GKE["gcp-qa-gke<br/>endpoint · CA · WI pool"]
+        KC["gcp-qa-keycloak<br/>saml_sso_url · saml_idp_certificate"]
+        PGO["gcp-qa-postgres-operator<br/>cnpg_version"]
+        GW["gcp-qa-gateway<br/>(globals: nombre, namespace)"]
+        MON["gcp-qa-monitoring<br/>(global: rules_selector)"]
+    end
+
+    subgraph INST["Instancia gcp-qa-sonarqube-main"]
+        IAM["iam<br/>namespace · KSAs"]
+        SEC["secrets<br/>Secret Manager · IAM por secreto<br/>SecretStore · ExternalSecrets"]
+        DATA["data-tenant<br/>bucket · IAM · Cluster CNPG<br/>ScheduledBackup"]
+        FW["firewall<br/>NetworkPolicies"]
+        SSO["sso<br/>KeycloakClient (ConfigMap)"]
+        APP["app<br/>helm_release sonarqube"]
+        CFG["config<br/>Job: grupos · permisos · gate"]
+        FD["frontdoor<br/>HTTPRoute · BackendTrafficPolicy"]
+        OBS["observability<br/>PodMonitor · reglas · Probe · dashboard"]
+    end
+
+    IAM --> SEC --> DATA --> FW --> APP
+    IAM --> DATA
+    IAM --> SSO --> APP
+    SEC --> APP
+    APP --> CFG
+    APP --> FD
+    APP --> OBS
+
+    GKE -. "sharing + after" .-> IAM
+    GKE -.-> SEC
+    GKE -.-> DATA
+    PGO -. "sharing + after" .-> DATA
+    KC -. "sharing + after" .-> APP
+    GW -. "global" .-> FD
+    MON -. "global" .-> OBS
+
+    style APP fill:#e8f5e9
+    style PLAT fill:#f5f5f5

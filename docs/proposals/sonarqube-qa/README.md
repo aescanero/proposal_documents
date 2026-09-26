@@ -2,10 +2,11 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 11 (proyecto GCP propio para `qa`) |
+| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 12 (alineada con la etapa 2) |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
+| **Etapa 2** | [`02-archetype-sonarqube.md`](02-archetype-sonarqube.md): arquetipo, stacks, plantillas y plan de implementación. Donde difieren, manda la etapa 2 |
 | **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano |
 
 Nada de este documento reabre decisiones de `CLAUDE.md`. Donde SonarQube choca con una de ellas (PSS `restricted`, OIDC en el Gateway, `database-platform`), se dice y se propone cómo encajar sin cambiarla.
@@ -101,7 +102,7 @@ Todo se construye de cero. **Registro** indica si la capability existe en `regis
 | 3 | `dns` | **No se enlaza** | — | El wildcard de `env-edge` lo cubre; external-dns no aporta nada con un Gateway y una IP por entorno (igual que `demos`, AM §7) | ✓ sin uso |
 | 3 | `secrets` | **External Secrets Operator** (interfaz) + **Secret Manager** (backend) | Apache-2.0 / cloud | Credenciales, passcode, clave de cifrado, SAML | ✓ |
 | 3 | `monitoring` | **kube-prometheus-stack**, **Grafana**, **Loki** (sobre GCS), **Fluent Bit**, **Blackbox exporter** | Apache-2.0 / AGPL-3.0 | Métricas, logs, alertas, sonda externa | ✓ (+ trait) |
-| 4 | `object-store` | Buckets GCS por propósito | cloud | Backups CNPG, chunks de Loki | ✓ |
+| 4 | `object-store` | **No se enlaza** | — | El bucket de backups lo crea el propio arquetipo (etapa 2 §1); el de Loki, el arquetipo de monitorización | ✓ sin uso |
 | 4 | `database-platform` | **CloudNativePG** | Apache-2.0 | SonarQube y Keycloak crean su propio `Cluster` | ✓ (+ trait) |
 | 4 | `oidc-idp` | **Keycloak**, realm `qa` | Apache-2.0 | Personas vía **SAML** | ✓ (+ trait) |
 | 5 | — | **SonarQube Community Build**, chart oficial `sonarqube/sonarqube` | LGPL-3.0 | La aplicación | — |
@@ -207,7 +208,7 @@ Backups a GCS con **Workload Identity**: IAM `roles/storage.objectAdmin` sobre e
 | TLS interno | GLB → Envoy por HTTPS con certificado de la CA interna de cert-manager |
 | Gateway | Uno por entorno, `allowedRoutes.namespaces.from: Selector` (§10.6); NEG standalone `eg-qa-neg` (§10.2, R20) |
 | Timeout del backend service | **120 s** (por defecto 30 s): la subida del informe de un proyecto grande los supera |
-| Envoy | `BackendTrafficPolicy` con timeout ≥ 120 s; `ClientTrafficPolicy` con límite de cuerpo ≥ 100 MiB |
+| Envoy | `BackendTrafficPolicy` en la ruta con timeout ≥ 120 s. El límite de cuerpo es una `ClientTrafficPolicy` del **Gateway**: requisito al arquetipo `gateway` de no bajar de 100 MiB (etapa 2 §9) |
 | Firewall VPC | Rangos de health check del GLB (`35.191.0.0/16`, `130.211.0.0/22`) hacia los pods de Envoy — selector `cidr:` legítimo (AM §6.3) |
 
 Recursos Gateway API empaquetados en el chart y desplegados con `helm_release`, nunca `kubernetes_manifest` (R24).
@@ -296,7 +297,7 @@ GKE aplica `NetworkPolicy` con Dataplane V2; el egress a las APIs de Google se e
 
 | Qué | Cómo | Dónde | Retención |
 |---|---|---|---|
-| PostgreSQL | CNPG barman-cloud: base diaria + WAL continuo (PITR) | `gs://disasterproject-qa-backups-db` | 14 días (§12.6) |
+| PostgreSQL | CNPG barman-cloud: base diaria + WAL continuo (PITR) | `gs://disasterproject-qa-sonarqube-main-pgbackup` (del arquetipo) | 14 días (§12.6) |
 | Secretos (incluye la clave de cifrado de SonarQube) | Versiones de Secret Manager; sin backup adicional | Secret Manager | Protección frente a borrado (§4.3) |
 | Índices de ES | No se respaldan | — | Reindexado |
 | Configuración | Git | — | — |
@@ -460,14 +461,13 @@ Como el entorno es nuevo, el despliegue de SonarQube es el despliegue de la plat
 | **0** | Repositorio desechable, verificaciones de `CLAUDE.md` | Nada. Hay que hacerla primero |
 | **A** | Landing zone, red, GKE | Fase 0 |
 | **B** | Gatekeeper, cert-manager, monitorización, ESO, buckets, CNPG, Keycloak, Gateway, borde | A |
-| **C** | Los 8 stacks de `gcp-qa-sonarqube-main` | B; V1–V3 |
+| **C** | Los 9 stacks de `gcp-qa-sonarqube-main` (etapa 2 §5) | B; V1–V3 |
 
 Aristas nuevas que introduce SonarQube (cada una con su `after`, R2):
 
 | Consumidor | Productor | Qué cruza | Tipo |
 |---|---|---|---|
 | `…-iam` | `gcp-qa-gke` | `workload_identity_pool` | outputs sharing |
-| `…-iam` | `gcp-qa-objects` | Nombre del bucket de backups | global (determinista) |
 | `…-secrets` | `gcp-qa-secrets` | Namespace de ESO y versión de sus CRD | global |
 | `…-data-tenant` | `gcp-qa-postgres-operator` | Versión del operador | outputs sharing |
 | `…-frontdoor` | `gcp-qa-gateway` | Nombre y namespace del `Gateway` | global |
@@ -488,7 +488,7 @@ Ciclos y cómo se rompen:
 
 ## 7. Borradores ilustrativos
 
-No son ficheros del repositorio; muestran la forma de la etapa 2.
+No son ficheros del repositorio. **El manifiesto de abajo queda como histórico: lo sustituye etapa 2 §3** (9 stacks, `sso` antes de `app`, sin `object-store`, `oidc-idp` ^4.2.0).
 
 ```yaml
 # archetypes/sonarqube/manifest.yaml — borrador
@@ -582,7 +582,6 @@ bindings:
   certs:               { archetype: cert-manager, version: 1.0.4,         stack_id: gcp-qa-certs }
   secrets:             { archetype: secrets-eso-gsm, version: 0.1.0,      stack_id: gcp-qa-secrets }
   monitoring:          { archetype: monitoring-oss, version: 0.1.0,       stack_id: gcp-qa-monitoring }
-  object-store:        { archetype: object-store-gcs, version: 0.1.0,     stack_id: gcp-qa-objects }
   database-platform:   { archetype: postgres-operator, version: 0.1.0,    stack_id: gcp-qa-postgres-operator }  # SÍ en qa
   oidc-idp:            { archetype: keycloak, version: 4.1.0,             stack_id: gcp-qa-keycloak }
   # dns: sin enlazar — wildcard en env-edge
@@ -687,4 +686,4 @@ Preguntas abiertas:
 
 ## 12. Siguiente etapa
 
-Etapa 2: manifiesto real de `sonarqube`, alta de traits en `registry/`, `binding.yaml` de `qa`, valores del chart, contratos de outputs sharing de §6 y el workflow reutilizable de GitHub Actions. La fase 0 y V1–V3 van antes; si V1 falla, cambian §4.1 y el plan B pasa a ser el camino principal.
+Etapa 2 en curso: [`02-archetype-sonarqube.md`](02-archetype-sonarqube.md).
