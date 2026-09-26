@@ -1,5 +1,7 @@
 # Workflows
 
+*[Español](README.es.md)*
+
 | Workflow | Jobs | Blocking today |
 |---|---|---|
 | `validate.yml` | **Schemas and registry**: JSON Schema and registry YAML are well-formed; `registry-generate --check` once it exists; manifests, components, bindings and ledgers validated against `schemas/` | Yes, for what exists |

@@ -1,5 +1,7 @@
 # Registry
 
+*[Español](README.es.md)*
+
 **Source of truth** for the controlled vocabularies. Nothing else may define them.
 
 | File | Defines |

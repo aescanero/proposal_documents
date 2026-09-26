@@ -1,5 +1,7 @@
 # Schemas
 
+*[Español](README.es.md)*
+
 JSON Schema (draft 2020-12) for the files the resolver reads.
 
 | Schema | Validates |
