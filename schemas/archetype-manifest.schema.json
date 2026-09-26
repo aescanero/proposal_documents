@@ -479,6 +479,7 @@
         "cross-namespace-refgrant",
         "custom-templates",
         "daemonset-privileged",
+        "eso",
         "gatekeeper",
         "gateway-api",
         "global-anycast",

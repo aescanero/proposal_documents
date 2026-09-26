@@ -433,6 +433,7 @@ requires:
     version: "^1.0.0"
   - capability: secrets
     version: "^2.0.0"
+    traits: [eso]
   - capability: monitoring
     version: "^1.5.0"
     traits: [prometheus-operator-crds]

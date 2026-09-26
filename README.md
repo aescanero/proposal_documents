@@ -28,6 +28,7 @@ Inside each language folder:
 | `proposals/sonarqube-qa/` | Design proposal, in two stages: elements and dependencies, then the layer-5 `sonarqube` archetype and its implementation plan |
 | `proposals/sonarqube-qa-cloudsql/` | Variant of the above: SonarQube's PostgreSQL on Cloud SQL instead of CloudNativePG, by leaving `database-platform` unbound in `qa` |
 | `proposals/keycloak-qa/` | The layer-4 `keycloak` archetype on `qa`: `oidc-idp` 4.2.0, Entra ID as upstream IdP, consumer clients as tenant resources, Cloud SQL data |
+| `proposals/external-secrets-qa/` | The layer-3 `secrets-eso-gsm` archetype on `qa`: External Secrets Operator over Secret Manager, the `secrets` 2.0.0 contract and the `eso` trait |
 
 The two halves meet at `binding.tm.hcl`: the resolver writes globals, the generators
 consume them.

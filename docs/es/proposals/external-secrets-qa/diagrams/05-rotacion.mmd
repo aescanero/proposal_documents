@@ -1,0 +1,21 @@
+sequenceDiagram
+    autonumber
+    actor OP as Plataforma
+    participant GH as Pipeline
+    participant SM as Secret Manager
+    participant ES as ExternalSecret
+    participant S as Secret de K8s
+    participant POD as Pod consumidor
+
+    OP->>GH: PR que incrementa *_wo_version
+    GH->>SM: nueva versión (secret_data_wo)
+    OP->>ES: anotación force-sync = marca de tiempo
+    ES->>SM: AccessSecretVersion latest
+    ES->>S: actualiza el valor
+    OP->>ES: comprueba status.refreshTime y Ready
+    alt el consumidor lee el valor al arrancar (variable de entorno)
+        OP->>POD: kubectl rollout restart
+    else el consumidor lee un fichero montado
+        Note over POD: el kubelet actualiza el volumen<br/>en ≤ 1–2 min, sin reinicio
+    end
+    Note over OP,POD: la versión anterior sigue ACTIVE hasta<br/>confirmar el consumidor, y luego se deshabilita

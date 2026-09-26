@@ -73,3 +73,6 @@ traits:
   - otlp-native
   - managed-tracing
   - prometheus-operator-crds  # PodMonitor / PrometheusRule CRDs are installed
+
+  # --- secrets ---
+  - eso                       # secrets provider is External Secrets Operator; SecretStore / ExternalSecret CRDs are installed

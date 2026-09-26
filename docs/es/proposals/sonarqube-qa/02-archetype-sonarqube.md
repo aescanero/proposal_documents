@@ -146,6 +146,7 @@ requires:
     traits: [gateway-api, http-route]
   - capability: secrets
     version: "^2.0.0"
+    traits: [eso]
   - capability: oidc-idp
     version: "^4.2.0"                              # 4.2 añade las salidas SAML (§5.5)
     traits: [saml-idp]
