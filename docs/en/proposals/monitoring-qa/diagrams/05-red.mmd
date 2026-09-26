@@ -1,0 +1,36 @@
+flowchart LR
+    CP(["GKE control plane"])
+    subgraph MON["ns monitoring · default-deny"]
+        OP["operator<br/>webhook 10250"]
+        P["Prometheus 9090"]
+        A["Alertmanager 9093"]
+        B["blackbox 9115"]
+        L["Loki 3100"]
+        G["Grafana 3000"]
+    end
+    subgraph AG["ns monitoring-agents"]
+        FB["Fluent Bit"]
+        NE["node-exporter 9100<br/>(host network)"]
+    end
+    ENV["Envoy"]
+    TEN["Pods in every namespace<br/>metrics ports"]
+    KC["Keycloak 8443"]
+    GAPI[("storage · monitoring<br/>Private Google Access")]
+    NAT(["Alert receivers<br/>and public URLs · Cloud NAT"])
+
+    CP -->|"TCP 10250"| OP
+    ENV -->|"TCP 3000"| G
+    P -->|"scrape"| TEN
+    P -->|"TCP 9100"| NE
+    P -->|"TCP 9115"| B
+    P -->|"TCP 9093"| A
+    FB -->|"TCP 3100"| L
+    G -->|"9090 · 3100"| P
+    G --> L
+    G -->|"back-channel OIDC"| KC
+    L -->|"TCP 443"| GAPI
+    G -->|"TCP 443"| GAPI
+    A -->|"TCP 443"| NAT
+    B -->|"TCP 443"| NAT
+
+    style NAT fill:#fff4e5
