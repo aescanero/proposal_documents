@@ -1,0 +1,67 @@
+flowchart BT
+    subgraph L0["Capa 0 · proyecto de landing zone (nuevo)"]
+        DZ["dns-zone<br/>disasterproject.com, delega qa.disasterproject.com"]
+        CP["cidr-pool<br/>10.0.0.0/8"]
+        KMS["Cloud KMS"]
+        AR["Artifact Registry"]
+    end
+    subgraph L1["Capa 1 · environment qa · proyecto disasterproject-qa"]
+        NET["network<br/>/17 · Private Google Access"]
+        CERT["cert<br/>Certificate Manager"]
+        WAF["waf<br/>Cloud Armor"]
+        EIP["edge-ip<br/>IP global"]
+        EE["env-edge<br/>backend service · URL map<br/>zona qa.disasterproject.com"]
+    end
+    subgraph L1B["Capa 1b"]
+        CO["cloud-observability<br/>solo auditoría"]
+    end
+    subgraph L2["Capa 2 · runtime"]
+        CL["cluster: gke (Standard)<br/>node pool 'sonar' con sysctl"]
+    end
+    subgraph L2B["Capa 2b"]
+        POL["policy-gatekeeper<br/>deny · Ignore"]
+    end
+    subgraph L3["Capa 3 · platform services"]
+        ING["ingress<br/>gateway-envoy-gke"]
+        CRT["certs<br/>cert-manager · CA interna"]
+        SEC["secrets<br/>ESO + Secret Manager"]
+        MONI["monitoring<br/>Prometheus · Grafana · Loki"]
+    end
+    subgraph L4["Capa 4 · middleware"]
+        DBP["database-platform<br/>CloudNativePG"]
+        IDP["oidc-idp<br/>Keycloak"]
+    end
+    subgraph L5["Capa 5"]
+        SQ["sonarqube"]
+    end
+
+    CP --> NET
+    NET --> CO
+    NET --> CL
+    DZ --> EE
+    CERT --> EE
+    WAF --> EE
+    EIP --> EE
+    NET --> EE
+    CL --> POL
+    POL --> ING & CRT & SEC & MONI
+    KMS --> CL
+    CRT --> ING
+    ING -. "nombre del NEG<br/>(arista ascendente)" .-> EE
+    SEC --> DBP
+    MONI --> DBP
+    DBP --> IDP
+    SEC --> IDP
+    ING --> IDP
+
+    ING -->|"gateway-api, http-route"| SQ
+    IDP -->|"saml-idp (nuevo)"| SQ
+    DBP -->|"cnpg (nuevo)"| SQ
+    SEC --> SQ
+    MONI -->|"prometheus-operator-crds (nuevo)"| SQ
+    CL -->|"sysctl-max-map-count (nuevo)"| SQ
+    AR --> SQ
+
+    style L2B fill:#fff4e5
+    style L5 fill:#e8f5e9
+    style L1B fill:#f5f5f5

@@ -1,6 +1,6 @@
 # Glossary
 
-Technical terms and definitions drawn from `platform-overview.md`, `archetype-model.md`, `terramate-outputs-sharing-architecture.md`, `developer-guide.md` and `risk-register.md`. Organised by the area of the platform each term belongs to, matching the reading order in `platform-overview.md` §16. Definitions are taken from, or closely follow, the source documents — this file adds no new decisions.
+Technical terms and definitions drawn from `platform-overview.md`, `archetype-model.md`, `terramate-outputs-sharing-architecture.md`, `developer-guide.md` and `risk-register.md`. Proposals under `proposals/` are not covered. Organised by the area of the platform each term belongs to, matching the reading order in `platform-overview.md` §16. Definitions are taken from, or closely follow, the source documents — this file adds no new decisions.
 
 ---
 
@@ -548,7 +548,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 
 ---
 
-## 26. Risk register (`risk-register.md`) — 37 risks by domain
+## 26. Risk register (`risk-register.md`) — 53 risks by domain (52 active)
 
 Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mitigation tied to a document section.
 
@@ -579,9 +579,9 @@ Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mi
 | **R23** | GCP VPC peering non-transitivity blocks hub LB → spoke NEG if hub-and-spoke uses separate VPCs. Resolved by Shared VPC, Network Connectivity Center, or a load balancer per spoke — decided in Phase 0. |
 | **R24** | `kubernetes_manifest` breaks PR previews (requires CRD/API server reachable at plan time). Mitigated by packaging CRs in the archetype's Helm chart and deploying via `helm_release`. |
 | **R25** | AKS `kube_config` lands in state as a credential. Mitigated by `local_account_disabled = true` plus Entra (Azure AD) auth. |
-| **R26** | Pod CIDR sized for 64 nodes is immutable after cluster creation, so the cluster cannot grow without a full rebuild. Ranked #3 of top risks. Mitigated by lowering `max-pods-per-node`, allocating a /16 to production, or using Azure CNI Overlay. |
+| **R26** | Pod secondary range sized for too few nodes — immutable after cluster creation, so the cluster cannot grow without a full rebuild. Ranked #3 of top risks. Mitigated by the 64-pods-per-node default, a resolver check rejecting `max_nodes × block > range`, a /16 for production, or Azure CNI Overlay. |
 | **R27** | Environment pool fragments into unusable /17s over time. Mitigated by buddy allocation preferring blocks that preserve larger free runs, and isolating the ephemeral supernet. |
-| **R28** | Pod secondary range sized for too few nodes (related immutable-range risk). Mitigated by the 64-pods-per-node default and a resolver check rejecting `max_nodes × block > range`. |
+| **R28** | *Retired* — duplicate of R26, merged there. The number is not reused. |
 | **R29** | Shared Kafka bus saturated by one tenant on `demos`. Mitigated by `KafkaUser` producer/consumer quotas and a `kafka_partitions` budget enforced at PR time. |
 | **R30** | Tenant writes unprefixed Kafka topics, risking name collisions. Mitigated by a mandatory `{{ instance }}-` prefix and ACLs derived by the `kafka` archetype, never hand-written. |
 | **R31** | Demo archetypes accumulate past their usefulness. Mitigated by a mandatory `expiresOn` and a scheduled job opening a (human-approved) destroy PR. |
@@ -591,6 +591,16 @@ Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mi
 | **R35** | A managed policy add-on is adopted, then custom templates are needed, but the two are mutually exclusive. Mitigated by standardising on self-managed Gatekeeper on all three clouds, with a `custom-templates` trait. |
 | **R36** | A Rego rule is written but never fires, producing false confidence. Mitigated by running `conftest verify` on `policy/*_test.rego` in the same CI job as the gate. |
 | **R37** | Serverless runtimes are assumed to have the same policy coverage as Kubernetes runtimes, but the admission layer doesn't exist there. Mitigated by explicitly stating the coverage parity gap, with cloud control-plane policy substituting for admission control. |
+| **R38** | GKE authorized networks edited per CI job: concurrent jobs overwrite each other's entry and a dead runner leaves its IP open. Mitigated by one `concurrency` group, an `if: always()` close step and a reconciler expiring stale entries. |
+| **R39** | `container.clusters.update` granted to a pipeline identity to open the runner IP — lets any PR reconfigure the cluster. Mitigated by a minimal intermediate service that only opens and closes a /32. |
+| **R40** | Secret values stored in OpenTofu state, making the state a second secret store. Mitigated by ephemeral resources and write-only attributes. |
+| **R41** | Environment state-encryption key destroyed; GCP lacks a written equivalent of the AWS SCP. Mitigated by no destroy permission for pipelines, `prevent_destroy` and a minimum destroy-scheduled duration. |
+| **R42** | IdP federation credential (Keycloak in the upstream IdP) expires and nobody can log in. Mitigated by a certificate credential and an expiry alert to the owning team. |
+| **R43** | Offboarded user keeps application tokens where there is no SCIM. Mitigated by daily reconciliation and no personal tokens in CI. |
+| **R44** | OIDC `SecurityPolicy` applied to a route that also serves machine clients with bearer tokens. Mitigated by a generator assertion for self-authenticating archetypes. |
+| **R45** | Default 30 s backend timeout on the GCP external Application LB causes intermittent 502 on large uploads. Mitigated by an explicit timeout in the edge stack. |
+| **R46** | Upstream Helm chart ships a privileged or root init container. Mitigated by disabling it and moving the requirement to the node, expressed as a trait. |
+| **R47–R53** | SonarQube on `qa`: compute engine queue saturation, pull-request analysis recorded as `main`, multi-JVM OOMKill, loss of the settings encryption key, leaked global analysis token, irreversible upgrade migration, zonal volume loss. See `risk-register.md` §8. |
 
 **Top five risks** (ranked by likelihood × impact, mitigation not yet in place): 1) R2 (missing `after`), 2) R12 (wildcard OIDC `sub`), 3) R26 (pod range sized for too few nodes), 4) R34 (registry drift), 5) R5 (shared platform destroyed by instance teardown).
 
@@ -601,7 +611,7 @@ Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mi
 | # | Question |
 |---|---|
 | 1 | Is `max_pods_per_node` settable on GKE Autopilot? The default of 64 assumes it is. |
-| 2 | Shared VPC or separate VPCs on GCP? Peering non-transitivity plus the same-VPC backend rule may force Shared VPC (risk R23). |
+| 2 | Shared VPC or separate VPCs on GCP? Peering non-transitivity plus the same-VPC backend rule may force Shared VPC (risk R23). **Settled for `qa`: separate VPC.** Open for `demos` and any environment whose edge sits in the hub. |
 | 3 | Kafka partition ceiling on the intended broker count — the 4000 budget in the `demos` binding is a placeholder. |
 | 4 | Where does resolution run — a CLI in the repo, or a reusable workflow? Determines whether the project office can validate a demo locally. |
 | 5 | How much Rego is genuinely shared between conftest and `ConstraintTemplate`s — measure before planning a single policy codebase. |

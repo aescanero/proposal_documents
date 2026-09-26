@@ -208,12 +208,10 @@ repo/
         │       │   ├── app/       stack.tm.hcl
         │       │   └── frontdoor/ stack.tm.hcl
         │       ├── beta/                  # bound to the SAME gcp/demos
-        │       └── acme-prod/             # bound to aws/prod — dedicated
+        │       └── disasterproject-prod/             # bound to aws/prod — dedicated
         └── event-driven/
             └── ...
 ```
-
-An instance's stack directories are **generated from the archetype's `stacks[]`**, and a stack whose `condition` is false has no directory at all. `binding.tm.hcl` is the resolver's output, never hand-edited.
 
 An instance's stack directories are **generated from the archetype's `stacks[]`**, and a stack whose `condition` is false has no directory at all. `binding.tm.hcl` is the resolver's output, never hand-edited.
 
@@ -407,14 +405,14 @@ globals "platform" {
 ```
 
 ```hcl
-# stacks/archetypes/webapp-3tier/instances/acme-prod/binding.tm.hcl
+# stacks/archetypes/webapp-3tier/instances/disasterproject-prod/binding.tm.hcl
 globals "platform" {
   cloud              = "aws"
   env                = "prod"
   network_stack_id   = "aws-prod-network"
   cluster_stack_id   = "aws-prod-eks"
   services_stack_id  = "aws-prod-services"
-  namespace          = "acme"
+  namespace          = "disasterproject"
 }
 ```
 
@@ -477,7 +475,7 @@ Globals are the mechanism that replaces the "cloud-specific wrapper layer" of th
 # stacks/platforms/gcp/config.tm.hcl                      ← cloud layer
 globals {
   cloud             = "gcp"
-  state_bucket      = "acme-tfstate-gcp"
+  state_bucket      = "disasterproject-tfstate-gcp"
   oidc_provider_var = "GOOGLE_WORKLOAD_IDENTITY_PROVIDER"
 }
 ```
@@ -486,9 +484,9 @@ globals {
 # stacks/platforms/gcp/demos/config.tm.hcl          ← environment layer
 globals {
   env        = "demos"
-  project_id = "acme-demo-shared"
+  project_id = "disasterproject-demos"
   region     = "europe-west1"
-  vpc_cidr   = "10.60.0.0/16"
+  vpc_cidr   = "10.4.0.0/17"             # claimed from the permanent block (AM §9.2)
 }
 
 globals "cluster" {
@@ -510,9 +508,9 @@ globals "policy" {
 # stacks/platforms/gcp/prod/config.tm.hcl                  ← environment layer (dedicated)
 globals {
   env        = "prod"
-  project_id = "acme-prod"
+  project_id = "disasterproject-prod"
   region     = "europe-west1"
-  vpc_cidr   = "10.10.0.0/16"
+  vpc_cidr   = "10.6.0.0/16"             # production gets a /16
 }
 
 globals "cluster" {
@@ -763,10 +761,10 @@ import { source = "/imports/contracts/contract_network_gcp.tm.hcl" }
 ```hcl
 # stacks/platforms/gcp/demos/config.tm.hcl
 globals {
-  vpc_cidr           = "10.60.0.0/16"
-  subnet_cidr        = tm_cidrsubnet(global.vpc_cidr, 4, 0)   # 10.60.0.0/20
-  pods_cidr          = tm_cidrsubnet(global.vpc_cidr, 2, 1)   # 10.64.0.0/18
-  services_cidr      = tm_cidrsubnet(global.vpc_cidr, 6, 40)  # /22
+  vpc_cidr           = "10.4.0.0/17"
+  subnet_cidr        = tm_cidrsubnet(global.vpc_cidr, 3, 0)   # 10.4.0.0/20  — zone infra
+  pods_cidr          = tm_cidrsubnet(global.vpc_cidr, 1, 1)   # 10.4.64.0/18 — zone pods
+  services_cidr      = tm_cidrsubnet(global.vpc_cidr, 7, 32)  # 10.4.32.0/24 — zone edge, as in the AM §9.6 ledger
 }
 ```
 
@@ -1006,6 +1004,10 @@ assert {
 
 Organisation policies backing this up (§11.7): `constraints/compute.requireShieldedVm`, `constraints/compute.vmExternalIpAccess`, `constraints/iam.disableServiceAccountKeyCreation`.
 
+---
+
+## 6. Guide B — EKS platform and its dependency chain
+
 ### 6.1 Dependency graph
 
 ```mermaid
@@ -1057,7 +1059,7 @@ globals {
   account_id   = "111122223333"
   region       = "eu-west-1"
   # Deterministic: known at generate time by BOTH stacks. Breaks the cycle.
-  cluster_name = "acme-demos-eks"
+  cluster_name = "disasterproject-demos-eks"
 }
 ```
 
@@ -1309,9 +1311,6 @@ Keeping the *names* aligned where the *meaning* is aligned (`cluster_name`, `clu
 
 ---
 
-
----
-
 ## 7. Guide C — Cloud Run platform and its dependency chain
 
 Cloud Run removes the cluster from the topology, which changes the shape of the platform layer but not the pattern. The isolation boundary moves from *Kubernetes namespace* to *service plus its runtime service account*, and that turns out to make shared environments considerably cheaper — Cloud Run scales to zero, so an idle demo instance costs almost nothing.
@@ -1360,7 +1359,7 @@ output "project_id"               { backend = "tofu"  value = var.project_id }
 globals "serverless" {
   egress_mode          = "direct"                # "direct" | "connector"
   egress_setting       = "PRIVATE_RANGES_ONLY"   # avoid ALL_TRAFFIC unless egress must be inspected
-  serverless_subnet    = "10.60.16.0/24"         # /24 minimum for Direct VPC egress
+  serverless_subnet    = "10.4.40.0/24"          # zone edge; /24 minimum for Direct VPC egress
   ingress              = "INTERNAL_AND_CLOUD_LOAD_BALANCING"
 }
 ```
@@ -2268,7 +2267,7 @@ spec:
 
 Gateway API inverts the direction of the routing dependency. An `HTTPRoute` lives in the application's namespace and attaches to the Gateway with `parentRefs`; the Gateway controls who may attach via `allowedRoutes`. **The edge no longer needs to know its tenants.**
 
-That removes three things from the architecture: the URL map generated from a `global.tenants` list (§7.5), the listener-priority ledger, and the edge-routing stack that had to run after every instance. What remains a claim is the hostname, because only one tenant can own `alpha.demos.acme.com`.
+That removes three things from the architecture: the URL map generated from a `global.tenants` list (§7.5), the listener-priority ledger, and the edge-routing stack that had to run after every instance. What remains a claim is the hostname, because only one tenant can own `alpha.demos.disasterproject.com`.
 
 Use **one Gateway per environment** with `allowedRoutes.namespaces.from: Selector`, not one per tenant — each `Gateway` spawns its own Envoy Deployment, Service and NEG, so per-tenant Gateways reintroduce exactly the fan-in they were meant to remove. If you later need several (internal and external, for instance), `mergeGateways` in `EnvoyProxy` lets them share one proxy fleet.
 
@@ -2335,7 +2334,7 @@ resource "google_iam_workload_identity_pool_provider" "github" {
 
   # WITHOUT THIS CONDITION, ANY GITHUB REPOSITORY IN THE WORLD CAN
   # IMPERSONATE THIS POOL. It is not optional.
-  attribute_condition = "assertion.repository == 'acme/infra' && assertion.repository_owner_id == '123456'"
+  attribute_condition = "assertion.repository == 'disasterproject/infra' && assertion.repository_owner_id == '123456'"
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"
@@ -2350,7 +2349,7 @@ Two service accounts per environment, bound to *different* principal sets:
 resource "google_service_account_iam_member" "plan" {
   service_account_id = google_service_account.tf_plan_shared_demo.name
   role               = "roles/iam.workloadIdentityUser"
-  member = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/acme/infra"
+  member = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/disasterproject/infra"
 }
 
 # Apply: write, allowed ONLY from the protected GitHub Environment
@@ -2408,12 +2407,12 @@ data "aws_iam_policy_document" "apply_trust" {
     }
 
     # StringEquals on the full sub, pinned to the protected environment.
-    # NEVER use StringLike with "repo:acme/infra:*" — that grants every
+    # NEVER use StringLike with "repo:disasterproject/infra:*" — that grants every
     # branch, every fork PR and every workflow in the repository.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:acme/infra:environment:${var.environment}"]
+      values   = ["repo:disasterproject/infra:environment:${var.environment}"]
     }
   }
 }
@@ -2464,7 +2463,7 @@ Deny  kms:ScheduleKeyDeletion for state-encryption keys
 | `drift` (cron) | `tf-plan-<env>@` | `tf-plan-<env>` | none | read |
 | `destroy` (manual) | `tf-destroy-<env>@` | `tf-destroy-<env>` | **required reviewers + separate approver group** | read + write |
 
-Destroy deserves its own identity. On a shared platform it is the operation that can take down every tenant (§14.4), and separating it means a compromised deploy path cannot delete infrastructure.
+Destroy deserves its own identity. On a shared platform it is the operation that can take down every tenant (§12.4), and separating it means a compromised deploy path cannot delete infrastructure.
 
 Plan runs must use `-lock=false`, so the plan identity needs no write on the lock table or state object. That is what makes a genuinely read-only plan role possible:
 
@@ -2608,7 +2607,7 @@ This is where the architecture earns its keep. Demo, sales-engineering and evalu
 ```mermaid
 flowchart TD
     subgraph DED["DEDICATED — 1 platform : 1 instance"]
-        D1["network · cluster · services"] --> D2["instance acme-prod"]
+        D1["network · cluster · services"] --> D2["instance disasterproject-prod"]
     end
     subgraph SHR["SHARED — 1 platform : N instances"]
         S1["network · cluster · services"] --> S2["alpha"]
@@ -2635,7 +2634,7 @@ flowchart TD
 Everything above is expressed by one file per archetype instance. This is the whole trick.
 
 ```hcl
-# stacks/archetypes/webapp-3tier/instances/acme-prod/binding.tm.hcl
+# stacks/archetypes/webapp-3tier/instances/disasterproject-prod/binding.tm.hcl
 # ---- DEDICATED: this instance owns its platform ----
 globals "platform" {
   cloud             = "aws"
@@ -2645,16 +2644,16 @@ globals "platform" {
   network_stack_id  = "aws-prod-network"
   cluster_stack_id  = "aws-prod-eks"
   services_stack_id = "aws-prod-services"
-  data_stack_id     = "aws-prod-acme-data"
+  data_stack_id     = "aws-prod-disasterproject-data"
 
-  namespace         = "acme"
+  namespace         = "disasterproject"
 }
 
 globals {
-  instance = "acme"
+  instance = "disasterproject"
   tags = {
     Environment = "prod"
-    Instance    = "acme"
+    Instance    = "disasterproject"
     Model       = "dedicated"
     Archetype   = "webapp-3tier"
   }
@@ -2833,7 +2832,7 @@ stacks/platforms/gcp/
 ├── demos/          # long-lived, always on
 └── ephemeral/
     ├── conf-2026-q3/     # created for an event, destroyed after
-    └── poc-acme/
+    └── poc-disasterproject/
 ```
 
 An ephemeral platform is created by copying `demos/` and changing three globals (`env`, `project_id`, `vpc_cidr`). A scheduled workflow lists stacks whose `ExpiresOn` tag is in the past and opens a destroy PR — never destroying automatically, always with a human approving.
@@ -3296,7 +3295,7 @@ The ordering invariant that previously relied on a shell script is now a Rego po
 
 ## 15. Risk register
 
-The full register — 37 risks grouped by domain, with likelihood, impact, mitigation and the section that specifies each control — is maintained in its own document, `risk-register.md`. It is reviewed at every roadmap phase gate rather than read end to end.
+The full register — 53 risks grouped by domain (52 active; R28 retired as a duplicate of R26), with likelihood, impact, mitigation and the section that specifies each control — is maintained in its own document, `risk-register.md`. It is reviewed at every roadmap phase gate rather than read end to end.
 
 The five to act on first:
 
@@ -3345,7 +3344,7 @@ If the inherited-globals or interpolation variants fail, the late-binding model 
 ### Phase 2 — Second cloud (1–2 weeks)
 
 - Second set of mixins and generator branches
-- Prove that the archetype contract files are genuinely cloud-agnostic where §6.9 says they should be
+- Prove that the archetype contract files are genuinely cloud-agnostic where §6.8 says they should be
 - G2 plan scanning
 - Permission boundaries published by the platform stack and asserted in app stacks
 
@@ -3418,7 +3417,7 @@ Sequenced so that nothing blocks a real deployment until it has been observed in
 
 | Thing | Pattern | Example |
 |---|---|---|
-| Stack ID | `<cloud>-<env>-<capability>[-<instance>]` | `aws-demos-eks`, `gcp-prod-acme-app` |
+| Stack ID | `<cloud>-<env>-<capability>[-<instance>]` | `aws-demos-eks`, `gcp-prod-disasterproject-app` |
 | Stack tags | `<cloud>`, `<env>`, `<capability>`, `platform`\|`archetype:<name>`, `instance:<id>`, `producer`\|`consumer`, `protected` | |
 | Generated files | `_<purpose>.tf` | `_main.tf`, `_backend.tf`, `_sharing_generated.tf` |
 | Generator directory | `imports/generators/v<N>/gen_<capability>.tm.hcl` | `imports/generators/v1/gen_cluster.tm.hcl` |

@@ -1,0 +1,28 @@
+flowchart LR
+    subgraph SRC["Fuentes (a mano, revisadas en PR)"]
+        MAN["archetypes/sonarqube/<br/>manifest.yaml"]
+        BIND["environments/qa/<br/>binding.yaml"]
+        LED["cmdb-data/pools<br/>ledgers"]
+        ARC["archetype.tm.hcl<br/>valores por defecto"]
+        INS["instance.tm.hcl<br/>image_digest"]
+    end
+    RES["archetypectl resolve<br/>cierre · traits · claims"]
+    subgraph GEN["Generado (committed, prefijo _)"]
+        BTM["instances/main/<br/>binding.tm.hcl"]
+        DIRS["9 directorios de stack<br/>stack.tm.hcl"]
+        TF["_main.tf · _app.tf<br/>_sharing_generated.tf"]
+    end
+    TG["terramate generate<br/>+ asserts §7.1"]
+    RUN["terramate script run<br/>preview / deploy"]
+
+    MAN --> RES
+    BIND --> RES
+    LED --> RES
+    RES --> BTM
+    RES --> DIRS
+    RES -. "claim hostname" .-> LED
+    BTM --> TG
+    ARC --> TG
+    INS --> TG
+    DIRS --> TG
+    TG --> TF --> RUN

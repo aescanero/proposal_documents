@@ -17,6 +17,7 @@ traits:
   - arm64
   - spot
   - overlay-pods
+  - sysctl-max-map-count    # node-level sysctl without privileged pods (Elasticsearch)
 
   # --- ingress ---
   - gateway-api
@@ -43,12 +44,14 @@ traits:
   - irsa
   - pod-identity
   - managed-identity
+  - saml-idp                # the oidc-idp provider also serves SAML 2.0
 
   # --- data ---
   - private-endpoint
   - iam-auth
   - multi-az
   - psa-shared
+  - cnpg                    # database-platform is CloudNativePG; Cluster allowed as tenant resource
 
   # --- messaging ---
   - strimzi
@@ -69,3 +72,4 @@ traits:
   - managed-prometheus
   - otlp-native
   - managed-tracing
+  - prometheus-operator-crds  # PodMonitor / PrometheusRule CRDs are installed

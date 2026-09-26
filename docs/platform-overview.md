@@ -6,7 +6,7 @@ Visual map of the two reference documents. Nothing here is normative; every diag
 |---|---|
 | `archetype-model.md` | *What may be composed with what?* Manifests, capabilities, traits, pools, CMDB, resolution |
 | `terramate-outputs-sharing-architecture.md` | *How is it generated and applied?* Generators, outputs sharing, IAM, policy, CI/CD, per-cloud guides |
-| `risk-register.md` | *What can go wrong, and is the control actually in place?* 37 risks by domain, reviewed at each phase gate |
+| `risk-register.md` | *What can go wrong, and is the control actually in place?* 53 risks by domain (52 active), reviewed at each phase gate |
 
 ---
 
@@ -160,7 +160,7 @@ flowchart TD
     G["<b>10.0.0.0/8</b> · global pool<br/>published by landing-zone"]
     G --> HUB["10.0.0.0/17 · hub<br/><i>fixed reservation</i>"]
     G --> HUBDR["10.0.128.0/17 · hub DR<br/><i>fixed reservation</i>"]
-    G --> PERM["10.2.0.0/15 · permanent environments"]
+    G --> PERM["10.4.0.0/14 · permanent environments"]
     G --> EPH["10.16.0.0/12 · ephemeral"]
 
     PERM --> ENV["<b>10.4.0.0/17</b> · demos<br/>environment pool"]
@@ -356,7 +356,7 @@ flowchart LR
     style NEW fill:#e8f5e9
 ```
 
-Adopting Gateway API removes three things: the URL map generated from a tenant list, the listener-priority ledger, and the edge-routing stack that had to run last. What survives as a claim is the **hostname** — only one tenant can own `alpha.demos.acme.com`.
+Adopting Gateway API removes three things: the URL map generated from a tenant list, the listener-priority ledger, and the edge-routing stack that had to run last. What survives as a claim is the **hostname** — only one tenant can own `alpha.demos.disasterproject.com`.
 
 Specified in: architecture §10.6.
 
@@ -417,7 +417,7 @@ flowchart TD
 
 One source, three generated artefacts, a `registry-generate --check` gate. Without it they diverge — and the failure mode is a label the generator stopped emitting while the admission `Constraint` still demands it, which blocks legitimate deployments at the worst possible moment.
 
-Specified in: architecture §13, companion §4.5.
+Specified in: architecture §13, companion §4.4.
 
 ---
 
@@ -487,7 +487,7 @@ flowchart TD
         P4["component/redis"]
     end
     subgraph DEMO["kind: demo — project office"]
-        D1["demo-acme-graph@0.1.0<br/>expiresOn required"]
+        D1["demo-disasterproject-graph@0.1.0<br/>expiresOn required"]
         DN["weeks · one instance · leaf only<br/>may NOT publish capabilities"]
     end
     COMP -->|"stacks[].use"| D1

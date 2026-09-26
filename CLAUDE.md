@@ -15,7 +15,7 @@ A multi-cloud infrastructure platform built on **Terramate CLI + OpenTofu**, wit
 | **Resolve** | `docs/archetype-model.md` | What may be composed with what — manifests, capabilities, traits, pools, CMDB, resolution |
 | **Generate** | `docs/terramate-outputs-sharing-architecture.md` | How it is generated and applied — generators, outputs sharing, IAM, policy, CI/CD, per-cloud guides |
 
-Plus `docs/platform-overview.md` (diagram-led map, read first), `docs/risk-register.md` (37 risks by domain) and `docs/developer-guide.md` (the application developer's half — branching, versioning, build, rollback).
+Plus `docs/platform-overview.md` (diagram-led map, read first), `docs/risk-register.md` (53 risks by domain, 52 active), `docs/glossary.md` (every term, defined) and `docs/developer-guide.md` (the application developer's half — branching, versioning, build, rollback).
 
 **The seam between the halves is `binding.tm.hcl`.** The resolver writes globals; the generators consume them. Neither knows the other's internals.
 
@@ -41,7 +41,7 @@ Plus `docs/platform-overview.md` (diagram-led map, read first), `docs/risk-regis
 | Decision | Rationale |
 |---|---|
 | **`from_stack_id` accepts an expression** | **This is an assumption taken as a design decision.** The entire late-binding model depends on it: one hand-written contract file per capability, referencing `global.platform.cluster_stack_id`. If it turns out to be literal-only, the resolver must generate a contract file per instance — more machinery, noisier PRs, but not a redesign |
-| **Hub and spoke in one account/project/subscription** | |
+| **One account/project/subscription per environment; hub and landing zone in their own** | The environment is the isolation boundary of the dedicated model (architecture §12.1), and cross-project state reads are already designed for (§11.5). On GCP the edge IP, Cloud Armor policy and certificate must share a project with the load balancer, so they are provided by the **environment**, not the landing zone. KMS, the image registry and CI federation stay in the landing zone, granted across projects. Settled with `qa` (`disasterproject-qa`) |
 | **Each environment is a VPC/VNet**, a `/17` (or `/16` for production) from `10.0.0.0/8` | |
 | **Environments: `prod`, `qa`, `dev`, `demos`, `ephemeral-*`** | Normalised naming. Older drafts used `shared-demo`/`pre`/`prd` — those names are dead |
 | **`demos` is a shared environment** | Not ephemeral-per-demo. Kafka as a common bus argues for it |
@@ -67,6 +67,7 @@ The same technology can be both. `postgres-operator` (archetype, provides `datab
 
 1. **Is `max_pods_per_node` settable on Autopilot?** The default of 64 assumes it is.
 2. **Shared VPC or separate VPCs on GCP?** Peering non-transitivity plus the same-VPC backend rule may force Shared VPC. Address plan unchanged either way. Risk R23.
+   **Settled for `qa`: separate VPC.** `qa` is dedicated, so its edge load balancer lives in its own VPC next to the Envoy NEG and nothing routes through the hub; R23 does not arise. Still open for `demos` and any environment whose edge would sit in the hub. See `docs/proposals/sonarqube-qa/README.md` §4.15.
 3. **Kafka partition ceiling** on the intended broker count. The 4000 budget in the `demos` binding is a placeholder.
 4. **Where does resolution run** — a CLI in the repo, or a reusable workflow? Determines whether the project office can validate a demo locally.
 5. **How much Rego is genuinely shared** between conftest and `ConstraintTemplate`s. Measure before planning a single policy codebase.
@@ -112,15 +113,16 @@ These are the failure modes that have already been identified. Do not rediscover
 
 ```
 docs/                   reference documents — the specification
+docs/proposals/         design proposals for concrete deployments (not normative)
 schemas/                JSON Schema, GENERATED from registry/
 registry/               SOURCE OF TRUTH for capabilities, traits, zones, labels
-policy/                 Rego for conftest, plus *_test.rego
 .github/workflows/
 ```
 
 Planned, not yet present:
 
 ```
+policy/                 Rego for conftest, plus *_test.rego
 modules/                OpenTofu modules
 imports/mixins/         backend and provider generators per cloud
 imports/generators/v1/  one generator per capability — "the base layer"

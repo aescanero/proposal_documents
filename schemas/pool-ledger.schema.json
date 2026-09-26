@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://acme.com/schemas/pool-ledger.schema.json",
+  "$id": "https://disasterproject.com/schemas/pool-ledger.schema.json",
   "title": "Pool Ledger",
   "description": "Authoritative record of allocations of one finite resource. Merge conflicts on this file are the concurrency control.",
   "type": "object",

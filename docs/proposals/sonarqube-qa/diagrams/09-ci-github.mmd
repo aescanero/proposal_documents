@@ -1,0 +1,21 @@
+sequenceDiagram
+    autonumber
+    participant DEV as Desarrollador
+    participant GH as GitHub (repo de 200)
+    participant GHA as GitHub Actions
+    participant SQ as SonarQube (web)
+    participant CE as Compute Engine<br/>1 worker, cola FIFO
+    participant DB as PostgreSQL
+
+    DEV->>GH: merge a main
+    GH->>GHA: push a main (NO pull_request)
+    Note over GHA: concurrency: sonar-${{ github.repository }}<br/>cancel-in-progress: true
+    GHA->>GHA: build + tests + cobertura
+    GHA->>SQ: sonarqube-scan-action · POST /api/ce/submit
+    SQ->>CE: encola la tarea
+    Note over CE: con 200 proyectos, en horas punta<br/>la cola es el cuello de botella
+    CE->>DB: procesa el informe, persiste
+    CE->>SQ: indexa en ES
+    GHA->>SQ: espera quality gate (timeout 300 s)
+    SQ-->>GHA: OK / ERROR
+    GHA-->>GH: check verde / rojo en el commit de main

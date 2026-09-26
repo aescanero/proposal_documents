@@ -62,6 +62,9 @@ jobs:
           for f in cmdb-data/pools/*.json; do
             check-jsonschema --schemafile schemas/pool-ledger.schema.json "$f"
           done
+          for f in cmdb-data/stacks/*.json; do
+            check-jsonschema --schemafile schemas/cmdb-stack.schema.json "$f"
+          done
         shell: bash
 
   policy:

@@ -1,0 +1,21 @@
+sequenceDiagram
+    autonumber
+    participant GHA as Job GitHub Actions<br/>concurrency: gke-qa-api
+    participant WIF as Workload Identity Federation
+    participant BRK as Servicio intermedio<br/>(Cloud Run function)
+    participant GKE as GKE · redes autorizadas
+    participant REC as Reconciliador<br/>(cada 15 min)
+
+    Note over GHA: espera si otro job tiene el grupo gke-qa-api
+    GHA->>WIF: token OIDC (repo + environment exactos)
+    WIF-->>GHA: identidad de preview o deploy<br/>SIN container.clusters.update
+    GHA->>BRK: open(ip del runner /32)
+    BRK->>BRK: valida /32, registra run_id
+    BRK->>GKE: añade gha-<run_id>-<epoch>
+    GHA->>GKE: terramate run -- tofu plan / apply<br/>(helm, kubernetes)
+    alt paso final if: always()
+        GHA->>BRK: close(ip)
+        BRK->>GKE: retira la entrada
+    else runner muerto
+        REC->>GKE: retira entradas con más de 60 min
+    end

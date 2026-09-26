@@ -1,0 +1,21 @@
+flowchart TB
+    CH["archetypes/sonarqube/chart<br/>una versión · un sitio para revisar"]
+    SUB["subchart oficial<br/>sonarqube/sonarqube (fijado)"]
+    CH --> SUB
+
+    subgraph REL["Un helm_release por stack · values activan solo su parte"]
+        R1["secrets<br/>secrets.enabled=true<br/>SecretStore · ExternalSecrets"]
+        R2["data-tenant<br/>database.enabled=true<br/>Cluster · ObjectStore · ScheduledBackup"]
+        R3["firewall<br/>firewall.enabled=true<br/>NetworkPolicies"]
+        R4["app<br/>app.enabled=true<br/>StatefulSet SonarQube"]
+        R5["config<br/>config.enabled=true<br/>Job config-‹hash›"]
+        R6["frontdoor<br/>frontdoor.enabled=true<br/>HTTPRoute · BackendTrafficPolicy"]
+        R7["observability<br/>observability.enabled=true<br/>PodMonitor · PrometheusRule · Probe"]
+    end
+    CH --> R1 & R2 & R3 & R4 & R5 & R6 & R7
+    SUB -. "solo en app" .-> R4
+
+    NOTE["Cambiar una alerta = release observability<br/>SonarQube no se reinicia"]
+    R7 --- NOTE
+    style R4 fill:#e8f5e9
+    style NOTE fill:#fff4e5
