@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+*[Español](CLAUDE.es.md)*
+
 Context for Claude Code working in this repository. Read this before touching anything.
 
 This file is the **decision log**. It records what was settled and why, so you do not re-litigate choices or guess at rationale. The reference documents in `docs/` are the specification; this file tells you which parts are settled, which are still open, and what the traps are.
