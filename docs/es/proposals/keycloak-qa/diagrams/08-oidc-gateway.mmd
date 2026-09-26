@@ -1,0 +1,23 @@
+sequenceDiagram
+    autonumber
+    actor U as Persona
+    participant EG as Envoy (SecurityPolicy)
+    participant KS as keycloak-service:8443 (interno)
+    participant KP as sso.qa.disasterproject.com (público)
+    participant A as App X
+
+    Note over EG,KS: al cargar la política: discovery y JWKS<br/>por backendRefs al Service interno
+    U->>EG: GET https://x.qa.disasterproject.com
+    EG-->>U: 302 al authorization_endpoint público
+    U->>KP: /realms/qa/protocol/openid-connect/auth
+    Note over KP: redirector → Entra ID (ver 04)
+    KP-->>U: 302 con code
+    U->>EG: /oauth2/callback?code=…
+    EG->>KS: token endpoint (back-channel interno, TLS CA interna)
+    KS-->>EG: id_token · access_token (iss = URL pública)
+    EG-->>U: cookie de sesión · 302
+    U->>EG: GET con cookie
+    EG->>A: petición + cabecera con el token
+    alt Keycloak caído
+        EG-->>U: error (fail-closed, DK6)
+    end

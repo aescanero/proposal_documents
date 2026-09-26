@@ -315,7 +315,7 @@ stack {
     "/stacks/archetypes/sonarqube/instances/main/firewall",
     "/stacks/archetypes/sonarqube/instances/main/sso",
     "/stacks/platforms/gcp/qa/gke",                          # producer via sharing → after (R2)
-    "/stacks/platforms/gcp/qa/keycloak",
+    "/stacks/archetypes/keycloak/instances/main/realm",
   ]
 }
 
