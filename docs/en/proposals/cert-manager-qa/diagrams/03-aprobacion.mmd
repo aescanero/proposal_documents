@@ -1,0 +1,21 @@
+sequenceDiagram
+    autonumber
+    participant T as Consumer stack
+    participant K as Kubernetes API
+    participant CM as cert-manager controller
+    participant AP as approver-policy
+    participant CA as ClusterIssuer internal-ca
+
+    T->>K: Certificate keycloak-tls (ns keycloak)<br/>dnsNames: keycloak-service.keycloak.svc
+    K->>CM: reconcile
+    CM->>K: CertificateRequest
+    K->>AP: evaluate against the CertificateRequestPolicies
+    alt SANs under *.keycloak.svc and *.keycloak.svc.cluster.local
+        AP->>K: Approved
+        CM->>CA: sign
+        CA-->>CM: certificate
+        CM->>K: Secret keycloak-tls
+    else a SAN from another namespace (e.g. *.sonarqube.svc)
+        AP->>K: Denied with the reason
+        Note over K: the Certificate never becomes Ready,<br/>platform alert after 15 min
+    end
