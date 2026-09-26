@@ -356,7 +356,7 @@ flowchart LR
     style NEW fill:#e8f5e9
 ```
 
-Adopting Gateway API removes three things: the URL map generated from a tenant list, the listener-priority ledger, and the edge-routing stack that had to run last. What survives as a claim is the **hostname** — only one tenant can own `alpha.demos.acme.com`.
+Adopting Gateway API removes three things: the URL map generated from a tenant list, the listener-priority ledger, and the edge-routing stack that had to run last. What survives as a claim is the **hostname** — only one tenant can own `alpha.demos.disasterproject.com`.
 
 Specified in: architecture §10.6.
 
@@ -487,7 +487,7 @@ flowchart TD
         P4["component/redis"]
     end
     subgraph DEMO["kind: demo — project office"]
-        D1["demo-acme-graph@0.1.0<br/>expiresOn required"]
+        D1["demo-disasterproject-graph@0.1.0<br/>expiresOn required"]
         DN["weeks · one instance · leaf only<br/>may NOT publish capabilities"]
     end
     COMP -->|"stacks[].use"| D1

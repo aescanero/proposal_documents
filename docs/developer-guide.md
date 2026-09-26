@@ -581,7 +581,7 @@ volumes:
 **The wrong way, and it is the way every tutorial shows:**
 
 ```bash
-VITE_API_URL=https://api.qa.acme.com npm run build
+VITE_API_URL=https://api.qa.disasterproject.com npm run build
 ```
 
 Vite substitutes `import.meta.env.VITE_API_URL` as a **string literal at build time**. The URL is baked into the bundle. That produces **one image per environment**, and it breaks promotion: the artefact you tested in `qa` is not the artefact you deploy to `prod` — it is a different build, from the same source, with different bytes and a different digest. Every guarantee in §5 evaporates, and the first time it costs you something will be a prod-only bug that qa cannot reproduce because qa never ran that image.

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://acme.com/schemas/cmdb-stack.schema.json",
+  "$id": "https://disasterproject.com/schemas/cmdb-stack.schema.json",
   "title": "CMDB Stack CI",
   "description": "One file per stack. Level 0 of the CMDB; the system of record.",
   "type": "object",

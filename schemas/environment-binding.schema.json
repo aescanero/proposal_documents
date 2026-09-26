@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://acme.com/schemas/environment-binding.schema.json",
+  "$id": "https://disasterproject.com/schemas/environment-binding.schema.json",
   "title": "Environment Binding",
   "description": "Names the single concrete provider satisfying each capability in one environment.",
   "type": "object",

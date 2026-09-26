@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://acme.com/schemas/component.schema.json",
+  "$id": "https://disasterproject.com/schemas/component.schema.json",
   "title": "Component",
   "description": "Reusable parameterised stack template. Composed into archetypes via stacks[].use.",
   "type": "object",

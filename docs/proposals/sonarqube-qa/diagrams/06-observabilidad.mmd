@@ -22,7 +22,7 @@ flowchart LR
     PR --> P
     P -->|"scrape + passcode"| SQ
     P --> PG
-    BB -->|"GET https://sonar.qa.acme.com/api/system/status"| SQ
+    BB -->|"GET https://sonar.qa.disasterproject.com/api/system/status"| SQ
     P --> BB
     SQ -. "stdout" .-> FB --> L --> GCS
     P --> AM --> CH

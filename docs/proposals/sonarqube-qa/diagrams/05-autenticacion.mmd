@@ -9,7 +9,7 @@ sequenceDiagram
 
     rect rgb(232, 240, 254)
     Note over U,UP: Personas: SAML 2.0 SP-initiated. Sin SecurityPolicy OIDC en la ruta
-    U->>LB: GET https://sonar.qa.acme.com
+    U->>LB: GET https://sonar.qa.disasterproject.com
     LB->>SQ: vía Envoy Gateway
     SQ-->>U: 302 a Keycloak (AuthnRequest)
     U->>KC: acceso

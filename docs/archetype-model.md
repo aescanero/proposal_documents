@@ -285,14 +285,14 @@ kind: demo  ⇒  provides == []  ∧  layer == 5  ∧  expiresOn is set
 Neo4j, MongoDB, Redis and Postgres as *dedicated instances* should not be authored per demo. They are **components**: parameterised stack templates with their chart, claims, firewall rules and secret integration already solved.
 
 ```yaml
-# archetypes/demo-acme-graph/manifest.yaml
+# archetypes/demo-disasterproject-graph/manifest.yaml
 metadata:
-  name: demo-acme-graph
+  name: demo-disasterproject-graph
   version: 0.1.0
   kind: demo
   layer: 5
   expiresOn: 2026-11-15
-  owners: [project-office-acme]
+  owners: [project-office-disasterproject]
 
 stacks:
   - use: component/neo4j
@@ -532,8 +532,8 @@ metadata:
   region: europe-west1
 
 platform:
-  landing_zone: acme-gcp-lz
-  project_id: acme-demos
+  landing_zone: disasterproject-gcp-lz
+  project_id: disasterproject-demos
 
 bindings:
   network:             { archetype: environment,          version: 2.1.0, stack_id: gcp-demos-network }
@@ -551,8 +551,8 @@ bindings:
 
 network:
   cidr: 10.4.0.0/17
-  dns_zone: demos-acme-com
-  dns_suffix: demos.acme.com
+  dns_zone: demos-disasterproject-com
+  dns_suffix: demos.disasterproject.com
 
 cluster:
   max_nodes: 128
@@ -801,7 +801,7 @@ Node subnet sizing is derived, not chosen: `max_nodes × 4`, floored at `/24`. F
       "purpose": "psa",       "state": "active", "pr": 152, "allocated_at": "2026-03-19" },
     { "cidr": "10.4.32.0/24", "zone": "edge",  "owner": "gcp-demos-gateway",
       "purpose": "services",  "state": "active", "pr": 160, "allocated_at": "2026-04-02" },
-    { "cidr": "10.4.24.0/24", "zone": "data",  "owner": "demo-acme-graph",
+    { "cidr": "10.4.24.0/24", "zone": "data",  "owner": "demo-disasterproject-graph",
       "purpose": "db-subnet", "state": "quarantine",
       "released_at": "2026-08-20", "reusable_after": "2026-08-27" }
   ]
@@ -1134,7 +1134,7 @@ archetypectl resolve --instance demos-alpha
     { "name": "data-tenant", "reason": "condition false: database-platform not bound in demos" }
   ],
   "claims": [
-    { "kind": "hostname", "value": "alpha.demos.acme.com", "state": "active", "pr": 412 },
+    { "kind": "hostname", "value": "alpha.demos.disasterproject.com", "state": "active", "pr": 412 },
     { "kind": "cidr", "zone": "data", "purpose": "db-subnet", "value": "10.4.20.0/24", "state": "active", "pr": 412 }
   ],
   "tenant_resources": [
@@ -1205,7 +1205,7 @@ The algorithm is simple; the error messages are where the engineering effort bel
 ```
 ✗ cannot allocate /24 in zone 'data' of pool 'demos' (10.4.16.0/20)
     utilisation: 91%   largest contiguous free run: /26
-    1 block in quarantine until 2026-08-27 (10.4.24.0/24, released by demo-acme-graph)
+    1 block in quarantine until 2026-08-27 (10.4.24.0/24, released by demo-disasterproject-graph)
 
     → wait for quarantine, reduce the request, or grow the environment CIDR
 ```
@@ -1224,7 +1224,7 @@ The algorithm is simple; the error messages are where the engineering effort bel
 
 ```
 ✗ tenant resource 'KafkaConnector' not authorised
-    consumer: demo-acme-graph (stack 'messaging')
+    consumer: demo-disasterproject-graph (stack 'messaging')
     provider: kafka@2.0.0 authorises [KafkaTopic, KafkaUser]
 
     → request the kind be added to the kafka archetype's tenant_resources,
@@ -1234,7 +1234,7 @@ The algorithm is simple; the error messages are where the engineering effort bel
 ### Demo category violation
 
 ```
-✗ archetype 'demo-acme-graph' declares kind: demo but publishes a capability
+✗ archetype 'demo-disasterproject-graph' declares kind: demo but publishes a capability
     provides: [{ capability: cache, version: 1.0.0 }]
 
     Demo archetypes are leaves. A capability implies a stable contract and
@@ -1348,7 +1348,7 @@ Fifteen archetypes; the application declared six.
 
 **Step 11** validates 6 topics and 1 user against Kafka's limits of 20 and 3, all prefixed `alpha-`.
 
-**Step 12** allocates two claims: hostname `alpha.demos.acme.com`, and a `/24` in zone `data` with purpose `db-subnet` for the dedicated instance. The environment's node and pod ranges were claimed at layers 1 and 2 and are not re-allocated.
+**Step 12** allocates two claims: hostname `alpha.demos.disasterproject.com`, and a `/24` in zone `data` with purpose `db-subnet` for the dedicated instance. The environment's node and pod ranges were claimed at layers 1 and 2 and are not re-allocated.
 
 **Step 17** writes `binding.tm.hcl`, which the architecture document's generators consume:
 
@@ -1369,7 +1369,7 @@ globals "platform" {
 globals {
   instance  = "alpha"
   archetype = "webapp-3tier"
-  hostname  = "alpha.demos.acme.com"
+  hostname  = "alpha.demos.disasterproject.com"
   env_cidr  = "10.4.0.0/17"
   kafka_prefix = "alpha-"
 }
@@ -1383,16 +1383,16 @@ globals "quota" {
 
 ### 15.2 Demo archetype from the project office
 
-`demo-acme-graph@0.1.0` — a bespoke demo needing Neo4j and MongoDB.
+`demo-disasterproject-graph@0.1.0` — a bespoke demo needing Neo4j and MongoDB.
 
 ```yaml
 metadata:
-  name: demo-acme-graph
+  name: demo-disasterproject-graph
   version: 0.1.0
   kind: demo
   layer: 5
   expiresOn: 2026-11-15
-  owners: [project-office-acme]
+  owners: [project-office-disasterproject]
 
 runtimes: [gke, gke-autopilot]
 
@@ -1422,7 +1422,7 @@ stacks:
 claims:
   - kind: hostname
     pool: "{{ environment.dns_zone }}"
-    value: "acme-graph.demos.acme.com"
+    value: "disasterproject-graph.demos.disasterproject.com"
 
 capacity:
   cpu_millicores: 6000
