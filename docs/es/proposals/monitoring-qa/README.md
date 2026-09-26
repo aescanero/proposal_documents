@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 1 |
+| **Estado** | Propuesta · revisión 2 |
 | **Alcance** | El arquetipo de capa 3 `monitoring-oss` en `qa` (métricas, alertas, logs, dashboards, sondas) y lo que la capa 1b `cloud-monitoring-gcp` aporta junto a él: frontera entre ambos, pila, seguridad, contrato `monitoring`, enrutado de alertas, quién vigila al vigilante, red, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | SonarQube (E1 §4.7, E2 §5.9), la variante Cloud SQL (§8), Keycloak (§10) y ESO (§9) ya dan por hechos el selector `prometheus=qa`, el sidecar de dashboards, el blackbox exporter, Loki y el canal de notificación compartido. ESO además dejó aquí las reglas de los componentes de capa 3 |
 | **Especificación de referencia** | `archetype-model.md` (AM §n; §3 capa 1b, §4.2 traits de `monitoring`), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -180,7 +180,7 @@ Fuente: [`diagrams/03-alertas.mmd`](diagrams/03-alertas.mmd)
 | Identidad | `team=identity` | Equipo de identidad | Caducidad de la credencial de Keycloak en Entra (R42) |
 | Watchdog | `alertname=Watchdog` | Receptor nulo | — (§6) |
 
-**En `qa` nada despierta a nadie.** No hay guardia; el canal SRE es un grupo de correo y un canal de chat (Q-M1). Las credenciales de los receptores (URL del webhook del chat, SMTP) son secretos de Secret Manager llevados por ESO (§8.2).
+**En `qa` nada despierta a nadie.** No hay guardia. El destino concreto de cada canal (SRE, equipos, identidad) **no lo fija esta propuesta**: es configuración del despliegue, y el diseño no depende de él. Las credenciales de los receptores (URL de webhook, SMTP, según el destino) son secretos de Secret Manager llevados por ESO (§8.2).
 
 Inhibiciones: `NodeNotReady` inhibe las alertas de los pods de ese nodo; `KubeAPIDown` inhibe las de todo lo que depende del API server.
 
@@ -371,7 +371,7 @@ Fuente: [`diagrams/02-stacks-arquetipo.mmd`](diagrams/02-stacks-arquetipo.mmd)
 
 | Recurso | Nota |
 |---|---|
-| Canales de notificación: correo del grupo SRE y chat | Salida `notification_channel_id` (variante Cloud SQL §8) |
+| Canales de notificación, con el destino que se configure al desplegar (§16) | Salida `notification_channel_id` (variante Cloud SQL §8) |
 | Alertas basadas en logs | Lectura de secretos fuera de la lista (ESO §9.2), cambios en redes autorizadas fuera del servicio intermedio (E1 §4.13), destrucción de versiones de clave KMS (E1 §4.14) |
 | Dead-man's switch | §6 |
 | *Data Access audit logs* | Activados para Secret Manager y Cloud KMS; no para el resto (coste) |
@@ -417,6 +417,8 @@ assert {
 | `cloud-monitoring-gcp` (`gcp-qa-cloudmon`) | §10.3 |
 | `keycloak` | Assert de convención de hostname y realm (§4.3); cliente de plataforma de Grafana (ya en §6.6 de su propuesta) |
 | Todos los consumidores | Etiqueta `prometheus=qa`; entrada desde `monitoring` en su `NetworkPolicy`; etiquetas `archetype` y `team` en el namespace para el enrutado (§5.2) |
+
+Requisitos **aceptados**. El de `gcp-qa-gke` queda recogido en E1 §4.1 y el assert de convención en la propuesta de Keycloak (§12.1).
 
 ---
 
@@ -476,10 +478,7 @@ assert {
 | VM8 | Redacción en Fluent Bit | Una línea con `Authorization: Bearer …` llega a Loki sin el token |
 | VM9 | Rutas de Alertmanager | Alerta con `team=identity` en el canal de identidad; `warning` fuera de horario, retenida hasta la mañana |
 
-Preguntas abiertas:
-
-- **Q-M1.** Destino concreto del canal SRE (grupo de correo y espacio de chat) y de los canales por equipo.
-- **Q-M2.** Canal del equipo de identidad para R42; se suma a Q-K1 de Keycloak.
+**Fuera de alcance: el destino de las notificaciones.** Qué grupo de correo, espacio de chat o canal reciben las alertas del equipo SRE, de cada equipo y del equipo de identidad no se decide aquí. Alertmanager lee sus receptores del secreto `qa-monitoring-oss-alertmanager-receivers` y la capa 1b crea los canales de Cloud Monitoring con el destino que se configure al desplegar; cambiarlo no cambia ningún stack ni ninguna regla.
 
 ---
 
@@ -487,7 +486,7 @@ Preguntas abiertas:
 
 | Fase | Contenido | Criterio de salida | Estimación |
 |---|---|---|---|
-| **0 · Prerrequisitos** | GKE con los ajustes de §12; ESO; Q-M1; VM1, VM3 | Verificaciones cerradas; canal decidido | Depende de la plataforma |
+| **0 · Prerrequisitos** | GKE con los ajustes de §12; ESO; destinos de notificación configurados (§16); VM1, VM3 | Verificaciones cerradas | Depende de la plataforma |
 | **1 · Esqueleto** | Manifiesto, charts, asserts, reglas de CI y constraints | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 y preview con mocks en verde | 2 días |
 | **2 · Métricas y alertas** | `iam`, `secrets`, `firewall`, `crds`, `metrics`; capa 1b | Watchdog y alerta de prueba entregados; **VM2**, **VM4**, **VM5**, **VM9** | 3 días |
 | **3 · Logs** | `storage`, `logs` | Logs de todos los namespaces en Loki; **VM6**, **VM8** | 2 días |

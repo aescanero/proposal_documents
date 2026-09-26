@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 2 |
+| **Status** | Proposal · revision 3 |
 | **Scope** | The layer 4 `keycloak` archetype on `qa`: installation, data, configuration, `qa` realm with Entra ID as upstream IdP, consumer clients as tenant resources, keys, publishing, network, availability, observability, stacks, policies, execution and plan |
 | **Data assumption** | The Cloud SQL variant ([`../sonarqube-qa-cloudsql/`](../sonarqube-qa-cloudsql/README.md), DC1): `database-platform` unbound on `qa`, so Keycloak brings its own instance (DC8 of that variant). If DC1 is rejected, the same manifest takes the `data-tenant` path with a CNPG `Cluster` (AM §5.5) and only §3 changes |
 | **Known consumers** | SonarQube over SAML ([`../sonarqube-qa/`](../sonarqube-qa/README.md), S1/S2), Grafana over OIDC, future applications with an OIDC `SecurityPolicy` on the Gateway |
@@ -559,6 +559,10 @@ assert {
 assert {
   assertion = tm_alltrue([for p in global.keycloak_values.frontdoor.paths : tm_contains(["/realms/qa/", "/resources/"], p)])
   message   = "keycloak: the public route exposes only /realms/qa/ and /resources/ (§8.1)"
+}
+assert {
+  assertion = global.keycloak.hostname == "https://sso.${global.platform.dns_suffix}" && global.keycloak.realm == global.platform.env
+  message   = "keycloak: hostname https://sso.<dns_suffix> and realm = environment name; Grafana derives them by convention (monitoring §4.3)"
 }
 assert {
   assertion = tm_startswith(global.keycloak.hostname, "https://")

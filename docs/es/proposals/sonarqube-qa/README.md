@@ -124,6 +124,7 @@ Herramientas de plataforma sin cambios: Terramate, OpenTofu, conftest, Checkov.
 | Elemento | Propuesta | Motivo |
 |---|---|---|
 | Cluster | GKE Standard **regional**, **nodos privados**, endpoint del plano de control con redes autorizadas vacías por defecto (§4.13), Workload Identity, release channel `STABLE`, `deletion_protection: true` (§12.6) | Línea base de §5.7 |
+| Logs y métricas del sistema | `logging_config`: solo `SYSTEM_COMPONENTS`; `monitoring_config`: `SYSTEM_COMPONENTS` y `managed_prometheus.enabled = false` | Logs de cargas de trabajo solo en Loki y sin doble recogida de métricas (propuesta de monitorización §1) |
 | Pods por nodo | 64 (default de plataforma) | No aplica la pregunta abierta de Autopilot |
 | Node pool `sonar` | 1 nodo **n2-standard-8** (8 vCPU, 32 GB) en **una zona**, taint `dedicated=sonar:NoSchedule` | Aísla sysctl y presión de memoria. Zona única porque el PVC es zonal |
 | Sysctl | `node_config.linux_node_config.sysctls = { "vm.max_map_count" = "524288" }` | Elimina el init container privilegiado |

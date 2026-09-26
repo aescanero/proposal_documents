@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 1 |
+| **Status** | Proposal · revision 2 |
 | **Scope** | The layer 3 `monitoring-oss` archetype on `qa` (metrics, alerts, logs, dashboards, probes) and what layer 1b `cloud-monitoring-gcp` contributes alongside it: the boundary between them, stack, security, the `monitoring` contract, alert routing, who watches the watcher, network, stacks, policies, execution and plan |
 | **Why now** | SonarQube (S1 §4.7, S2 §5.9), the Cloud SQL variant (§8), Keycloak (§10) and ESO (§9) already take for granted the `prometheus=qa` selector, the dashboard sidecar, the blackbox exporter, Loki and the shared notification channel. ESO also left the rules for layer 3 components here |
 | **Reference specification** | `archetype-model.md` (AM §n; §3 layer 1b, §4.2 `monitoring` traits), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -180,7 +180,7 @@ Source: [`diagrams/03-alertas.mmd`](diagrams/03-alertas.mmd)
 | Identity | `team=identity` | Identity team | Expiry of Keycloak's credential in Entra (R42) |
 | Watchdog | `alertname=Watchdog` | Null receiver | — (§6) |
 
-**On `qa` nothing wakes anyone up.** There is no on-call; the SRE channel is a mailing group and a chat channel (Q-M1). The receivers' credentials (chat webhook URL, SMTP) are Secret Manager secrets delivered by ESO (§8.2).
+**On `qa` nothing wakes anyone up.** There is no on-call. The concrete destination of each channel (SRE, teams, identity) **is not set by this proposal**: it is deployment configuration, and the design does not depend on it. The receivers' credentials (webhook URL, SMTP, depending on the destination) are Secret Manager secrets delivered by ESO (§8.2).
 
 Inhibitions: `NodeNotReady` inhibits alerts for the pods on that node; `KubeAPIDown` inhibits those for everything that depends on the API server.
 
@@ -371,7 +371,7 @@ Source: [`diagrams/02-stacks-arquetipo.mmd`](diagrams/02-stacks-arquetipo.mmd)
 
 | Resource | Note |
 |---|---|
-| Notification channels: SRE group email and chat | Output `notification_channel_id` (Cloud SQL variant §8) |
+| Notification channels, with the destination configured at deployment (§16) | Output `notification_channel_id` (Cloud SQL variant §8) |
 | Log-based alerts | Secret reads outside the list (ESO §9.2), changes to authorised networks outside the intermediate service (S1 §4.13), destruction of KMS key versions (S1 §4.14) |
 | Dead-man's switch | §6 |
 | *Data Access audit logs* | Enabled for Secret Manager and Cloud KMS; not for the rest (cost) |
@@ -417,6 +417,8 @@ assert {
 | `cloud-monitoring-gcp` (`gcp-qa-cloudmon`) | §10.3 |
 | `keycloak` | Hostname and realm convention assert (§4.3); Grafana platform client (already in §6.6 of its proposal) |
 | All consumers | `prometheus=qa` label; ingress from `monitoring` in their `NetworkPolicy`; `archetype` and `team` labels on the namespace for routing (§5.2) |
+
+Requirements **accepted**. The `gcp-qa-gke` one is recorded in S1 §4.1 and the convention assert in the Keycloak proposal (§12.1).
 
 ---
 
@@ -476,10 +478,7 @@ assert {
 | VM8 | Redaction in Fluent Bit | A line with `Authorization: Bearer …` reaches Loki without the token |
 | VM9 | Alertmanager routes | Alert with `team=identity` in the identity channel; `warning` out of hours held until the morning |
 
-Open questions:
-
-- **Q-M1.** Concrete destination of the SRE channel (mailing group and chat space) and of the per-team channels.
-- **Q-M2.** Identity team channel for R42; joins Keycloak's Q-K1.
+**Out of scope: the notification destination.** Which mailing group, chat space or channel receives the alerts of the SRE team, each team and the identity team is not decided here. Alertmanager reads its receivers from the `qa-monitoring-oss-alertmanager-receivers` secret and layer 1b creates the Cloud Monitoring channels with whatever destination is configured at deployment; changing it changes no stack and no rule.
 
 ---
 
@@ -487,7 +486,7 @@ Open questions:
 
 | Phase | Contents | Exit criterion | Estimate |
 |---|---|---|---|
-| **0 · Prerequisites** | GKE with the settings in §12; ESO; Q-M1; VM1, VM3 | Verifications closed; channel decided | Depends on the platform |
+| **0 · Prerequisites** | GKE with the settings in §12; ESO; notification destinations configured (§16); VM1, VM3 | Verifications closed | Depends on the platform |
 | **1 · Skeleton** | Manifest, charts, asserts, CI rules and constraints | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 and preview with mocks green | 2 days |
 | **2 · Metrics and alerts** | `iam`, `secrets`, `firewall`, `crds`, `metrics`; layer 1b | Watchdog and test alert delivered; **VM2**, **VM4**, **VM5**, **VM9** | 3 days |
 | **3 · Logs** | `storage`, `logs` | Logs from every namespace in Loki; **VM6**, **VM8** | 2 days |
