@@ -1,0 +1,18 @@
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant G as GLB (layer 1)
+    participant E as Envoy (Gateway qa)
+    participant B as Backend (e.g. SonarQube)
+
+    C->>G: HTTPS to sonar.qa.disasterproject.com
+    Note over G: public TLS (Certificate Manager), Cloud Armor
+    G->>E: HTTPS to 8443, no SNI, reused connection (keepalive 600 s)
+    Note over E: TLS with an internal-CA certificate, listener without hostname
+    Note over E: HTTPRoute by Host header, client IP from X-Forwarded-For
+    E->>B: HTTP to the Service in the consumer's namespace
+    B-->>E: response (up to 120 s)
+    E-->>G: response
+    G-->>C: response
+    Note over E,G: Envoy keeps idle connections 620 s, longer than the GLB
+    Note over E: access log without query string

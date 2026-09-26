@@ -1,0 +1,39 @@
+flowchart LR
+    U(["Usuarios y CI"])
+    subgraph L1["Capa 1 · gcp-qa-edge (NO es esta propuesta)"]
+        direction TB
+        GLB["GLB externo global<br/>IP · certificado público · Cloud Armor<br/>backend service 120 s"]
+    end
+
+    subgraph L3["Capa 3 · ingress · gcp-qa-gateway"]
+        direction TB
+        CTRL["controlador de Envoy Gateway<br/>2 réplicas · xDS"]
+        NEG["NEG eg-qa-neg<br/>uno por zona · lo crea GKE"]
+        PX["proxies Envoy<br/>HPA 3–6 · una zona, un pod o más"]
+        GW["Gateway qa · listener https 8443<br/>sin hostname · allowedRoutes Selector"]
+    end
+
+    subgraph CONS["Consumidores · una HTTPRoute cada uno"]
+        direction TB
+        KC["Keycloak<br/>sso.qa · BackendTLSPolicy"]
+        GF["Grafana<br/>grafana.qa"]
+        SQ["SonarQube<br/>sonar.qa · timeout 120 s"]
+    end
+
+    CM["cert-manager<br/>certificado de backend y xDS"]
+    GK["Gatekeeper<br/>hostnames, kinds reservados"]
+
+    U --> GLB
+    GLB -->|"HTTPS · sin SNI"| NEG
+    NEG --> PX
+    CTRL -. "configuración xDS" .-> PX
+    GW -. "define" .-> PX
+    PX --> KC
+    PX --> GF
+    PX --> SQ
+    CM -. "certificados" .-> PX
+    GK -. "admite o rechaza rutas" .-> CONS
+    GLB -. "data del NEG · after" .-> NEG
+
+    style L1 fill:#f5f5f5,stroke-dasharray: 5 5
+    style L3 fill:#e8f0fe

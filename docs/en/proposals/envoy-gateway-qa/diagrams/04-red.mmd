@@ -1,0 +1,24 @@
+flowchart LR
+    GFE(["GLB GFEs<br/>35.191.0.0/16<br/>130.211.0.0/22"])
+    subgraph NS["ns envoy-gateway-system · default-deny ingress + egress"]
+        PX["Envoy proxies<br/>8443 · readiness · 19001 metrics"]
+        CTRL["controller<br/>18000 xDS"]
+    end
+    P["Prometheus"]
+    APPS["namespaces with<br/>gateway.disasterproject.com/routes"]
+    KC["keycloak :8443"]
+    API["Kubernetes API"]
+    DNS["kube-dns :53"]
+    INET(["Internet"])
+
+    GFE -->|"TCP 8443 and readiness"| PX
+    P -->|"metrics"| PX
+    P -->|"metrics"| CTRL
+    PX -->|"TCP 18000"| CTRL
+    PX -->|"their Services' ports"| APPS
+    PX -->|"TCP 8443"| KC
+    CTRL -->|"TCP 443"| API
+    PX -->|"53"| DNS
+    PX -.-x|"DENIED"| INET
+
+    style INET fill:#fce8e6

@@ -166,13 +166,15 @@ La tabla siguiente es una **copia de lectura**; la fuente de verdad es `registry
 | Dominio | Traits |
 |---|---|
 | Cómputo | `self-managed-nodes`, `managed-nodes`, `daemonset-privileged`, `hostpath`, `node-agent`, `gpu`, `arm64`, `spot`, `overlay-pods`, `sysctl-max-map-count` |
-| Ingress | `gateway-api`, `ingress-api`, `http-route`, `grpc-route`, `tcp-route`, `cross-namespace-refgrant`, `oidc-security-policy`, `jwt-auth`, `local-rate-limit`, `global-rate-limit`, `mtls-backend` |
+| Ingress | `gateway-api`, `ingress-api`, `http-route`, `grpc-route`, `tcp-route`, `cross-namespace-refgrant`, `oidc-security-policy`, `jwt-auth`, `local-rate-limit`, `global-rate-limit`, `mtls-backend`, `backend-tls` |
 | Borde | `iac-owned-edge`, `managed-cert`, `waf`, `global-anycast`, `regional-only` |
 | Identidad | `workload-identity`, `irsa`, `pod-identity`, `managed-identity`, `saml-idp` |
 | Datos | `private-endpoint`, `iam-auth`, `multi-az`, `psa-shared`, `cnpg` |
 | Mensajería | `strimzi`, `kraft`, `acl-authz`, `tls-mtls`, `schema-registry`, `tiered-storage` |
 | Política | `gatekeeper`, `custom-templates`, `audit-api`, `referential-constraints`, `mutation` |
 | Observabilidad | `managed-prometheus`, `otlp-native`, `managed-tracing`, `prometheus-operator-crds` |
+| Secretos | `eso` |
+| Certificados | `cert-manager` |
 
 `iac-owned-edge` registra si todo recurso cloud en el camino de borde está en el estado de Terraform. Los NEG independientes de GCP no lo están (documento de arquitectura §10.2). Si algún requisito de cumplimiento exige propiedad total en IaC, el resolver detecta la brecha en tiempo de validación en lugar de en tiempo de auditoría.
 

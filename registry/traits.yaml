@@ -31,6 +31,7 @@ traits:
   - local-rate-limit
   - global-rate-limit
   - mtls-backend
+  - backend-tls             # BackendTLSPolicy (Gateway API standard channel): TLS from the gateway to the backend Service
 
   # --- edge ---
   - iac-owned-edge
