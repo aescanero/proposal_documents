@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 1 |
+| **Estado** | Propuesta · revisión 2 |
 | **Alcance** | El arquetipo de capa 3 `secrets-eso-gsm` en `qa`: modelo de seguridad, instalación, el contrato `secrets` 2.0.0 que usan los consumidores, rotación, red, disponibilidad, observabilidad, políticas, ejecución y plan |
 | **Por qué ahora** | SonarQube (E1 §4.3, E2 §5.2), la variante Cloud SQL (§5) y Keycloak (§6.5, §7) ya dependen de ESO y han fijado, cada uno por su lado, partes de su contrato. Aquí se reúnen en un solo sitio y se completan |
 | **Especificación de referencia** | `archetype-model.md` (AM §n; AM §14.2 asigna Secret Manager a `secrets` en GCP), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -294,7 +294,7 @@ La regla general queda escrita: **entre capabilities de la misma capa, la observ
 
 | Alerta | Señal | Umbral | Sustituye a |
 |---|---|---|---|
-| `ExternalSecret` sin sincronizar | Condición `Ready=False` del `ExternalSecret` | > 15 min, **en cualquier namespace**, enrutada al dueño por la etiqueta `archetype` del namespace | La alerta propia de SonarQube (E2 §5.9) y la equivalente de Keycloak |
+| `ExternalSecret` sin sincronizar | Condición `Ready=False` del `ExternalSecret` | > 15 min, **en cualquier namespace**, enrutada al dueño por la etiqueta `archetype` del namespace | La alerta propia de SonarQube (E1 §4.7, E2 §5.9) |
 | `SecretStore` no listo | Condición `Ready=False` | > 5 min — casi siempre IAM o Workload Identity del tenant | — |
 | Errores de sincronización | Tasa de errores de llamadas al proveedor | > 10 % en 15 min | — |
 | Controlador o webhook sin réplicas | kube-state-metrics | < 1 lista durante 5 min | — |
@@ -434,8 +434,8 @@ Se detiene en `prevent_destroy`. Desmontar ESO sin desmontar a sus consumidores 
 |---|---|---|
 | `registry/traits.yaml` y el `enum` de `schemas/archetype-manifest.schema.json` | Trait `eso`, en el mismo commit y de forma mecánica (R34) | **Aplicado** |
 | E2 §3 (SonarQube), variante Cloud SQL §9.1, propuesta de Keycloak §11.1 | `secrets` pasa a exigir `traits: [eso]` | **Aplicado** |
-| E1 §4.3 y §4.7 | La alerta de auditoría admite la lista de lectores explícitos (§9.2) | Propuesto |
-| E2 §5.9 y propuesta de Keycloak §10 | La alerta "`ExternalSecret` sin sincronizar" pasa a ser de plataforma (§9.2) y sale de cada arquetipo | Propuesto |
+| E1 §4.3 y §4.7 | La alerta de auditoría admite la lista de lectores explícitos (§9.2) | **Aplicado** |
+| E1 §4.7 y E2 §5.9 | La alerta "`ExternalSecret` sin sincronizar" pasa a ser de plataforma (§9.2) y sale de SonarQube, el único arquetipo que la declaraba | **Aplicado** |
 | E2 §9, fila `secrets-eso-gsm` | Requisito cumplido: ESO con Workload Identity en `SecretStore` namespaced | — |
 
 ---

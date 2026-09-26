@@ -181,7 +181,7 @@ Three pieces, each with a single responsibility:
 - **Only secret names travel over outputs sharing**, never values (§11.6, R8).
 - **Secrets live in the `qa` project**, user-managed replication in `europe-west1`.
 
-**Human and pipeline access.** The pipeline accesses secrets via WIF to **manage** them; reading values is not part of any deployment. Human reads only for SRE, **just-in-time** via Privileged Access Manager (justification, 1-hour maximum, approval from another SRE member). Secret Manager *Data Access audit logs*, with an alert for any `AccessSecretVersion` whose principal is not an ESO KSA.
+**Human and pipeline access.** The pipeline accesses secrets via WIF to **manage** them; reading values is not part of any deployment. Human reads only for SRE, **just-in-time** via Privileged Access Manager (justification, 1-hour maximum, approval from another SRE member). Secret Manager *Data Access audit logs*, with an alert for any `AccessSecretVersion` whose principal is neither an `eso-*` KSA nor on the explicit reader allow-list, reviewed by PR (ESO proposal §9.2; Keycloak's reconciler reads under its own identity).
 
 **Deletion protection.** Deleting a Secret Manager secret is immediate and irreversible. Hence: no pipeline identity other than the destroy one holds `secretmanager.secrets.delete`; `lifecycle { prevent_destroy = true }` on `qa-sonarqube-secret-key`; and deferred version destruction (`version_destroy_ttl`, 30 days) to allow undoing a mistaken rotation.
 
@@ -269,9 +269,9 @@ With 200 projects, permissions **only** via templates: a new project is born wit
 | PostgreSQL | CNPG exporter | Replica lag; connections > 80%; last successful backup > 26 h ago |
 | Logs | Fluent Bit → Loki (GCS) | `ERROR` rate |
 | Certificates | cert-manager | Internal CA or Envoy certificate < 14 days |
-| Secrets | ESO metrics | `ExternalSecret` unsynced > 15 min (a rotated Secret Manager secret not reaching the pod) |
+| Secrets | ESO metrics | `ExternalSecret` unsynced > 15 min (a rotated Secret Manager secret not reaching the pod). **Platform rule** for every namespace, declared by the monitoring archetype (ESO proposal §9.2), not by SonarQube |
 
-Alerts born from **GCP audit logs** do not go through Prometheus: they are log-based alerts from layer 1b (`cloud-observability`). Three of them: a secret read by a principal that is not ESO (§4.3), changes to the authorized networks made outside the intermediate service (§4.13), and any KMS key destroy operation (§4.14). That is why layer 1b is not reduced to zero.
+Alerts born from **GCP audit logs** do not go through Prometheus: they are log-based alerts from layer 1b (`cloud-observability`). Three of them: a secret read by a principal outside the authorised reader list (§4.3), changes to the authorized networks made outside the intermediate service (§4.13), and any KMS key destroy operation (§4.14). That is why layer 1b is not reduced to zero.
 
 `PodMonitor` and `PrometheusRule` go in the archetype's chart (CRD required at plan time, R24); hence the trait **`prometheus-operator-crds`**. Grafana logs in via OIDC to Keycloak, with no cycle.
 

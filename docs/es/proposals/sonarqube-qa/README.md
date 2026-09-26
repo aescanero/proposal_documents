@@ -181,7 +181,7 @@ Tres piezas, cada una con una sola responsabilidad:
 - **Por outputs sharing solo viajan nombres de secreto**, nunca valores (§11.6, R8).
 - **Secretos en el proyecto de `qa`**, replicación **user-managed** en `europe-west1`.
 
-**Acceso humano y del pipeline.** El pipeline accede por WIF para **gestionar** secretos; leer valores no forma parte de ningún despliegue. Lectura humana solo para SRE, **just-in-time** con Privileged Access Manager (justificación, máximo 1 h, aprobación de otro miembro de SRE). *Data Access audit logs* en Secret Manager y alerta ante cualquier `AccessSecretVersion` cuyo principal no sea un KSA de ESO.
+**Acceso humano y del pipeline.** El pipeline accede por WIF para **gestionar** secretos; leer valores no forma parte de ningún despliegue. Lectura humana solo para SRE, **just-in-time** con Privileged Access Manager (justificación, máximo 1 h, aprobación de otro miembro de SRE). *Data Access audit logs* en Secret Manager y alerta ante cualquier `AccessSecretVersion` cuyo principal no sea un KSA `eso-*` ni esté en la lista de lectores explícitos, revisada por PR (propuesta de ESO §9.2; el reconciliador de Keycloak lee con su propia identidad).
 
 **Protección frente a borrado.** Borrar un secreto en Secret Manager es inmediato e irreversible. Por eso: ninguna identidad de pipeline salvo la de destroy tiene `secretmanager.secrets.delete`; `lifecycle { prevent_destroy = true }` en `qa-sonarqube-secret-key`; y destrucción diferida de versiones (`version_destroy_ttl`, 30 días) para poder deshacer una rotación equivocada.
 
@@ -269,9 +269,9 @@ Con 200 proyectos, los permisos **solo** por plantillas: un proyecto nuevo nace 
 | PostgreSQL | Exporter CNPG | Retraso de réplica; conexiones > 80 %; último backup correcto > 26 h |
 | Logs | Fluent Bit → Loki (GCS) | Tasa de `ERROR` |
 | Certificados | cert-manager | CA interna o certificado de Envoy < 14 días |
-| Secretos | Métricas de ESO | `ExternalSecret` sin sincronizar > 15 min (un secreto rotado en Secret Manager no llega al pod) |
+| Secretos | Métricas de ESO | `ExternalSecret` sin sincronizar > 15 min (un secreto rotado en Secret Manager no llega al pod). **Regla de plataforma** para todos los namespaces, declarada por el arquetipo de monitorización (propuesta de ESO §9.2), no por SonarQube |
 
-Las alertas que nacen de **logs de auditoría de GCP** no pasan por Prometheus: son alertas basadas en logs de la capa 1b (`cloud-observability`). Tres: lectura de un secreto por un principal que no es ESO (§4.3), cambios en las redes autorizadas fuera del servicio intermedio (§4.13) y cualquier operación de destrucción sobre claves KMS (§4.14). Por eso la capa 1b no se reduce a cero.
+Las alertas que nacen de **logs de auditoría de GCP** no pasan por Prometheus: son alertas basadas en logs de la capa 1b (`cloud-observability`). Tres: lectura de un secreto por un principal fuera de la lista de lectores autorizados (§4.3), cambios en las redes autorizadas fuera del servicio intermedio (§4.13) y cualquier operación de destrucción sobre claves KMS (§4.14). Por eso la capa 1b no se reduce a cero.
 
 `PodMonitor` y `PrometheusRule` van en el chart del arquetipo (CRD en plan, R24); de ahí el trait **`prometheus-operator-crds`**. Grafana entra por OIDC con Keycloak, sin ciclo.
 

@@ -579,7 +579,7 @@ Onboarding a team = an Entra ID app role (identity team) + an entry in `teams.ya
 |---|---|
 | **Resources** | SonarQube's `PodMonitor` (header `X-Sonar-Passcode` from the `sonarqube-passcode` Secret); `PrometheusRule` with S1 §4.7's alerts; a blackbox exporter `Probe` against `https://sonar.qa.disasterproject.com/api/system/status`; a dashboard `ConfigMap` carrying the label Grafana's sidecar picks up |
 | **Inputs** | None via sharing: `rules_selector` is a global |
-| **Archetype alerts** | Availability, CE queue, failed tasks, heap, OOMKilled, PVC, replica lag, last backup > 26 h, `ExternalSecret` unsynced |
+| **Archetype alerts** | Availability, CE queue, failed tasks, heap, OOMKilled, PVC, replica lag, last backup > 26 h. The `ExternalSecret`-unsynced alert is a platform rule (ESO proposal §9.2) |
 
 ### 5.10 Sharing-inputs table (what G1 compares against `after`)
 

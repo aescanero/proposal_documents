@@ -579,7 +579,7 @@ Alta de un equipo = app role en Entra ID (equipo de identidad) + una entrada en 
 |---|---|
 | **Recursos** | `PodMonitor` de SonarQube (cabecera `X-Sonar-Passcode` desde el Secret `sonarqube-passcode`); `PrometheusRule` con las alertas de E1 §4.7; `Probe` del blackbox exporter contra `https://sonar.qa.disasterproject.com/api/system/status`; `ConfigMap` de dashboard con la etiqueta que recoge el sidecar de Grafana |
 | **Entradas** | Ninguna por sharing: `rules_selector` es global |
-| **Alertas del arquetipo** | Disponibilidad, cola del CE, tareas fallidas, heap, OOMKilled, PVC, retraso de réplica, último backup > 26 h, `ExternalSecret` sin sincronizar |
+| **Alertas del arquetipo** | Disponibilidad, cola del CE, tareas fallidas, heap, OOMKilled, PVC, retraso de réplica, último backup > 26 h. La de `ExternalSecret` sin sincronizar es de plataforma (propuesta de ESO §9.2) |
 
 ### 5.10 Tabla de entradas por sharing (lo que G1 compara con `after`)
 
