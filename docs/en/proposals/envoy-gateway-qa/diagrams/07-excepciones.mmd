@@ -1,7 +1,7 @@
 flowchart TB
     S["Request: publish a port<br/>outside the Gateway"]
     Q1{"Is it HTTP, gRPC<br/>or WebSocket?"}
-    Q2{"Is there an implicit option?<br/>HTTPS with a token, Kafka Bridge,<br/>MQTT over WebSocket, mTLS at the GLB"}
+    Q2{"Is there an implicit option?<br/>HTTPS with a token,<br/>MQTT over WebSocket, mTLS at the GLB"}
     Q3{"Administrative access,<br/>database, debugging<br/>or temporary?"}
     Q4{"Complete business justification<br/>and a future review_by?"}
     Q5{"Does the counterparty<br/>come over the internet?"}

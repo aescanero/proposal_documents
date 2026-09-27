@@ -21,7 +21,7 @@
 <text x="78" y="648" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">PodMonitor · PrometheusRule</text>
 <rect x="60" y="692" width="290" height="90" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5" stroke-dasharray="5 4"/>
 <text x="78" y="730" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">secrets</text>
-<text x="78" y="758" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">NO si VB1 confirma mTLS</text>
+<text x="78" y="758" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">opcional: SCRAM de la VPC</text>
 <g filter="url(#sh)">
 <rect x="420" y="160" width="1100" height="670" rx="22" fill="#fbfcff" stroke="#2563eb" stroke-width="3"/>
 </g>
@@ -187,14 +187,14 @@
 <line x1="1260" y1="688" x2="1505" y2="688" stroke="#7e22ce" stroke-width="1"/>
 <circle cx="1284" cy="665" r="14" fill="#7e22ce"/>
 <text x="1284" y="671" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">11</text>
-<text x="1308" y="673" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#7e22ce" text-anchor="start">externo</text>
-<text x="1276" y="718" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">Patrón B, desactivado</text>
+<text x="1308" y="673" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#7e22ce" text-anchor="start">vpc</text>
+<text x="1276" y="718" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">Nunca fuera de la VPC</text>
 <circle cx="1282" cy="741" r="3" fill="#7e22ce"/>
-<text x="1292" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">nodePort fijo por broker</text>
+<text x="1292" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">NLB interno · qa.internal</text>
 <circle cx="1282" cy="765" r="3" fill="#7e22ce"/>
-<text x="1292" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">IP de origen intacta</text>
+<text x="1292" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">SCRAM para clientes VPC</text>
 <circle cx="1282" cy="789" r="3" fill="#7e22ce"/>
-<text x="1292" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">certificado: Q-B1</text>
+<text x="1292" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">sin peering, VPN ni internet</text>
 <path d="M701.5,529.0 L713.5,543.0 L701.5,557.0" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M971.5,529.0 L983.5,543.0 L971.5,557.0" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M1241.5,529.0 L1253.5,543.0 L1241.5,557.0" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -215,9 +215,9 @@
 <text x="1608" y="604" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">stack messaging</text>
 <text x="1608" y="632" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">after: gcp-qa-kafka-cluster</text>
 <rect x="1590" y="678" width="270" height="128" rx="10" fill="#ffffff" stroke="#a5f3fc" stroke-width="1.5"/>
-<text x="1608" y="714" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="700" fill="#0e7490" text-anchor="start">sin schema registry</text>
-<text x="1608" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">trait no ofrecido</text>
-<text x="1608" y="774" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">Q-B2</text>
+<text x="1608" y="714" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="700" fill="#0e7490" text-anchor="start">vpc_bootstrap_servers</text>
+<text x="1608" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">bootstrap.kafka.qa.internal</text>
+<text x="1608" y="774" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">clientes VPC fuera del cluster</text>
 <line x1="1526" y1="495.0" x2="1564" y2="495.0" stroke="#9ca3af" stroke-width="3" marker-end="url(#ah)"/>
 <text x="60" y="888" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="20" font-weight="700" fill="#1f2937" text-anchor="start">Controles</text>
 <rect x="60" y="906" width="344" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>

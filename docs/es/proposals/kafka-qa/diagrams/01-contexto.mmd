@@ -21,13 +21,13 @@ flowchart LR
         B["otra instancia<br/>su prefijo, sus ACLs, sus cuotas"]
     end
 
-    EXT(["Clientes externos<br/>solo patrón B"])
+    EXT(["Clientes de la VPC de qa<br/>fuera del cluster"])
 
     PLAT --> L4
     A -->|"mTLS 9093<br/>certificado de internal-ca"| KC
     B -->|"mTLS 9093"| KC
     A -. "tenant resources<br/>en ns kafka" .-> EO
-    EXT -. "desactivado hasta Q-B1" .-> KC
+    EXT -. "balanceador interno, SCRAM<br/>nunca fuera de la VPC" .-> KC
 
     style L4 fill:#e8f0fe
     style EXT fill:#f5f5f5,stroke-dasharray: 5 5

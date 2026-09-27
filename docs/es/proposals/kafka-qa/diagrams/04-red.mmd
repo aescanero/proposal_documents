@@ -7,7 +7,7 @@ flowchart LR
     end
     APPS["namespaces con<br/>kafka.disasterproject.com/client"]
     P["Prometheus"]
-    NLB(["NLB passthrough (patrón B)<br/>desactivado"])
+    NLB(["NLB passthrough interno<br/>solo la VPC de qa"])
     INET(["Internet"])
 
     APPS -->|"TCP 9093 mTLS"| BR
@@ -16,7 +16,7 @@ flowchart LR
     P -->|"9404 y métricas"| BR
     P --> KE
     P --> CC
-    NLB -. "nodePort fijo por broker<br/>externalTrafficPolicy Local" .-> BR
+    NLB -. "32100–32103, SCRAM<br/>externalTrafficPolicy Local" .-> BR
     BR -.-x|"DENEGADO"| INET
 
     style INET fill:#fce8e6

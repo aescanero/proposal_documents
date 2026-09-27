@@ -21,13 +21,13 @@ flowchart LR
         B["another instance<br/>its prefix, its ACLs, its quotas"]
     end
 
-    EXT(["External clients<br/>pattern B only"])
+    EXT(["Clients in qa's VPC<br/>outside the cluster"])
 
     PLAT --> L4
     A -->|"mTLS 9093<br/>internal-ca certificate"| KC
     B -->|"mTLS 9093"| KC
     A -. "tenant resources<br/>in ns kafka" .-> EO
-    EXT -. "disabled until Q-B1" .-> KC
+    EXT -. "internal load balancer, SCRAM<br/>never outside the VPC" .-> KC
 
     style L4 fill:#e8f0fe
     style EXT fill:#f5f5f5,stroke-dasharray: 5 5

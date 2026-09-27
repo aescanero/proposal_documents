@@ -19,7 +19,7 @@ zones:
   - name: data
     fraction: /20
     allocatable: true
-    purposes: [psa, db-subnet, private-endpoint, kafka-storage-subnet]
+    purposes: [psa, db-subnet, private-endpoint]
 
   - name: edge
     fraction: /20

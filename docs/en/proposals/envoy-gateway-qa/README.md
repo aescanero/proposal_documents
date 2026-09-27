@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 3 |
+| **Status** | Proposal · revision 4 |
 | **Scope** | The layer 3 `gateway-envoy-gke` archetype on `qa`: the path of a request from the GLB to the pod, the environment's single Gateway, who may attach which route and with which policy, the Gateway API CRDs, the proxy fleet and its relationship with the NEG, timeouts, observability, network, the `ingress` contract, stacks, policies, execution and plan |
 | **Why now** | SonarQube (S1 §4.5, S2 §5.8), Keycloak (§8), monitoring (Grafana) and cert-manager (§1, §3) already publish routes on the `qa` Gateway or issue it certificates, and each one took it for granted. S2 §9 left it three open requirements |
 | **Reference specification** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -167,13 +167,25 @@ Source: [`diagrams/07-excepciones.mmd`](diagrams/07-excepciones.mmd)
 | C. `ClusterIP` with a standalone NEG + external proxy network load balancer (TCP) in `gcp-qa-edge` | The same model as the HTTP path (§10.2) | Yes, except the NEG | Only with PROXY protocol in the application | **Discarded**: it puts a proxy in between, loses the source IP unless the application understands PROXY protocol, does not support UDP and terminates connections that must be direct |
 | D. Internal (`networking.gke.io/load-balancer-type: Internal`) | **Internal** passthrough network load balancer towards the hub or on-premises | Yes, declared in Terraform like B | Yes | The internal variant of B. Only if the peering or VPN exists (S1 §4.15); goes through the same exception |
 
+**A passthrough does not translate ports.** The load balancer delivers the packet with its original destination IP and port. If the published port is 22, the node receives `load balancer IP:22`, not the `nodePort`. There are two ways for it to reach the pod:
+
+| Way | When | Condition |
+|---|---|---|
+| The published port **is** the `nodePort` (30000–32767) | The counterparty can use a high port | None |
+| The `Service` declares `externalIPs: [load balancer IP]` and kube-proxy captures that destination on every node | The port is imposed (22 for SFTP, 25 for SMTP) | `externalIPs` lets a `Service` hijack traffic to any IP (CVE-2020-8554). Gatekeeper only admits it with the IP claimed by that same exception **(verify, VG13)** |
+
+**Certificate for an exception with TLS (open question, formerly Q-B1 of the Kafka proposal).** With pattern B, TLS terminates in the pod, and an internet counterparty expects a public name. The internal CA does not sign those (cert-manager DT10), and the Certificate Manager certificate is not exported to a pod. There are two options:
+- an ACME `ClusterIssuer` with DNS-01, bounded to the names of approved `exposures`;
+- a private CA that the counterparty installs.
+
+The first is recommended, because the counterparty does not have to trust anything of ours. Until it is decided, only exceptions whose protocol does not depend on our certificate (SFTP authenticates the server by its host key) or of pattern D are admitted.
+
 **Admissible cases**: the protocol is not HTTP and the counterparty cannot change it.
 
 | Case | Port | Why there is no implicit option | Required business justification | Pattern |
 |---|---|---|---|---|
 | **SFTP with third parties** (banks, public administrations, suppliers) | 22 published; the container listens on 2222 | The third party only delivers or collects over SFTP; it has no API and no HTTPS | The contract or third-party specification that requires it; the business process that depends on the exchange; volume and frequency; data classification | B, with the third party's IP list |
 | **Git over SSH** to an in-house Git server | 22 | Almost never: HTTPS with a token covers it through the Gateway | An external tool that only supports SSH, identified by name and version | B; rejected if HTTPS works |
-| **Kafka clients outside the cluster** | 9094 bootstrap plus one per broker | Kafka's protocol is binary and every client talks to every broker at its advertised address | Producers or consumers that cannot use an HTTP bridge (Strimzi Kafka Bridge, the implicit option) because of measured latency or volume | B: Strimzi `nodeport` listener with a fixed `nodePort` per broker (Kafka proposal) |
 | **MQTT or AMQP from devices** | 8883, 5671 | Pinned firmware that does not speak MQTT over WebSocket (the implicit option, which does pass through the Gateway) | Device fleet, firmware version and the planned upgrade date | B, TLS only |
 | **mTLS terminated in the application** (regulated client certificate) | 443 on its own IP | The GLB terminates TLS. Its mTLS at the edge (with a `TrustConfig`) passes the certificate data in headers, which is the implicit option and is usually enough | A cited regulation that requires the application to validate the client's full chain | B |
 | **Inbound SMTP mail** | 25 (and 587 if third parties send authenticated) | A process receives documents by email (invoices, orders) | The process, the volume, and why a managed mail service delivering by HTTP webhook (the implicit option) does not work | B, with mandatory STARTTLS |
@@ -197,6 +209,7 @@ Source: [`diagrams/07-excepciones.mmd`](diagrams/07-excepciones.mmd)
 | An in-house authoritative DNS | Cloud DNS |
 | An unencrypted protocol over the internet (Modbus, HL7 MLLP in clear, SNMPv1/v2c) | Pattern D over the private network, or the same protocol with TLS |
 | gRPC or WebSocket | They are HTTP: they go through the Gateway (gRPC with the `grpc-route` trait when it is offered, §7.1) |
+| Kafka from outside the VPC | None: Kafka is an internal bus. VPC clients outside the cluster are served by the archetype itself through an internal load balancer (Kafka proposal §6.3, DB8) |
 
 **How it is declared.** A new `exposures` block in the manifest. It is a schema extension that comes in through `registry/`, not by hand (R34); **proposed, not applied**:
 
@@ -208,7 +221,8 @@ exposures:
     tls: true                       # SFTP is encrypted; without TLS only with pattern: internal
     port: 22                        # port published on the load balancer
     targetPort: 2222
-    nodePort: 30022                 # fixed in pattern B: deterministic firewall rules
+    nodePort: 30022                 # fixed: deterministic firewall rules and health check
+    externalIP: claim               # 22 is imposed: the Service declares externalIPs with the claimed IP
     pattern: passthrough            # passthrough (B, external) | internal (D, internal variant)
     sources: [203.0.113.0/28]       # 0.0.0.0/0 only with public: true and a second approval
     justification:
@@ -226,6 +240,7 @@ exposures:
 | Encryption | G1 | A protocol declared without TLS (`tls: false`) is only admitted with `pattern: internal` |
 | Approval | `CODEOWNERS` on `exposures` | Platform and security review the PR, like raising `capacity` in a shared environment (developer guide, `CLAUDE.md`) |
 | Admission exemption | Gatekeeper (`policy-gatekeeper`) | The exemption is per `namespace/Service`, generated by the resolver into the constraint's parameters, **never for a whole namespace**. Pattern A (`LoadBalancer` without `internal`) is always denied |
+| `externalIPs` | Gatekeeper | Only on a `Service` with an exception and only with the IP it claimed; denied on any other (CVE-2020-8554) |
 | The load balancer | `gcp-qa-edge` | Forwarding rule, backend service and firewall rule per exception, with `sources` in the rule. The IP is a claim of the environment (AM §8) |
 | Compensating controls | Consumer archetype | Without Cloud Armor at L7, the application authenticates with keys, never passwords (SFTP), logs the source IP, and its `NetworkPolicy` admits only the published port |
 
@@ -579,7 +594,7 @@ Default-deny ingress and egress `NetworkPolicy` in `envoy-gateway-system`:
 | VG10 | Envoy Gateway version ≥ 1.6, standard v1.4 CRDs, metric names | `BackendTLSPolicy` `v1` accepted; the alerts of §6 with real series |
 | VG11 | 100 MiB upload through GLB, Cloud Armor and Envoy | No 413 and no cut |
 | VG12 | PSS `restricted` with the proxy pods and `shutdown-manager` | Admitted without an exemption |
-| VG13 | Pattern B with a test SFTP and with a Kafka `nodeport` listener | The source IP reaches the server; an IP outside `sources` cannot connect; a test UDP datagram is delivered |
+| VG13 | Pattern B with a test SFTP on port 22 (`externalIPs`) and with a UDP service | The source IP reaches the server; an IP outside `sources` cannot connect; a `Service` with a foreign `externalIPs` is denied; the UDP datagram is delivered |
 
 ---
 

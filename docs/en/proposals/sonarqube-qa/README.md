@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · stage 1 of N · **stage 1 closed** · revision 13 (aligned with stage 2) |
+| **Status** | Proposal · stage 1 of N · **stage 1 closed** · revision 14 (aligned with stage 2) |
 | **Scope** | What elements a complete `qa` environment needs to run SonarQube Community Build, what each one depends on, and which open source tool covers it |
 | **Out of scope** | Code (generators, contracts, charts), detailed per-pipeline integration, upgrade procedure. Later stages |
 | **Reference specification** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `developer-guide.md` (DG §n), `risk-register.md` |
@@ -128,6 +128,7 @@ Platform tooling unchanged: Terramate, OpenTofu, conftest, Checkov.
 | GKE Gateway API | `gateway_api_config { channel = "CHANNEL_DISABLED" }` | The `gateway` archetype installs the CRDs on the standard channel. With GKE's, GKE manages them and pins their version, and the `gke-l7-*` `GatewayClass`es appear, which create load balancers without Cloud Armor (Envoy Gateway proposal §3) |
 | Pods per node | 64 (platform default) | The Autopilot open question does not apply |
 | Node pool `sonar` | 1 **n2-standard-8** node (8 vCPU, 32 GB) in **one zone**, taint `dedicated=sonar:NoSchedule` | Isolates sysctl and memory pressure. Single zone because the PVC is zonal |
+| Node pool `kafka` | 3 × **n2-standard-4** (4 vCPU, 16 GB), one per zone, taint `dedicated=kafka:NoSchedule` | Kafka lives off the OS page cache and spreads its replicas across zones (Kafka proposal §2.1) |
 | Sysctl | `node_config.linux_node_config.sysctls = { "vm.max_map_count" = "524288" }` | Removes the privileged init container |
 | `fs.file-max` | No action: the kernel sizes it from RAM, and at 32 GB it comfortably clears 131072 | Verify in V1 |
 | StorageClass | `hyperdisk-balanced`, `WaitForFirstConsumer`, `allowVolumeExpansion: true` | Configurable IOPS without over-provisioning disk |
@@ -341,6 +342,7 @@ Confirmed estimate: a median of 50k lines per project, ≈ 10M lines in total, �
 | Resource | Initial value | Basis |
 |---|---|---|
 | Node pool `sonar` | 1 × n2-standard-8 (8 vCPU, 32 GB) | 12 GiB container + page cache for ES |
+| Node pool `kafka` | 3 × n2-standard-4 (4 vCPU, 16 GB), one per zone | 4 GiB heap per broker, 12 GiB limit; the rest is page cache (Kafka proposal §2.1) |
 | SonarQube pod | request 4 vCPU / 12 GiB, limit 12 GiB, **no CPU limit** | With a low `limits.cpu`, the JVMs pick SerialGC and the CE slows down (DG §8.3) |
 | Heaps | web `-Xmx2g`, CE `-Xmx3g`, search `-Xmx3g` | Σ 8 GiB + ≈ 1.5 GiB non-heap + margin = 12 GiB. **Never** heap = limit |
 | ES PVC | 50 GiB `hyperdisk-balanced`, 3000 IOPS | Expandable |
@@ -587,6 +589,7 @@ bindings:
   monitoring:          { archetype: monitoring-oss, version: 0.1.0,       stack_id: gcp-qa-monitoring }
   database-platform:   { archetype: postgres-operator, version: 0.1.0,    stack_id: gcp-qa-postgres-operator }  # YES in qa
   oidc-idp:            { archetype: keycloak, version: 4.1.0,             stack_id: gcp-qa-keycloak }
+  event-bus:           { archetype: kafka, version: 2.1.0,                stack_id: gcp-qa-kafka }   # internal bus, never outside the VPC
   # dns: not bound — wildcard on env-edge
 network:
   cidr: 10.4.128.0/17               # AM §9.2 example; assigned by the ledger
@@ -594,6 +597,11 @@ network:
   dns_suffix: qa.disasterproject.com
 cluster:
   max_pods_per_node: 64
+capacity:                           # qa is dedicated: computed and published, not enforced (Kafka proposal §5)
+  kafka_topics: 200
+  kafka_partitions: 1000
+  kafka_storage_gib: 450
+  kafka_throughput_mibs: 60
 policy:
   gatekeeper_enforcement: deny
   gatekeeper_failure_policy: Ignore

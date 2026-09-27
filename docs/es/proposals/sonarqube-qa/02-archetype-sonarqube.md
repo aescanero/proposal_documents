@@ -359,7 +359,8 @@ generate_hcl "_namespace.tf" {
         labels = merge(global.labels.namespace, {
           "pod-security.kubernetes.io/enforce" = "restricted"
           "trust.disasterproject.com/internal-ca" = "true"      # bundle de internal-ca (cert-manager §4)
-        }, tm_length(global.claims.hostnames) > 0 ? global.ingress.route_namespace_label : {})
+        }, tm_length(global.claims.hostnames) > 0 ? global.ingress.route_namespace_label : {},
+           tm_contains(global.required_capabilities, "event-bus") ? global.event_bus.client_namespace_label : {})
         annotations = tm_length(global.claims.hostnames) > 0 ? {      # la instancia reclamó al menos un hostname
           "gateway.disasterproject.com/hostnames" = tm_join(",", global.claims.hostnames)
         } : {}
@@ -383,6 +384,8 @@ generate_hcl "_namespace.tf" {
 **Etiqueta y anotación del Gateway.** Toda instancia que reclama un hostname recibe en su namespace la etiqueta de `route_namespace_label` (salida del contrato `ingress`, un global) y la anotación con sus hostnames reclamados. Sin la etiqueta, el Gateway ignora la `HTTPRoute` (`allowedRoutes`); sin la anotación, Gatekeeper la rechaza (propuesta de Envoy Gateway §4.1). Ambas salen de la resolución, no del manifiesto: conftest (G1) comprueba que la anotación coincide con los claims de la instancia. La etiqueta `security_policy_label` no se pone: SonarQube no exige `oidc-security-policy`.
 
 **Etiqueta de confianza.** Todo namespace recibe `trust.disasterproject.com/internal-ca: "true"`, y trust-manager deja en él el `ConfigMap` `internal-ca-bundle`. Todo el TLS y el mTLS dentro del cluster usan la misma CA interna; la validación externa es de los balanceadores (propuesta de cert-manager §1, DT10). El bundle solo contiene certificados públicos, así que repartirlo a todos no expone nada.
+
+**Etiqueta de cliente de Kafka.** Si el manifiesto requiere `event-bus`, el namespace recibe `kafka.disasterproject.com/client: "true"` (salida `client_namespace_label` del contrato). Es el selector de la `NetworkPolicy` que Strimzi genera para el listener: sin ella, el cliente no llega al broker (propuesta de Kafka §6.2). SonarQube no la lleva.
 
 ### 5.2 `secrets` — Secret Manager y External Secrets
 

@@ -885,18 +885,13 @@ stacks:
   - name: iam
   - name: cluster                                   # Kafka CR de Strimzi, modo KRaft
     after: [iam]
-    claims:
-      - kind: cidr
-        zone: data
-        purpose: kafka-storage-subnet
-        size: 26
   - name: policy                                    # ACLs por defecto y plantillas de cuota
     after: [cluster]
 
 provides:
   - capability: event-bus
     version: 2.0.0
-    traits: [strimzi, kraft, acl-authz, tls-mtls, schema-registry]
+    traits: [strimzi, kraft, acl-authz, tls-mtls]
     outputs:
       - { name: bootstrap_servers,  from: cluster }
       - { name: cluster_ca_secret,  from: cluster }
@@ -921,6 +916,8 @@ stacks:
   - name: messaging
     creates_tenant_resources: [event-bus]
 ```
+
+**La identidad del usuario.** Un consumidor se autentica por mTLS con la CA interna: pide su propio certificado de cliente en su propio namespace, y el `KafkaUser` se llama exactamente como el `CN` de ese certificado, `<instancia>-<propósito>.<namespace>.svc`. La regla de prefijo de §10.2 se mantiene, y el sufijo nombra el namespace de origen, que approver-policy impide falsificar. Lo especifica la propuesta de Kafka (`proposals/kafka-qa/`), junto con la versión 2.1.0 del contrato (`client_auth`, `ca_bundle_configmap`, `client_namespace_label`; `cluster_ca_secret` obsoleta). El bus usa volúmenes persistentes y el rango de pods del cluster: no reclama ninguna subred.
 
 ### 10.2 Tres reglas que lo hacen seguro
 
