@@ -21,7 +21,7 @@ Nothing in this document reopens a `CLAUDE.md` decision. It does reopen **D2** o
 
 | Changes | Does not change |
 |---|---|
-| `qa` binding: `database-platform` **unbound**, as in `demos` (AM §7) | Runtime, `sonar` node pool, sysctl, PSS `restricted` (S1 §4.1–4.2) |
+| `qa` binding: `database-platform` → `postgres-cloudsql`, the global provider, as in `demos` (AM §7) | Runtime, `sonar` node pool, sysctl, PSS `restricted` (S1 §4.1–4.2) |
 | `data-tenant` stack (CNPG) → `data` stack (Cloud SQL), generator `gen_data.tm.hcl` GCP branch | SAML authentication, Keycloak as Entra ID broker (S1 §4.6) |
 | SonarQube pod: **Cloud SQL Auth Proxy** sidecar; JDBC to `127.0.0.1` | Publishing, Gateway, GLB, Cloud Armor (S1 §4.5) |
 | The version of secret `qa-sonarqube-db` is written by `data`, not `secrets` (§5) | Other secrets and their ESO + Secret Manager model (S1 §4.3) |
@@ -65,7 +65,7 @@ Nothing in this document reopens a `CLAUDE.md` decision. It does reopen **D2** o
 
 ### 2.2 Keycloak takes the same path — by design, not by choice
 
-The binding decides **per environment**, not per archetype: there is exactly one provider per capability and environment (AM §7). If `qa` leaves `database-platform` unbound, **every** archetype with the pair of conditional stacks takes the dedicated path. Keycloak has it (AM §5.1: *"data — its own Cloud SQL instance"*), so in `qa` Keycloak also gets its own Cloud SQL, and `gcp-qa-postgres-operator` is **not deployed**: no consumer remains.
+The binding decides **per environment**, not per archetype: there is exactly one provider per capability and environment (AM §7). If `qa` binds `database-platform` to `postgres-cloudsql`, **every** archetype with the pair of conditional stacks takes the dedicated path. Keycloak has it (AM §5.1: *"data — its own Cloud SQL instance"*), so in `qa` Keycloak also gets its own Cloud SQL, and `gcp-qa-postgres-operator` is **not deployed**: no consumer remains.
 
 Mixing — Cloud SQL for SonarQube and CNPG for Keycloak — is not possible with the binding mechanism, and that is deliberate: the decision is about the environment's data isolation, not each application's (AM §5.5). Keycloak's details belong to its own proposal; here only the consequence is recorded (DC8).
 

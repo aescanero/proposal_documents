@@ -87,7 +87,7 @@ Un riesgo cuya mitigación es una puerta de CI solo está mitigado cuando esa pu
 | R29 | **Bus Kafka compartido saturado por un tenant** | Media en `demos` | Alta — afecta a todos los tenants | Cuotas de productor/consumidor por `KafkaUser`, no solo ResourceQuota; presupuesto de `kafka_partitions` forzado en el PR (AM §10.3) |
 | R30 | **Un tenant escribe topics de Kafka sin prefijo** | Alta sin política de admisión | Media — colisión silenciosa entre demos | Prefijo obligatorio `{{ instance }}-` forzado por el proveedor; ACL derivadas por el arquetipo `kafka`, nunca escritas a mano |
 | R31 | **Los arquetipos demo se acumulan más allá de su utilidad** | Segura | Media — fuga de rangos, identidades y cuotas | `expiresOn` obligatorio para `kind: demo`; un job programado abre un PR de destrucción; nunca destrucción automática |
-| R32 | **Cada demo aprovisiona su propia base de datos gestionada** | Alta si `database-platform` no está enlazado | Media — un entorno de demos compartido deja de ser barato | Enlazar `database-platform` en entornos compartidos; stacks `data` / `data-tenant` condicionales en un mismo manifiesto (AM §5.5) |
+| R32 | **Cada demo aprovisiona su propia base de datos gestionada** | Segura en `demos`, por diseño | Media — un entorno de demos compartido deja de ser barato | Aceptado: los dos proveedores de `database-platform` dan a cada consumidor su propia instancia (`CLAUDE.md`, aislamiento antes que coste). Acotado por la capacity `managed_db_instances` del binding (25 en `demos`); un `Cluster` de CNPG cuesta menos que una instancia de Cloud SQL donde un cliente elige `postgres-operator` |
 
 ## 6. Políticas y validación
 

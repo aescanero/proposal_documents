@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 2 |
+| **Status** | Proposal · revision 3 |
 | **Scope** | The managed `database-platform` provider: the global-provider-per-environment rule, the contract shared with CloudNativePG, what the provider supplies and what each consumer creates, the reference Cloud SQL instance, identity, network, backup, observability, the provider matrix in CI, stacks, policies, execution and plan |
 | **Why now** | The strategy is agnostic with managed services first (`CLAUDE.md`): in production PostgreSQL is Cloud SQL, and `qa` mirrors production. CloudNativePG stays as a supported alternative. Until now Cloud SQL was not a provider but the "`database-platform` unbound" case (AM §5.5), and SonarQube and Keycloak had taken different paths |
 | **Base** | SonarQube's Cloud SQL variant ([`../sonarqube-qa-cloudsql/`](../sonarqube-qa-cloudsql/README.md), DC §n) already settled the instance, the connection, the secrets and the backup. This document generalises them for any consumer and **does not repeat** what is there |
@@ -71,7 +71,7 @@ The platform declares it in the binding, never the consumer; it is per instance 
 
 ### 1.3 `demos`
 
-Today `demos` leaves `database-platform` unbound so that each demo gets its own managed instance (AM §5.5, §7). With this provider, `demos` bound to `postgres-cloudsql` means exactly the same, and resolution stops depending on the "unbound" case. Proposed, not applied (§10).
+`demos` used to leave `database-platform` unbound so that each demo got its own managed instance (AM §5.5, §7). With this provider, `demos` is bound to `postgres-cloudsql`, which means exactly the same, and resolution no longer depends on the "unbound" case. **Applied** (§10).
 
 ---
 
@@ -304,7 +304,7 @@ The consumer's `data` stack creates the per-instance alerts in Cloud Monitoring,
 | SonarQube S2 §3 | `database-platform ^2.0.0` with no provider trait; `data` and `data-tenant` stacks with `has_trait` | **Applied** |
 | Cloud SQL variant | No longer an alternative: it is the `qa` path with the default provider. DC1 and DC8 become consequences of this proposal | **Applied** |
 | Keycloak proposal | `database-platform ^2.0.0`; stacks with `has_trait`; its data assumption and DK2 point here | **Applied** |
-| AM §7 (`demos`) | Bind `database-platform` to `postgres-cloudsql`, with the same semantics as today | Proposed |
+| AM §7 (`demos`), `CLAUDE.md`, glossary, R32 | Bind `database-platform` to `postgres-cloudsql`, with the same semantics as before; the `webapp-3tier` example moves to `^2.0.0` with `has_trait` | **Applied** |
 | AM §10.4 | `postgres-operator` tenant resources: `Cluster` and `ScheduledBackup` instead of `Database` and `Role` | In the CNPG proposal |
 
 ---
@@ -320,7 +320,7 @@ The consumer's `data` stack creates the per-instance alerts in Cloud Monitoring,
 | DQ5 | Provider/consumer split | Proposal | The provider supplies prerequisites and the generator; each consumer creates its instance | Instances created by the provider |
 | DQ6 | Keeping the unused path | Proposal | Resolution matrix in G1 and a weekly CNPG ephemeral | Trusting nobody breaks it |
 | DQ7 | Migrating between providers | Proposal | Exception described and not built | Building it now |
-| DQ8 | `demos` | Proposal | Bind to `postgres-cloudsql` | Leave it unbound |
+| DQ8 | `demos` | **Approved** | Bind to `postgres-cloudsql` | Leave it unbound |
 
 ---
 

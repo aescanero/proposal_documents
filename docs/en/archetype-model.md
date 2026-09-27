@@ -367,7 +367,7 @@ stacks:
 
 The provider is **global per environment** (§2), chosen in the binding, and the consumer does not choose. Services are **managed first**: `postgres-cloudsql` is the default, and `postgres-operator` (CloudNativePG) is the maintained alternative for clients who want everything in the cluster. Either path gives each consumer its own instance, so the choice is **managed versus operated**, never shared versus isolated. Neither choice touches the archetype.
 
-`!resolved(database-platform)` remains legal for an environment that leaves the capability unbound, as `demos` does today (§7). Expressing `demos` as a `postgres-cloudsql` binding, with the same semantics, is proposed in `proposals/postgres-cloudsql-qa/`.
+`!resolved(database-platform)` remains legal for an environment that leaves the capability unbound, but no permanent environment does: `demos`, `qa` and `prod` bind `postgres-cloudsql` (§7), and the managed path is chosen by `has_trait(database-platform, cloudsql)`.
 
 ---
 
@@ -401,7 +401,7 @@ requires:
     version: "^2.0.0"
     traits: [acl-authz]
   - capability: database-platform
-    version: "^1.0.0"
+    version: "^2.0.0"
     optional: true
   - capability: monitoring
     version: "^1.5.0"
@@ -417,7 +417,7 @@ stacks:
   - name: secrets
     after: [iam]
   - name: data
-    condition: "!resolved(database-platform)"
+    condition: "has_trait(database-platform, cloudsql)"
     after: [iam]
     claims:
       - kind: cidr
@@ -425,7 +425,7 @@ stacks:
         purpose: db-subnet
         size: 24
   - name: data-tenant
-    condition: "resolved(database-platform)"
+    condition: "has_trait(database-platform, cnpg)"
     after: [iam]
   - name: messaging
     after: [iam]
@@ -549,8 +549,8 @@ bindings:
   monitoring:          { archetype: monitoring-managed,   version: 1.8.0, stack_id: gcp-demos-monitoring }
   oidc-idp:            { archetype: keycloak,             version: 4.1.0, stack_id: gcp-demos-keycloak }
   event-bus:           { archetype: kafka,                version: 2.0.0, stack_id: gcp-demos-kafka }
-  # database-platform is deliberately NOT bound: demo tenants get dedicated
-  # managed instances so their data is never co-located. See the note below.
+  database-platform:   { archetype: postgres-cloudsql,    version: 0.1.0, stack_id: gcp-demos-postgres-cloudsql }
+  # each demo tenant gets its own managed instance: data never co-located (see below)
 
 network:
   cidr: 10.4.0.0/17
@@ -601,7 +601,7 @@ policy:
 Two properties worth noting:
 
 - `cluster` is bound to `gke-autopilot`, so `monitoring` **cannot** be bound to `monitoring-nodeagent`. The binding file is validated, not just application manifests.
-- `database-platform` is **not** bound. Demo workloads come from the project office with arbitrary requirements and data that must not be co-located, so every archetype with a conditional `data` stack takes the dedicated path: ten tenants, ten managed instances. The `condition:` mechanism is not wasted — production environments may bind `database-platform` and take the shared-operator path from the same manifest.
+- `database-platform` is bound to `postgres-cloudsql`, the managed provider (§5.5). Demo workloads come from the project office with arbitrary requirements and data that must not be co-located, and the managed provider gives every archetype with the conditional pair its own instance: ten tenants, ten managed instances. The trait (`cloudsql` or `cnpg`) picks the path; neither path shares data between consumers.
 
 Three consequences of choosing dedicated instances, worth recording:
 
@@ -1129,11 +1129,12 @@ archetypectl resolve --instance demos-alpha
     { "capability": "ingress",           "provider": "gateway-envoy-gke@3.1.0", "stack_id": "gcp-demos-gateway" },
     { "capability": "oidc-idp",          "provider": "keycloak@4.1.0",          "stack_id": "gcp-demos-keycloak" },
     { "capability": "event-bus",         "provider": "kafka@2.0.0",             "stack_id": "gcp-demos-kafka" },
+    { "capability": "database-platform", "provider": "postgres-cloudsql@0.1.0", "stack_id": "gcp-demos-postgres-cloudsql" },
         { "capability": "monitoring",        "provider": "monitoring-managed@1.8.0","stack_id": "gcp-demos-monitoring" }
   ],
   "stacks": ["iam", "secrets", "data", "messaging", "firewall", "app", "frontdoor"],
   "skipped_stacks": [
-    { "name": "data-tenant", "reason": "condition false: database-platform not bound in demos" }
+    { "name": "data-tenant", "reason": "condition false: database-platform is postgres-cloudsql (trait cloudsql, not cnpg)" }
   ],
   "claims": [
     { "kind": "hostname", "value": "alpha.demos.disasterproject.com", "state": "active", "pr": 412 },
@@ -1340,15 +1341,15 @@ webapp-3tier@2.3.0
 │   ├── secrets       ^2.0.0            → secrets-operator@2.0.1
 │   └── (owns its own data stack internally — not a dependency)
 ├── event-bus         ^2.0.0            → kafka@2.0.0
-├── database-platform ^1.0.0 (optional) → UNRESOLVED (not bound in demos)
+├── database-platform ^2.0.0 (optional) → postgres-cloudsql@0.1.0 (trait cloudsql)
 └── monitoring        ^1.5.0 (optional) → monitoring-managed@1.8.0
 ```
 
-Fifteen archetypes; the application declared six.
+Sixteen archetypes; the application declared six.
 
 **Step 6** would reject `monitoring-nodeagent`: it needs `daemonset-privileged`, absent from Autopilot.
 
-**Step 9** resolves conditions. Because `database-platform` is unbound in `demos`, `data-tenant` is skipped and the `data` stack is generated — a dedicated Cloud SQL instance for this tenant. Ten tenants, ten instances, no co-located data.
+**Step 9** resolves conditions. Because `demos` binds `database-platform` to `postgres-cloudsql` (trait `cloudsql`), `data-tenant` is skipped and the `data` stack is generated — a dedicated Cloud SQL instance for this tenant. Ten tenants, ten instances, no co-located data.
 
 **Step 11** validates 6 topics and 1 user against Kafka's limits of 20 and 3, all prefixed `alpha-`.
 

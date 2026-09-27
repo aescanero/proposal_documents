@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 2 |
+| **Estado** | Propuesta · revisión 3 |
 | **Alcance** | El proveedor gestionado de `database-platform`: la regla de proveedor global por entorno, el contrato común con CloudNativePG, lo que aporta el proveedor y lo que crea cada consumidor, la instancia Cloud SQL de referencia, identidad, red, backup, observabilidad, la matriz de proveedores en CI, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | La estrategia es agnóstica con los servicios gestionados primero (`CLAUDE.md`): en producción PostgreSQL es Cloud SQL, y `qa` refleja producción. CloudNativePG se mantiene como alternativa soportada. Hasta ahora Cloud SQL no era un proveedor, sino el caso "`database-platform` sin enlazar" (AM §5.5), y SonarQube y Keycloak habían tomado caminos distintos |
 | **Base** | La variante Cloud SQL de SonarQube ([`../sonarqube-qa-cloudsql/`](../sonarqube-qa-cloudsql/README.md), DC §n) ya resolvió la instancia, la conexión, los secretos y el backup. Este documento los generaliza para cualquier consumidor y **no repite** lo que allí está |
@@ -71,7 +71,7 @@ La declara la plataforma en el binding, nunca el consumidor; es por instancia y 
 
 ### 1.3 `demos`
 
-`demos` deja hoy `database-platform` sin enlazar para que cada demo tenga su instancia gestionada (AM §5.5, §7). Con este proveedor, `demos` enlazado a `postgres-cloudsql` significa exactamente lo mismo, y la resolución deja de depender del caso "sin enlazar". Se propone, sin aplicar (§10).
+`demos` dejaba `database-platform` sin enlazar para que cada demo tuviera su instancia gestionada (AM §5.5, §7). Con este proveedor, `demos` está enlazado a `postgres-cloudsql`, que significa exactamente lo mismo, y la resolución deja de depender del caso "sin enlazar". **Aplicado** (§10).
 
 ---
 
@@ -304,7 +304,7 @@ Las alertas por instancia las crea el stack `data` del consumidor en Cloud Monit
 | SonarQube E2 §3 | `database-platform ^2.0.0` sin trait de proveedor; stacks `data` y `data-tenant` con `has_trait` | **Aplicado** |
 | Variante Cloud SQL | Deja de ser una alternativa: es el camino de `qa` con el proveedor por defecto. DC1 y DC8 pasan a consecuencia de esta propuesta | **Aplicado** |
 | Propuesta de Keycloak | `database-platform ^2.0.0`; stacks con `has_trait`; su supuesto de datos y DK2 remiten aquí | **Aplicado** |
-| AM §7 (`demos`) | Enlazar `database-platform` a `postgres-cloudsql`, con la misma semántica que hoy | Propuesto |
+| AM §7 (`demos`), `CLAUDE.md`, glosario, R32 | Enlazar `database-platform` a `postgres-cloudsql`, con la misma semántica que antes; el ejemplo `webapp-3tier` pasa a `^2.0.0` con `has_trait` | **Aplicado** |
 | AM §10.4 | Tenant resources de `postgres-operator`: `Cluster` y `ScheduledBackup` en lugar de `Database` y `Role` | En la propuesta de CNPG |
 
 ---
@@ -320,7 +320,7 @@ Las alertas por instancia las crea el stack `data` del consumidor en Cloud Monit
 | DQ5 | Reparto proveedor/consumidor | Propuesta | El proveedor aporta prerrequisitos y generador; cada consumidor crea su instancia | Instancias creadas por el proveedor |
 | DQ6 | Mantener el camino no usado | Propuesta | Matriz de resolución en G1 y efímero CNPG semanal | Confiar en que nadie lo rompa |
 | DQ7 | Migración entre proveedores | Propuesta | Excepción descrita y no construida | Construirla ya |
-| DQ8 | `demos` | Propuesta | Enlazar a `postgres-cloudsql` | Dejarlo sin enlazar |
+| DQ8 | `demos` | **Aprobada** | Enlazar a `postgres-cloudsql` | Dejarlo sin enlazar |
 
 ---
 

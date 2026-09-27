@@ -367,7 +367,7 @@ stacks:
 
 El proveedor es **global por entorno** (§2), se elige en el binding, y el consumidor no elige. Los servicios son **gestionados primero**: `postgres-cloudsql` es el proveedor por defecto y `postgres-operator` (CloudNativePG) la alternativa mantenida para los clientes que lo quieren todo en el cluster. Ambos caminos dan a cada consumidor su propia instancia, así que la elección es **gestionado frente a operado**, nunca compartido frente a aislado. Ninguna elección toca el arquetipo.
 
-`!resolved(database-platform)` sigue siendo válido para un entorno que deja la capability sin enlazar, como hace hoy `demos` (§7). Expresar `demos` como un binding a `postgres-cloudsql`, con la misma semántica, se propone en `proposals/postgres-cloudsql-qa/`.
+`!resolved(database-platform)` sigue siendo válido para un entorno que deja la capability sin enlazar, pero ningún entorno permanente lo hace: `demos`, `qa` y `prod` enlazan `postgres-cloudsql` (§7), y el camino gestionado lo elige `has_trait(database-platform, cloudsql)`.
 
 ---
 
@@ -401,7 +401,7 @@ requires:
     version: "^2.0.0"
     traits: [acl-authz]
   - capability: database-platform
-    version: "^1.0.0"
+    version: "^2.0.0"
     optional: true
   - capability: monitoring
     version: "^1.5.0"
@@ -417,7 +417,7 @@ stacks:
   - name: secrets
     after: [iam]
   - name: data
-    condition: "!resolved(database-platform)"
+    condition: "has_trait(database-platform, cloudsql)"
     after: [iam]
     claims:
       - kind: cidr
@@ -425,7 +425,7 @@ stacks:
         purpose: db-subnet
         size: 24
   - name: data-tenant
-    condition: "resolved(database-platform)"
+    condition: "has_trait(database-platform, cnpg)"
     after: [iam]
   - name: messaging
     after: [iam]
@@ -549,8 +549,8 @@ bindings:
   monitoring:          { archetype: monitoring-managed,   version: 1.8.0, stack_id: gcp-demos-monitoring }
   oidc-idp:            { archetype: keycloak,             version: 4.1.0, stack_id: gcp-demos-keycloak }
   event-bus:           { archetype: kafka,                version: 2.0.0, stack_id: gcp-demos-kafka }
-  # database-platform se deja deliberadamente SIN enlazar: los tenants de demo
-  # obtienen instancias gestionadas dedicadas para que sus datos nunca se co-ubiquen.
+  database-platform:   { archetype: postgres-cloudsql,    version: 0.1.0, stack_id: gcp-demos-postgres-cloudsql }
+  # cada tenant de demo obtiene su propia instancia gestionada: datos nunca co-ubicados (ver abajo)
   # Ver la nota más abajo.
 
 network:
@@ -602,7 +602,7 @@ policy:
 Dos propiedades a destacar:
 
 - `cluster` está enlazado a `gke-autopilot`, así que `monitoring` **no puede** estar enlazado a `monitoring-nodeagent`. El fichero de binding está validado, no solo los manifiestos de aplicación.
-- `database-platform` **no** está enlazado. Las cargas de demo llegan de la oficina de proyecto con requisitos arbitrarios y datos que no deben co-ubicarse, así que cada arquetipo con un stack `data` condicional toma el camino dedicado: diez tenants, diez instancias gestionadas. El mecanismo `condition:` no se desperdicia — los entornos de producción pueden enlazar `database-platform` y tomar el camino de operador compartido a partir del mismo manifiesto.
+- `database-platform` está enlazado a `postgres-cloudsql`, el proveedor gestionado (§5.5). Las cargas de demo llegan de la oficina de proyecto con requisitos arbitrarios y datos que no deben co-ubicarse, y el proveedor gestionado da a cada arquetipo con el par condicional su propia instancia: diez tenants, diez instancias gestionadas. El trait (`cloudsql` o `cnpg`) elige el camino; ninguno de los dos comparte datos entre consumidores.
 
 Tres consecuencias de elegir instancias dedicadas, dignas de registrarse:
 
@@ -1130,11 +1130,12 @@ archetypectl resolve --instance demos-alpha
     { "capability": "ingress",           "provider": "gateway-envoy-gke@3.1.0", "stack_id": "gcp-demos-gateway" },
     { "capability": "oidc-idp",          "provider": "keycloak@4.1.0",          "stack_id": "gcp-demos-keycloak" },
     { "capability": "event-bus",         "provider": "kafka@2.0.0",             "stack_id": "gcp-demos-kafka" },
+    { "capability": "database-platform", "provider": "postgres-cloudsql@0.1.0", "stack_id": "gcp-demos-postgres-cloudsql" },
         { "capability": "monitoring",        "provider": "monitoring-managed@1.8.0","stack_id": "gcp-demos-monitoring" }
   ],
   "stacks": ["iam", "secrets", "data", "messaging", "firewall", "app", "frontdoor"],
   "skipped_stacks": [
-    { "name": "data-tenant", "reason": "condition false: database-platform not bound in demos" }
+    { "name": "data-tenant", "reason": "condition false: database-platform is postgres-cloudsql (trait cloudsql, not cnpg)" }
   ],
   "claims": [
     { "kind": "hostname", "value": "alpha.demos.disasterproject.com", "state": "active", "pr": 412 },
@@ -1341,15 +1342,15 @@ webapp-3tier@2.3.0
 │   ├── secrets       ^2.0.0            → secrets-operator@2.0.1
 │   └── (posee su propio stack de datos internamente — no es una dependencia)
 ├── event-bus         ^2.0.0            → kafka@2.0.0
-├── database-platform ^1.0.0 (optional) → SIN RESOLVER (no enlazado en demos)
+├── database-platform ^2.0.0 (optional) → postgres-cloudsql@0.1.0 (trait cloudsql)
 └── monitoring        ^1.5.0 (optional) → monitoring-managed@1.8.0
 ```
 
-Quince arquetipos; la aplicación declaró seis.
+Dieciséis arquetipos; la aplicación declaró seis.
 
 **El paso 6** rechazaría `monitoring-nodeagent`: necesita `daemonset-privileged`, ausente en Autopilot.
 
-**El paso 9** resuelve las condiciones. Porque `database-platform` está sin enlazar en `demos`, `data-tenant` se omite y se genera el stack `data` — una instancia de Cloud SQL dedicada para este tenant. Diez tenants, diez instancias, sin datos co-ubicados.
+**El paso 9** resuelve las condiciones. Porque `demos` enlaza `database-platform` a `postgres-cloudsql` (trait `cloudsql`), `data-tenant` se omite y se genera el stack `data` — una instancia de Cloud SQL dedicada para este tenant. Diez tenants, diez instancias, sin datos co-ubicados.
 
 **El paso 11** valida 6 topics y 1 usuario contra los límites de Kafka de 20 y 3, todos prefijados `alpha-`.
 
