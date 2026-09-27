@@ -1,0 +1,31 @@
+flowchart TB
+    subgraph VPC["VPC qa · 10.4.128.0/17 · europe-west1"]
+        direction TB
+        subgraph INFRA["infra zone · 10.4.128.0/20"]
+            NODES["node subnet /24<br/>owner: gke · Private Google Access · flow logs"]
+        end
+        subgraph DATA["data zone · 10.4.144.0/20"]
+            PSA["qa-psa /21<br/>owner: environment · servicenetworking peering"]
+        end
+        subgraph EDGEZ["edge zone · 10.4.160.0/20"]
+            SVC["services /22 · owner: gke"]
+        end
+        GROW["growth zone · 10.4.176.0/20 · not allocatable"]
+        subgraph PODS["pods zone · 10.4.192.0/18"]
+            PODR["pods /18 · owner: gke"]
+        end
+    end
+    NAT["Cloud Router + Cloud NAT<br/>all ranges · dynamic ports 256-8192"]
+    GAPI["private.googleapis.com<br/>199.36.153.8/30"]
+    DNS["private zones<br/>googleapis.com · pkg.dev · gcr.io · qa.internal"]
+    SQL[("Cloud SQL<br/>in the qa-psa range")]
+    NET(("internet"))
+    NODES --> NAT --> NET
+    PODR --> NAT
+    PODR -- "Google APIs via the private VIP" --> GAPI
+    DNS -. "resolves *.googleapis.com to" .-> GAPI
+    PODR -- "3307 via the proxy" --> SQL
+    PSA --- SQL
+
+    style PSA fill:#fff5e6
+    style GROW fill:#f3f4f6
