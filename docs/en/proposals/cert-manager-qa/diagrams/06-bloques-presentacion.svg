@@ -102,7 +102,7 @@
 <circle cx="742" cy="557" r="3" fill="#c2410c"/>
 <text x="752" y="562" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">namespace-services</text>
 <circle cx="742" cy="581" r="3" fill="#c2410c"/>
-<text x="752" y="586" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">gateway-backend</text>
+<text x="752" y="586" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">platform-webhooks</text>
 <circle cx="742" cy="605" r="3" fill="#c2410c"/>
 <text x="752" y="610" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">internal-ca-root</text>
 <rect x="720" y="642" width="245" height="170" rx="12" fill="#fffaf3" stroke="#c2410c" stroke-width="1.5" stroke-dasharray="6 5"/>

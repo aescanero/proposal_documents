@@ -356,7 +356,7 @@ Fuente: [`diagrams/02-stacks-arquetipo.mmd`](diagrams/02-stacks-arquetipo.mmd)
 
 | Stack | Contenido | Entradas por sharing |
 |---|---|---|
-| `iam` | Namespaces `monitoring` (`restricted`; etiqueta `gateway.disasterproject.com/routes: "true"` y anotación `gateway.disasterproject.com/hostnames: grafana.qa.disasterproject.com`, E2 §5.1) y `monitoring-agents` (`privileged`, sin etiqueta: no publica rutas); KSAs `eso-monitoring-oss`, `loki`, `grafana` | `cluster_*` |
+| `iam` | Namespaces `monitoring` (`restricted`; etiquetas `trust.disasterproject.com/internal-ca: "true"` y `gateway.disasterproject.com/routes: "true"` y anotación `gateway.disasterproject.com/hostnames: grafana.qa.disasterproject.com`, E2 §5.1) y `monitoring-agents` (`privileged`; `trust.disasterproject.com/internal-ca: "true"`, sin etiqueta de rutas porque no publica ninguna); KSAs `eso-monitoring-oss`, `loki`, `grafana` | `cluster_*` |
 | `secrets` | §8.2: contenedores, IAM por secreto, `SecretStore` y `ExternalSecret` | `cluster_*`, `workload_identity_pool` |
 | `storage` | Bucket de Loki, ciclo de vida, `objectAdmin` para `loki`; `monitoring.viewer` para `grafana` | `workload_identity_pool` |
 | `firewall` | §8.3 | `cluster_*` |

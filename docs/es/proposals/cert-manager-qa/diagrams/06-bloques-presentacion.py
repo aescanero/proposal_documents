@@ -76,7 +76,7 @@ stack(xs[0],by,colw,bh,'fund',1,"controller","cert-manager",["CRDs con keep","si
 stack(xs[0],by+bh+bg,colw,bh,'fund',2,"webhook","Validación de sus kinds",["puerto 10250 (GKE)","certificado autogestionado","solo kinds de cert-manager"])
 stack(xs[0],by+2*(bh+bg),colw,bh,'fund',3,"cainjector","CA en otros webhooks",["ESO","prometheus-operator","inject-ca-from"])
 stack(xs[1],by,colw,bh,'prot',4,"approver-policy","Quién pide qué nombre",["solo *.<su ns>.svc","sin IP SAN ni isCA","≤ 90 días · ECDSA P-256"])
-stack(xs[1],by+bh+bg,colw,bh,'prot',5,"políticas","CertificateRequestPolicy",["namespace-services","gateway-backend","internal-ca-root"])
+stack(xs[1],by+bh+bg,colw,bh,'prot',5,"políticas","CertificateRequestPolicy",["namespace-services","platform-webhooks","internal-ca-root"])
 nx,ny=xs[1],by+2*(bh+bg)
 rect(nx,ny,colw,bh,'#fffaf3',pal['prot'][1],rx=12,sw=1.5,dash="6 5")
 text(nx+16,ny+34,"Sin approver-policy…",16,700,pal['prot'][1])

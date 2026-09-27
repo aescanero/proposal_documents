@@ -343,7 +343,7 @@ import { source = "/imports/generators/v1/gen_app.tm.hcl" }
 |---|---|
 | **Propósito** | Namespace de la instancia y las cuentas de servicio de Kubernetes. Es el primer stack: todo lo demás vive dentro |
 | **Generador** | `gen_tenant_namespace.tm.hcl` (genérico, cloud-agnóstico salvo la anotación de identidad) |
-| **Recursos** | `kubernetes_namespace` `sonarqube` (etiquetas `archetype`, `instance`, `pod-security.kubernetes.io/enforce: restricted` y `gateway.disasterproject.com/routes: "true"`; anotación `gateway.disasterproject.com/hostnames: sonar.qa.disasterproject.com`); KSA `sonarqube`, `eso-sonarqube`, `sonarqube-db`; `LimitRange` por defecto |
+| **Recursos** | `kubernetes_namespace` `sonarqube` (etiquetas `archetype`, `instance`, `pod-security.kubernetes.io/enforce: restricted`, `trust.disasterproject.com/internal-ca: "true"` y `gateway.disasterproject.com/routes: "true"`; anotación `gateway.disasterproject.com/hostnames: sonar.qa.disasterproject.com`); KSA `sonarqube`, `eso-sonarqube`, `sonarqube-db`; `LimitRange` por defecto |
 | **No crea** | Cuentas de servicio GCP. Con Workload Identity directa se concede IAM al principal del KSA en el recurso que lo necesita, en el stack que crea ese recurso |
 | **Entradas** | `cluster_endpoint`, `cluster_ca` (de `gcp-qa-gke`) |
 | **Salidas (CMDB)** | `namespace` |
@@ -358,6 +358,7 @@ generate_hcl "_namespace.tf" {
         name   = global.platform.namespace
         labels = merge(global.labels.namespace, {
           "pod-security.kubernetes.io/enforce" = "restricted"
+          "trust.disasterproject.com/internal-ca" = "true"      # bundle de internal-ca (cert-manager §4)
         }, tm_length(global.claims.hostnames) > 0 ? global.ingress.route_namespace_label : {})
         annotations = tm_length(global.claims.hostnames) > 0 ? {      # la instancia reclamó al menos un hostname
           "gateway.disasterproject.com/hostnames" = tm_join(",", global.claims.hostnames)
@@ -380,6 +381,8 @@ generate_hcl "_namespace.tf" {
 `automount_service_account_token` solo en el KSA de ESO: SonarQube no habla con la API de Kubernetes y no debe tener token montado.
 
 **Etiqueta y anotación del Gateway.** Toda instancia que reclama un hostname recibe en su namespace la etiqueta de `route_namespace_label` (salida del contrato `ingress`, un global) y la anotación con sus hostnames reclamados. Sin la etiqueta, el Gateway ignora la `HTTPRoute` (`allowedRoutes`); sin la anotación, Gatekeeper la rechaza (propuesta de Envoy Gateway §4.1). Ambas salen de la resolución, no del manifiesto: conftest (G1) comprueba que la anotación coincide con los claims de la instancia. La etiqueta `security_policy_label` no se pone: SonarQube no exige `oidc-security-policy`.
+
+**Etiqueta de confianza.** Todo namespace recibe `trust.disasterproject.com/internal-ca: "true"`, y trust-manager deja en él el `ConfigMap` `internal-ca-bundle`. Todo el TLS y el mTLS dentro del cluster usan la misma CA interna; la validación externa es de los balanceadores (propuesta de cert-manager §1, DT10). El bundle solo contiene certificados públicos, así que repartirlo a todos no expone nada.
 
 ### 5.2 `secrets` — Secret Manager y External Secrets
 

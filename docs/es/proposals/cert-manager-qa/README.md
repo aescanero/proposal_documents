@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 2 |
+| **Estado** | Propuesta · revisión 3 |
 | **Alcance** | El arquetipo de capa 3 `cert-manager` en `qa`: qué certificados emite y cuáles no, la CA interna, quién puede pedir qué nombre, cómo se reparte la confianza, renovación y rotación, red, contrato `certs`, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | ESO (§4.1), monitorización (§8.3), Keycloak (§4, §7, §8) y SonarQube (E1 §4.5) ya piden certificados al `ClusterIssuer` interno y confían en su CA, y cada uno lo daba por hecho |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -45,6 +45,8 @@ Fuente: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 | Webhook de **Gatekeeper** | **Gatekeeper**, con su propio rotador | Gatekeeper está en la capa 2b, **antes** que cert-manager: no puede depender de él (AM §3) |
 | Webhook del propio cert-manager | cert-manager, autogestionado | No puede pedirse un certificado a sí mismo antes de existir |
 | Certificados de cara a internet emitidos por ACME | **Nadie** | Sin egress a internet; el borde ya tiene su certificado |
+
+**Reparto de responsabilidades (DT10).** La validación hacia fuera la hacen los **balanceadores**, que sí trabajan con SNI y comodines: el certificado público de Certificate Manager en la capa 1. cert-manager es solo para el tráfico **dentro** del cluster: TLS hacia los endpoints internos (Keycloak, MongoDB, webhooks…) y mTLS interno (§4.1), todo con la misma CA. La CA interna **nunca** firma un hostname público: `namespace-services` solo admite nombres `.svc` y ninguna otra política admite más (§3).
 
 **Corrección a AM §14.2 (aplicada).** La tabla de proveedores por nube asignaba a `certs` "Certificate Manager / ACM / App Gateway certs". Eso describía la capability `cert` del borde, no `certs`: el propio AM enlaza `certs` a `cert-manager` en `demos` (AM §7). Las filas están ahora separadas: `cert` → Certificate Manager, ACM, App Gateway certs; `certs` → `cert-manager` en las tres nubes, como Kafka o Keycloak (§11).
 
@@ -94,12 +96,13 @@ Con un `ClusterIssuer` compartido y el aprobador por defecto de cert-manager, **
 
 | Política | Quién | Qué permite |
 |---|---|---|
-| `namespace-services` | Cualquier namespace | `dnsNames` en `*.<su namespace>.svc` y `*.<su namespace>.svc.cluster.local`; sin IP SANs, sin URIs, sin `isCA`; ECDSA P-256; duración ≤ 90 días |
-| `gateway-backend` | Solo el namespace del Gateway (`envoy-gateway-system`) | Además, el nombre que el GLB espera para el backend **(verificar el nombre que usa el GLB, VT8)** |
+| `namespace-services` | Cualquier namespace | `dnsNames` en `*.<su namespace>.svc` y `*.<su namespace>.svc.cluster.local`; `commonName` vacío o igual al primer `dnsName`; `usages` `server auth` y `client auth` (mTLS, §4.1); sin IP SANs, sin URIs, sin `isCA`; ECDSA P-256; duración ≤ 90 días |
 | `platform-webhooks` | Namespaces de ESO, monitorización y cert-manager | Los nombres de sus Services de webhook (ya cubiertos por `namespace-services`); se separa para poder endurecerla sin tocar al resto |
 | `internal-ca-root` | Solo `cert-manager` | `isCA: true`, para la raíz (§2.2) |
 
 Una solicitud que no encaja en ninguna queda **Denied** con el motivo; el `Certificate` no llega a `Ready` y salta la alerta de plataforma (§6).
+
+**No hay política para el backend del Gateway.** Una versión anterior tenía `gateway-backend`, que autorizaba "el nombre que el GLB espera". El GLB no espera ninguno: no valida el certificado (DT7) y Envoy no lleva hostname en el listener. El certificado del backend es `envoy-qa.envoy-gateway-system.svc`, cubierto por `namespace-services` (propuesta de Envoy Gateway §2.1). Si algún día se activa la validación del backend con `TrustConfig`, validará ese mismo nombre interno contra la CA interna; tampoco entonces hará falta un nombre público.
 
 **Por qué no bastaba Gatekeeper.** Un constraint sobre `Certificate` no ve los `CertificateRequest` creados directamente, que es lo que haría alguien que quiere saltárselo. approver-policy decide sobre la solicitud firmable, que es el único punto por el que pasa todo.
 
@@ -113,9 +116,27 @@ Envoy (→ Keycloak), Grafana (→ Keycloak), el reconciliador de Keycloak y el 
 |---|---|
 | `Bundle` de trust-manager | `internal-ca-bundle`: el certificado de la raíz vigente (y de la siguiente durante una rotación, §5.2) |
 | Destino | `ConfigMap` `internal-ca-bundle`, clave `ca.crt`, en **cada namespace con la etiqueta** `trust.disasterproject.com/internal-ca: "true"` |
-| Quién pone la etiqueta | El stack `iam` de cada consumidor, en su namespace |
+| Quién pone la etiqueta | El generador `gen_tenant_namespace`, en **todo** namespace que crea (E2 §5.1). Con una sola CA para todo el TLS interno, cualquier namespace puede necesitar confiar en ella, y el bundle solo contiene certificados públicos |
 | Uso | `BackendTLSPolicy` de Keycloak (`caCertificateRefs` a ese `ConfigMap`); volumen en Grafana, el blackbox y el reconciliador |
 | Lo que no se reparte | Ninguna clave privada: trust-manager solo copia certificados públicos |
+
+---
+
+### 4.1 TLS y mTLS internos
+
+| | Servidor | Cliente |
+|---|---|---|
+| **TLS** | `Certificate` con los `dnsNames` de su Service, `usages: [server auth]` | Confía en `internal-ca-bundle` |
+| **mTLS** | Igual, y exige un certificado de cliente firmado por `internal-ca` | `Certificate` propio con `usages: [client auth]` y un `dnsName` de su propio namespace (por ejemplo `grafana.monitoring.svc`) |
+
+**Confianza no es autorización.** Con una sola CA, cualquier namespace obtiene un certificado de cliente válido. approver-policy garantiza que el nombre del certificado es veraz, porque un namespace solo obtiene nombres propios (§3). Decidir a quién se deja entrar es del **servidor**, por el SAN o el subject, nunca solo por "firmado por `internal-ca`" (RT7).
+
+| Servicio | TLS | mTLS | Nota |
+|---|---|---|---|
+| Keycloak | Sí (Keycloak §4) | No | Los clientes OIDC se autentican con client secret o JWT firmado |
+| MongoDB (componente) | `net.tls.mode: requireTLS` con el certificado de su Service | Miembros del replica set por x.509; clientes con `MONGODB-X509` si se quiere | El usuario x.509 es el subject completo: el `Certificate` fija `commonName` igual a su primer `dnsName`, y approver-policy no admite otro valor. El usuario de MongoDB es, por tanto, el nombre del Service cliente |
+| PostgreSQL (CNPG) | CNPG trae su propia CA por defecto | Clientes por certificado, opcional | Puede usar `internal-ca` con certificados de servidor y cliente propios **(verificar, VT9)** |
+| Kafka (Strimzi, `demos`) | Strimzi gestiona sus propias CAs (cluster y clients) | mTLS de clientes con la clients CA de Strimzi | Usar `internal-ca` exige el modo de CA propia de Strimzi con renovación manual: se decide en la propuesta de Kafka |
 
 ---
 
@@ -195,10 +216,11 @@ spec:
 
 | Regla | Por qué |
 |---|---|
-| Solo nombres del propio namespace | approver-policy (§3) |
+| Solo nombres del propio namespace; ningún hostname público | approver-policy (§3); lo público es del balanceador (§1) |
 | `duration` ≤ 90 días | Idem; limita el daño de una clave filtrada |
 | Nada de `Issuer` propios de tipo CA para dar servicio a otros | Una CA de tenant no es de confianza para nadie; Gatekeeper lo impide (§9.2) |
 | Namespace con la etiqueta del bundle si necesita confiar en la CA | §4 |
+| `usages: [client auth]` solo para mTLS; `commonName` igual al primer `dnsName` | §4.1 |
 
 ---
 
@@ -324,7 +346,8 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | `registry/traits.yaml` y el `enum` de `schemas/archetype-manifest.schema.json` | Trait `cert-manager`, en el mismo commit y de forma mecánica (R34) | **Aplicado** |
 | Propuestas de ESO (§10.1), monitorización (§10.1) y Keycloak (§11.1) | `certs` pasa a exigir `traits: [cert-manager]` | **Aplicado** |
 | AM §14.2 (`docs/en/` y `docs/es/`) | Separar `cert` (Certificate Manager, ACM, App Gateway certs) de `certs` (`cert-manager` en las tres nubes) | **Aplicado** |
-| Consumidores (`iam` de Keycloak, monitorización y el Gateway) | Etiqueta `trust.disasterproject.com/internal-ca` en su namespace; uso de `internal-ca-bundle` | Propuesto, se recoge al implementar cada uno |
+| Consumidores | Etiqueta `trust.disasterproject.com/internal-ca` en todo namespace, puesta por `gen_tenant_namespace` (E2 §5.1); uso de `internal-ca-bundle` | **Aplicado** |
+| Esta propuesta, §3 | Política `gateway-backend` eliminada; `namespace-services` admite `client auth` y un `commonName` fijo para mTLS | **Aplicado** |
 
 ---
 
@@ -341,6 +364,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | DT7 | Validación del backend en el GLB | Propuesta | No en `qa` | `TrustConfig` con la raíz interna (ata la raíz a la capa 1) |
 | DT8 | Gatekeeper | Consecuencia de AM §3 | Su propio rotador | — (capa 2b va antes) |
 | DT9 | Trait `cert-manager` | Propuesta, aplicada al registro | Sí | Sin trait |
+| DT10 | Alcance de la CA interna | Aceptada | Solo nombres internos (`.svc`); TLS y mTLS dentro del cluster. Lo externo, en los balanceadores con SNI y comodines | Firmar también hostnames públicos |
 
 ---
 
@@ -354,6 +378,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | RT4 | **Borrado de los CRDs** arrastra los `Secret` | Baja | Alta | `keep`, sin owner reference, assert |
 | RT5 | **Webhooks inalcanzables** desde el plano de control | Media si cambia el puerto | Media — ningún `Certificate` se aplica | 10250 con assert; VT3 |
 | RT6 | **Orden de despliegue**: un consumidor aplica antes de que exista el `ClusterIssuer` | Media en el primer despliegue | Baja — reintenta solo | `after` a `gcp-qa-certs-ca` en los consumidores |
+| RT7 | **Confianza tomada por autorización**: un servidor mTLS acepta cualquier certificado de la CA interna | Media | Alta — un namespace cualquiera entra en la base de datos de otro | Autorización por SAN o subject en el servidor (§4.1); VT9 |
 
 ---
 
@@ -368,7 +393,8 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | VT5 | Recarga de certificados en Envoy, Keycloak y cada webhook | Renovación forzada sin reinicio y sin errores de TLS |
 | VT6 | Desinstalar los controladores en un entorno efímero | Los `Secret` de los certificados siguen existiendo |
 | VT7 | Rotación de la raíz de §5.2 en un entorno efímero | Ningún corte de TLS en ninguno de los cuatro pasos |
-| VT8 | GLB → Envoy con el certificado interno; nombre esperado; validación del backend | Health check en verde; confirmado que sin `TrustConfig` no valida |
+| VT8 | GLB → Envoy con el certificado interno; validación del backend | Health check en verde; confirmado que sin `TrustConfig` no valida |
+| VT9 | mTLS con MongoDB y con CNPG usando `internal-ca` | Un cliente del namespace autorizado entra; un certificado válido de otro namespace es rechazado por autorización, no por TLS |
 
 ---
 

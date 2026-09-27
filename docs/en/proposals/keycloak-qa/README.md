@@ -521,7 +521,7 @@ Source: [`diagrams/02-stacks-arquetipo.mmd`](diagrams/02-stacks-arquetipo.mmd)
 
 | Stack | Generator | Contents | Inputs via sharing |
 |---|---|---|---|
-| `iam` | `gen_tenant_namespace.tm.hcl` | Namespace `keycloak` (PSS `restricted`; label `gateway.disasterproject.com/routes: "true"` and annotation `gateway.disasterproject.com/hostnames: sso.qa.disasterproject.com`, S2 §5.1); KSAs `keycloak`, `eso-keycloak`, `keycloak-config` | `cluster_*` (gke) |
+| `iam` | `gen_tenant_namespace.tm.hcl` | Namespace `keycloak` (PSS `restricted`; labels `trust.disasterproject.com/internal-ca: "true"` and `gateway.disasterproject.com/routes: "true"` and annotation `gateway.disasterproject.com/hostnames: sso.qa.disasterproject.com`, S2 §5.1); KSAs `keycloak`, `eso-keycloak`, `keycloak-config` | `cluster_*` (gke) |
 | `secrets` | `gen_secrets.tm.hcl` | `qa-keycloak-db` (no version), `-admin`, `-config-cli` (generated write-only), `-realm-signing`, `-entra-cert` (version from the bootstrap script); `SecretStore` and `ExternalSecret` | `cluster_*`, `workload_identity_pool` |
 | `data` | `gen_data.tm.hcl` | §3.1 | `workload_identity_pool`, `notification_channel_id` |
 | `firewall` | `gen_helm_stack.tm.hcl` | §8.3 | `cluster_*` |

@@ -76,7 +76,7 @@ stack(xs[0],by,colw,bh,'fund',1,"controller","cert-manager",["CRDs with keep","n
 stack(xs[0],by+bh+bg,colw,bh,'fund',2,"webhook","Validates its kinds",["port 10250 (GKE)","self-managed certificate","cert-manager kinds only"])
 stack(xs[0],by+2*(bh+bg),colw,bh,'fund',3,"cainjector","CA into other webhooks",["ESO","prometheus-operator","inject-ca-from"])
 stack(xs[1],by,colw,bh,'prot',4,"approver-policy","Who asks for which name",["only *.<its ns>.svc","no IP SAN, no isCA","≤ 90 days · ECDSA P-256"])
-stack(xs[1],by+bh+bg,colw,bh,'prot',5,"policies","CertificateRequestPolicy",["namespace-services","gateway-backend","internal-ca-root"])
+stack(xs[1],by+bh+bg,colw,bh,'prot',5,"policies","CertificateRequestPolicy",["namespace-services","platform-webhooks","internal-ca-root"])
 nx,ny=xs[1],by+2*(bh+bg)
 rect(nx,ny,colw,bh,'#fffaf3',pal['prot'][1],rx=12,sw=1.5,dash="6 5")
 text(nx+16,ny+34,"Without approver-policy…",16,700,pal['prot'][1])
