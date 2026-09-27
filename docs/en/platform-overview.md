@@ -273,7 +273,8 @@ flowchart TD
     subgraph NET["network produces"]
         G1["GKE: network_self_link<br/>(subnet and ranges: the gke archetype's own)"]
         A1["EKS: vpc_id, private route tables<br/>(node subnets: the eks archetype's own)"]
-        F1["Fargate: vpc_id, private_subnet_ids (list)"]
+        F1["Fargate: vpc_id, private route tables<br/>(task subnets: the fargate archetype's own)"]
+        C1["Cloud Run: network_self_link<br/>(egress subnet: the cloudrun archetype's own)"]
         Z1["AKS: vnet_id<br/>(node subnet: the aks archetype's own)"]
     end
     subgraph CLU["runtime produces"]

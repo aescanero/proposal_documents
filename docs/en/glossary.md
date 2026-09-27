@@ -269,9 +269,9 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 | **Azure CNI Powered by Cilium** | AKS mode combining overlay addressing with an eBPF dataplane, chosen when NetworkPolicy is needed at eBPF performance. |
 | **AGFC (Application Gateway for Containers)** | Azure's Gateway API implementation; usable BYO (bring-your-own), provisioned in Terraform. Itself an L7 gateway, so placing Envoy Gateway behind it is a redundant double hop. |
 | **Secrets Store CSI driver** | AKS's mechanism for mounting Key Vault secrets into pods via workload identity, so Kubernetes Secrets are never the source of truth. |
-| **`artifact_registry_repo` / `cloud_armor_policy_id`** (Cloud Run) | Network-stack outputs a Cloud Run runtime stack consumes. |
+| **`artifact_registry_repo` / `cloud_armor_policy_id`** (Cloud Run) | Serverless-platform-stack (`gcp-ENV-srvless`) outputs a Cloud Run service stack consumes. |
 | **Cloud Run service agent** | The GCP-managed identity (`service-<project-number>@serverless-robot-prod.iam.gserviceaccount.com`) that actually pulls container images for a Cloud Run service — distinct from the service's own runtime SA. Granting pull permissions to the runtime SA instead is "a classic first-deployment failure." |
-| **Direct VPC egress** | The preferred (newer) mechanism for Cloud Run to reach VPC-private resources without a managed connector; requires a dedicated `/24` subnet minimum. |
+| **Direct VPC egress** | The preferred (newer) mechanism for Cloud Run to reach VPC-private resources without a managed connector; requires a dedicated `/24` subnet minimum, created by the `cloudrun` archetype's own `run-subnet` stack, not by `network`. |
 | **Serverless VPC Access connector** | The legacy mechanism for Cloud Run VPC access, using a fixed connector resource/CIDR. |
 | **Binary Authorization** | Attestation-based control requiring container images to carry verified attestations before deployment (GKE and Cloud Run). |
 | **Metadata concealment (GKE)** | Disabling legacy GCE metadata endpoints (`metadata.disable-legacy-endpoints = true`) so pods cannot read the node SA's token directly, which would defeat Workload Identity. |

@@ -1325,7 +1325,8 @@ Cloud Run removes the cluster from the topology, which changes the shape of the 
 
 ```mermaid
 graph LR
-    NET["<b>network</b><br/>gcp-ENV-network"] --> SP["<b>serverless-platform</b><br/>gcp-ENV-srvless"]
+    NET["<b>network</b><br/>gcp-ENV-network"] --> SUB["<b>run-subnet</b><br/>gcp-ENV-run-subnet"] --> APP["<b>app</b><br/>gcp-ENV-INST-run"]
+    NET --> SP["<b>serverless-platform</b><br/>gcp-ENV-srvless"]
     NET --> DATA["<b>data</b><br/>gcp-ENV-INST-data"]
     SP --> APP["<b>app</b><br/>gcp-ENV-INST-run"]
     DATA --> APP
@@ -1334,38 +1335,49 @@ graph LR
 
 | # | Stack | Produces | Consumes |
 |---|---|---|---|
-| 1 | `gcp-ENV-network` | VPC, subnet, Direct VPC egress subnet or Serverless VPC connector, Cloud NAT, PSA range | — |
-| 2 | `gcp-ENV-srvless` | Artifact Registry, static IP, Certificate Manager map, Cloud Armor policy, log sink | network |
+| 1 | `gcp-ENV-network` | VPC, Cloud NAT, PSA range | — |
+| 2a | `gcp-ENV-run-subnet` | Direct VPC egress subnet (or the Serverless VPC Access connector and its `/28`) — the runtime's claim (AM §9.5) — with Private Google Access and its firewall rules | network |
+| 2b | `gcp-ENV-srvless` | Artifact Registry, static IP, Certificate Manager map, Cloud Armor policy, log sink | network |
 | 3a | `gcp-ENV-INST-data` | Cloud SQL (private IP), Secret Manager secrets | network |
-| 3b | `gcp-ENV-INST-run` | Cloud Run service, runtime SA, serverless NEG, backend service | srvless, data |
+| 3b | `gcp-ENV-INST-run` | Cloud Run service, runtime SA, serverless NEG, backend service | run-subnet, srvless, data |
 | 4 | `gcp-ENV-edge` | URL map, HTTPS proxy, forwarding rule | *see §7.5 — fan-in* |
+
+Both stacks of level 2 belong to the `cloudrun` archetype, the same shape as GKE (§5.1): the runtime creates the subnet it claims, and `network` knows no runtime.
 
 Note the ordering inversion at step 4: the edge-routing stack runs **after** every instance, because it aggregates their backends. That fan-in is the one shape outputs sharing does not handle well, and §7.5 covers the remedy.
 
-### 7.2 Stack 1 — network
+### 7.2 Stack 1 — network, and the runtime's egress subnet
 
-Cloud Run reaches private resources one of two ways. Choose once, in globals, and generate accordingly.
+The network stack is **the same one GKE uses** (§5.2): the `contract_network_gcp.tm.hcl` contract, version 3.0.0, with no serverless outputs. There is no `contract_network_gcp_serverless.tm.hcl`. Cloud NAT covers `ALL_SUBNETWORKS_ALL_IP_RANGES`, so a subnet a runtime creates later leaves with no change to `network`.
 
-| Mechanism | When | What the network stack must output |
+Cloud Run reaches private resources one of two ways. Choose once, in globals; the `cloudrun` archetype's first stack, `gcp-ENV-run-subnet`, creates whichever is chosen.
+
+| Mechanism | When | What the `run-subnet` stack outputs |
 |---|---|---|
 | **Direct VPC egress** | Preferred for new builds — no connector to size or pay for | `direct_egress_subnet_id` (a subnet reserved for Cloud Run) |
 | **Serverless VPC Access connector** | Legacy, or when you need a fixed connector CIDR for firewall rules | `vpc_connector_id` |
 
 ```hcl
-# imports/contracts/contract_network_gcp_serverless.tm.hcl
-output "network_self_link"        { backend = "tofu"  value = module.network.network_self_link }
-output "direct_egress_subnet_id"  { backend = "tofu"  value = module.network.serverless_subnet_id }
-output "vpc_connector_id"         { backend = "tofu"  value = try(module.network.connector_id, "") }
-output "psa_range_name"           { backend = "tofu"  value = module.network.psa_range_name }
-output "project_id"               { backend = "tofu"  value = var.project_id }
+# imports/contracts/contract_run_subnet_gcp.tm.hcl
+input "network_self_link" {
+  backend = "tofu"  from_stack_id = global.platform.network_stack_id
+  value = outputs.network_self_link.value
+  mock  = "projects/mock-project/global/networks/mock-vpc"
+}
+
+output "direct_egress_subnet_id"  { backend = "tofu"  value = try(google_compute_subnetwork.egress[0].id, "") }
+output "vpc_connector_id"         { backend = "tofu"  value = try(google_vpc_access_connector.this[0].id, "") }
+output "egress_cidr"              { backend = "tofu"  value = global.serverless.serverless_subnet }
 ```
+
+The subnet is the runtime's claim (AM §9.5, `/24` minimum), so its owner is also the writer of its firewall rules: the egress rules from `egress_cidr` to the PSA range and to the private services of the environment live in this stack, not in `network`. Rebuilding or removing the Cloud Run platform never touches the network. Consumers find the stack through `global.platform.runtime_subnet_stack_id` (`gcp-demos-run-subnet`), the serverless counterpart of `cluster_subnet_stack_id` (§5.3).
 
 ```hcl
 # stacks/platforms/gcp/demos/config.tm.hcl (serverless additions)
 globals "serverless" {
   egress_mode          = "direct"                # "direct" | "connector"
   egress_setting       = "PRIVATE_RANGES_ONLY"   # avoid ALL_TRAFFIC unless egress must be inspected
-  serverless_subnet    = "10.4.40.0/24"          # zone edge; /24 minimum for Direct VPC egress
+  serverless_subnet    = "10.4.40.0/24"          # zone edge; /24 minimum for Direct VPC egress — the run-subnet stack's claim
   ingress              = "INTERNAL_AND_CLOUD_LOAD_BALANCING"
 }
 ```
@@ -1413,7 +1425,7 @@ input "artifact_registry_repo" {
   mock  = "europe-west1-docker.pkg.dev/mock-project/mock-repo"
 }
 input "direct_egress_subnet_id" {
-  backend = "tofu"  from_stack_id = global.platform.network_stack_id
+  backend = "tofu"  from_stack_id = global.platform.runtime_subnet_stack_id   # gcp-ENV-run-subnet, §7.2
   value = outputs.direct_egress_subnet_id.value
   mock  = "projects/mock-project/regions/europe-west1/subnetworks/mock-serverless"
 }
@@ -1607,8 +1619,8 @@ The instance stack names its backend service deterministically (`bes-<instance>-
 |---|---|---|
 | Isolation boundary | Service + runtime service account | Project |
 | Compute isolation | Per-service sandbox (gVisor) — strong by default | Same, plus project boundary |
-| Data isolation | Separate Cloud SQL *database* on a shared instance, separate secrets | Separate Cloud SQL instance |
-| Network | Shared VPC, shared egress subnet | Dedicated VPC |
+| Data isolation | Own Cloud SQL instance per archetype instance, separate secrets — data are never shared | Same |
+| Network | Environment VPC, one egress subnet created by `run-subnet` and shared by the environment's services | Dedicated VPC, own egress subnet |
 | Cost at idle | Near zero — scales to zero | Cloud SQL and NAT still bill |
 | Quota control | Per-service `max_instance_count` | Same, plus project quotas |
 | Blast radius of a platform change | All tenants | One tenant |
@@ -1657,34 +1669,63 @@ ECS on Fargate is the AWS counterpart to Cloud Run in this architecture: no node
 
 ```mermaid
 graph LR
-    NET["<b>network</b><br/>aws-ENV-network"] --> ECS["<b>ecs-platform</b><br/>aws-ENV-ecs"]
+    NET["<b>network</b><br/>aws-ENV-network"] --> SUB["<b>ecs-subnets</b><br/>aws-ENV-ecs-subnets"] --> ECS["<b>ecs-platform</b><br/>aws-ENV-ecs"]
+    NET --> ECS
     NET --> DATA["<b>data</b><br/>aws-ENV-INST-data"]
     ECS --> APP["<b>app</b><br/>aws-ENV-INST-svc"]
+    SUB --> APP
     DATA --> APP
 ```
 
 | # | Stack | Produces | Consumes |
 |---|---|---|---|
-| 1 | `aws-ENV-network` | VPC, private/public subnets, NAT, **VPC endpoints**, endpoint SG | — |
-| 2 | `aws-ENV-ecs` | ECS cluster, ALB, WAF, ECR repos, Cloud Map namespace, log groups, ALB SG | network |
+| 1 | `aws-ENV-network` | VPC, public subnets, NAT gateways, one private route table per AZ, **VPC endpoints** in their own `/28` endpoint subnets, endpoint SG | — |
+| 2a | `aws-ENV-ecs-subnets` | Task subnets per AZ — the runtime's claim (AM §9.5), one ENI per task — associated with the private route tables | network |
+| 2b | `aws-ENV-ecs` | ECS cluster, ALB, WAF, ECR repos, Cloud Map namespace, log groups, ALB SG | network, ecs-subnets |
 | 3a | `aws-ENV-INST-data` | RDS, Secrets Manager secret, DB security group | network |
-| 3b | `aws-ENV-INST-svc` | Task definition, **task role**, **execution role**, service, target group, listener rule, service SG | ecs, data |
+| 3b | `aws-ENV-INST-svc` | Task definition, **task role**, **execution role**, service, target group, listener rule, service SG | ecs-subnets, ecs, data |
+
+The two stacks of level 2 belong to the `fargate` archetype, the same shape as EKS (§6.1): the runtime creates the task subnets it claims, and `network` knows no runtime.
 
 Unlike Cloud Run, there is no fan-in stack: ALB listener rules are separate resources that each instance owns, attached to the shared listener by ARN. Adding or removing a tenant touches only that tenant's stack.
 
 ### 8.2 Stack 1 — network, with VPC endpoints
 
-Fargate tasks in private subnets must reach ECR, CloudWatch Logs and Secrets Manager. Routing that through a NAT gateway works but costs money and sends control-plane traffic over the internet. **VPC endpoints are the best-practice baseline** and they are a network-stack concern.
+Fargate tasks in private subnets must reach ECR, CloudWatch Logs and Secrets Manager. Routing that through a NAT gateway works but costs money and sends control-plane traffic over the internet. **VPC endpoints are the best-practice baseline** and they are a network-stack concern: they serve every runtime of the environment, not Fargate alone.
+
+The network contract is **the same one EKS uses** (§6.2), plus the endpoint security group. There is no `private_subnet_ids`: the task subnets are the `fargate` archetype's, created in `aws-ENV-ecs-subnets` and associated with the route tables the network publishes.
 
 ```hcl
-# imports/contracts/contract_network_aws_fargate.tm.hcl
-output "vpc_id"              { backend = "tofu"  value = module.vpc.vpc_id }
-output "vpc_cidr"            { backend = "tofu"  value = module.vpc.vpc_cidr_block }
-output "private_subnet_ids"  { backend = "tofu"  value = module.vpc.private_subnets }
-output "public_subnet_ids"   { backend = "tofu"  value = module.vpc.public_subnets }
-output "endpoint_sg_id"      { backend = "tofu"  value = module.vpc.vpc_endpoint_security_group_id }
-output "azs"                 { backend = "tofu"  value = module.vpc.azs }
+# imports/contracts/contract_network_aws.tm.hcl
+output "vpc_id"                  { backend = "tofu"  value = module.vpc.vpc_id }
+output "vpc_cidr"                { backend = "tofu"  value = module.vpc.vpc_cidr_block }
+output "public_subnet_ids"       { backend = "tofu"  value = module.vpc.public_subnets }
+output "private_route_table_ids" { backend = "tofu"  value = module.vpc.private_route_table_ids }   # one per AZ, AZ-ordered
+output "endpoint_sg_id"          { backend = "tofu"  value = module.vpc.vpc_endpoint_security_group_id }
+output "azs"                     { backend = "tofu"  value = module.vpc.azs }
 ```
+
+Where the endpoints live, and why this does not reintroduce a runtime into `network`:
+
+| Piece | Owner | Why |
+|---|---|---|
+| Interface endpoints | `network`, in its own `/28` endpoint subnets per AZ (zone `infra`) | Shared infrastructure for every runtime, like the AKS private-endpoint subnet (§9.2) |
+| S3 gateway endpoint | `network`, attached to the private route tables | Route tables are the network's; any subnet associated later inherits it |
+| Endpoint SG | `network` | Admits 443 from `vpc_cidr`, so it names no runtime subnet and no change is needed when one is created |
+| Task subnets | `ecs-subnets` | The runtime's claim; claim owner, creator and firewall writer are one |
+
+```hcl
+# imports/contracts/contract_ecs_subnets.tm.hcl
+input "private_route_table_ids" {
+  backend = "tofu"  from_stack_id = global.platform.network_stack_id
+  value = outputs.private_route_table_ids.value
+  mock  = ["rtb-mock0000000000a", "rtb-mock0000000000b"]
+}
+
+output "task_subnet_ids" { backend = "tofu"  value = aws_subnet.task[*].id }   # AZ-ordered, one per AZ
+```
+
+Consumers — the `ecs` stack and every `svc` stack — find it through `global.platform.runtime_subnet_stack_id` (`aws-demos-ecs-subnets`). Task subnets are sized for the peak task count of the environment, since each task takes one address.
 
 Required endpoints, generated from globals:
 
@@ -1712,9 +1753,9 @@ input "vpc_id" {
   backend = "tofu"  from_stack_id = global.platform.network_stack_id
   value = outputs.vpc_id.value  mock = "vpc-mock00000000000"
 }
-input "private_subnet_ids" {
-  backend = "tofu"  from_stack_id = global.platform.network_stack_id
-  value = outputs.private_subnet_ids.value
+input "task_subnet_ids" {
+  backend = "tofu"  from_stack_id = global.platform.runtime_subnet_stack_id   # aws-ENV-ecs-subnets, §8.2
+  value = outputs.task_subnet_ids.value
   mock  = ["subnet-mock0000000000a", "subnet-mock0000000000b"]
 }
 input "public_subnet_ids" {
@@ -1961,7 +2002,7 @@ generate_hcl "_task_definition.tf" {
       enable_execute_command = global.app.ecs_exec_enabled   # false by default
 
       network_configuration {
-        subnets          = var.private_subnet_ids
+        subnets          = var.task_subnet_ids               # from ecs-subnets (§8.2), never from network
         security_groups  = [aws_security_group.service.id]
         assign_public_ip = false                             # always false in private subnets
       }
@@ -2026,7 +2067,7 @@ Complementary guard rails above the pipeline (§11.7): SCPs denying `iam:CreateU
 |---|---|---|
 | Isolation boundary | Task role + execution role + security group | Account |
 | Compute isolation | **Per-task VM-level isolation** — stronger than shared EKS nodes | Same |
-| Network | Shared VPC, per-service SG | Dedicated VPC |
+| Network | Environment VPC, task subnets created by `ecs-subnets`, per-service SG | Dedicated VPC |
 | Ingress | Shared ALB, per-tenant host-based listener rule | Dedicated ALB |
 | Secrets | Per-tenant secret + per-tenant execution role | Per-account |
 | Escalation control | Platform-published permission boundary | Boundary + SCP |
@@ -2086,7 +2127,7 @@ EKS Fargate profiles are a *compute option for the EKS guide*, not a separate pl
 - That pod execution role replaces the node role for the selected namespaces; grant it ECR pull and CloudWatch logs only.
 - Fargate profiles select by **namespace and labels**, which maps directly onto `global.platform.namespace` — one profile per tenant namespace on a shared cluster gives per-tenant compute isolation without a separate cluster.
 - IRSA is unchanged: `oidc_provider_arn` and `oidc_provider_url` still come from the cluster stack.
-- Caveats: no DaemonSets, no privileged containers, no host networking, and a `/16`-scale IP demand on the pod subnets. Size the subnets in globals accordingly.
+- Caveats: no DaemonSets, no privileged containers, no host networking, and a `/16`-scale IP demand on the pod subnets. Those are the `eks-subnets` stack's (§6.2), so they are sized in the `eks` archetype's claims, not in `network`.
 
 ---
 
