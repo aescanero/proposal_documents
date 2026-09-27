@@ -38,6 +38,7 @@ Inside each language folder:
 | `proposals/postgres-operator-qa/` | The layer-4 `postgres-operator` archetype, the CloudNativePG alternative `database-platform` provider: one `Cluster` per consumer in its own namespace, a platform image catalog by digest, barman-cloud backups to a bucket per consumer, in-place operator upgrades; not bound in `qa` |
 | `proposals/gke-qa/` | The layer-2 `gke` archetype on `qa`: regional GKE Standard with private nodes, address claims, node pools declared by the environment and restricted to their owners, the storage class, Dataplane V2 and the `cluster` 2.5.0 contract |
 | `proposals/network-qa/` | The network part of the layer-1 `environment` archetype on `qa`: VPC, Cloud NAT with dynamic ports, Google APIs through private DNS zones and the private VIP, PSA, the `qa.internal` zone, and the `network` 3.0.0 contract |
+| `proposals/edge-qa/` | The edge of the layer-1 `environment` archetype on `qa`: public zone and wildcard, Certificate Manager, Cloud Armor with preview-then-deny and SAML exclusions, the managed Global external Application LB to Envoy's NEG, L4 exceptions, and the `env-edge` 1.0.0 contract |
 
 The two halves meet at `binding.tm.hcl`: the resolver writes globals, the generators
 consume them.
