@@ -118,11 +118,11 @@ graph TD
         DATA["data: demo-alpha<br/>id: gcp-demos-alpha-data"]
     end
 
-    NET -->|"network_self_link<br/>subnet_self_link<br/>pods_range_name"| CLU
+    NET -->|"network_self_link"| CLU
     CLU -->|"cluster_name<br/>cluster_endpoint<br/>cluster_ca"| SVC
     CLU -->|"cluster_name, endpoint, WI pool"| APPA
     CLU -->|"cluster_name, endpoint, WI pool"| APPB
-    NET -->|"subnet_self_link"| DATA
+    NET -->|"network_self_link<br/>private_service_range"| DATA
     DATA -->|"db_connection_name<br/>secret_id"| APPA
     SVC -->|"ingress_class<br/>dns_zone"| APPA
     SVC -->|"ingress_class<br/>dns_zone"| APPB
@@ -317,9 +317,9 @@ output "network_self_link" {
   description = "Self link of the shared VPC"
 }
 
-output "gke_pods_range_name" {
+output "private_service_range" {
   backend = "tofu"
-  value   = module.network.secondary_range_names.pods
+  value   = module.network.psa_range_name
 }
 ```
 
@@ -338,11 +338,9 @@ output "gke_pods_range_name" {
 ```hcl
 # imports/contracts/contract_network_gcp.tm.hcl
 # Imported by every GCP network stack.
-output "network_self_link" { backend = "tofu"  value = module.network.network_self_link }
-output "subnet_self_link"  { backend = "tofu"  value = module.network.subnet_self_link }
-output "gke_pods_range_name"     { backend = "tofu"  value = module.network.range_pods }
-output "gke_services_range_name" { backend = "tofu"  value = module.network.range_services }
-output "project_id"        { backend = "tofu"  value = var.project_id }
+output "network_self_link"     { backend = "tofu"  value = module.network.network_self_link }
+output "private_service_range" { backend = "tofu"  value = module.network.psa_range_name }
+output "project_id"            { backend = "tofu"  value = var.project_id }
 ```
 
 ```hcl
@@ -372,7 +370,7 @@ input "network_self_link" {
 
 input "subnet_self_link" {
   backend       = "tofu"
-  from_stack_id = global.platform.network_stack_id
+  from_stack_id = global.platform.cluster_subnet_stack_id   # the gke archetype's own subnet stack (§5.2)
   value         = outputs.subnet_self_link.value
   mock          = "projects/mock-project/regions/europe-west1/subnetworks/mock-subnet"
 }
@@ -706,7 +704,8 @@ that, `terramate run --changed` resolves the whole graph in one pass.
 
 ```mermaid
 graph LR
-    NET["<b>network</b><br/>gcp-ENV-network"] --> GKE["<b>gke</b><br/>gcp-ENV-gke"]
+    NET["<b>network</b><br/>gcp-ENV-network"] --> SUB["<b>gke-subnet</b><br/>gcp-ENV-gke-subnet"] --> GKE["<b>gke</b><br/>gcp-ENV-gke"]
+    NET --> GKE
     GKE --> SVC["<b>services</b><br/>gcp-ENV-services"]
     NET --> DATA["<b>data</b><br/>gcp-ENV-INST-data"]
     GKE --> APP["<b>app</b><br/>gcp-ENV-INST-app"]
@@ -714,19 +713,20 @@ graph LR
     DATA --> APP
 ```
 
-Four stacks, four applies, in this order. Stacks at the same level run in parallel.
+Four levels, applied in this order; stacks at the same level run in parallel. The two `gke` stacks belong to one archetype and apply back to back.
 
 | # | Stack | Capability | Produces | Consumes |
 |---|---|---|---|---|
-| 1 | `gcp-ENV-network` | network | VPC, subnet, secondary ranges, Cloud NAT, private services access | — |
-| 2 | `gcp-ENV-gke` | cluster | Cluster, node pools, Workload Identity pool | network |
+| 1 | `gcp-ENV-network` | network | VPC, Cloud NAT, private services access | — |
+| 2a | `gcp-ENV-gke-subnet` | cluster | Node subnet and its two secondary ranges — the runtime's claims (AM §9.5) — with Private Google Access | network |
+| 2b | `gcp-ENV-gke` | cluster | Cluster, node pools, Workload Identity pool | network, gke-subnet |
 | 3 | `gcp-ENV-services` | platform-services | Ingress controller, external-dns, cert-manager, namespaces | gke |
 | 4a | `gcp-ENV-INST-data` | data | Cloud SQL, Secret Manager entries | network |
 | 4b | `gcp-ENV-INST-app` | app | Workload, service account, IAM bindings | gke, services, data |
 
 ### 5.2 Stack 1 — network (producer only)
 
-GKE in VPC-native mode requires **secondary IP ranges for pods and services** to exist on the subnet before the cluster is created. Those range *names* are the contract.
+GKE in VPC-native mode requires **secondary IP ranges for pods and services** to exist on the subnet before the cluster is created. They are **not** the network's: the runtime claims the node subnet and the pod range (AM §9.5), because each runtime has a different shape, so the `gke` archetype creates them in its own first stack (§5.3). The network contract carries only what every runtime shares. Claim owner, creator and writer of the range's firewall rules are one and the same.
 
 ```hcl
 # imports/contracts/contract_network_gcp.tm.hcl
@@ -734,9 +734,6 @@ output "project_id"              { backend = "tofu"  value = var.project_id }
 output "region"                  { backend = "tofu"  value = var.region }
 output "network_self_link"       { backend = "tofu"  value = module.network.network_self_link }
 output "network_name"            { backend = "tofu"  value = module.network.network_name }
-output "subnet_self_link"        { backend = "tofu"  value = module.network.subnet_self_link }
-output "gke_pods_range_name"     { backend = "tofu"  value = module.network.range_pods_name }
-output "gke_services_range_name" { backend = "tofu"  value = module.network.range_services_name }
 output "private_service_range"   { backend = "tofu"  value = module.network.psa_range_name }
 ```
 
@@ -759,7 +756,7 @@ import { source = "/imports/contracts/contract_network_gcp.tm.hcl" }
 **Sizing the ranges is a globals concern, not a sharing concern.** Pod ranges must be sized for the maximum node count times pods-per-node; getting this wrong requires a cluster rebuild. Compute it deterministically:
 
 ```hcl
-# stacks/platforms/gcp/demos/config.tm.hcl
+# stacks/platforms/gcp/demos/config.tm.hcl — the gke archetype's claims, as the ledger assigns them (AM §9.6)
 globals {
   vpc_cidr           = "10.4.0.0/17"
   subnet_cidr        = tm_cidrsubnet(global.vpc_cidr, 3, 0)   # 10.4.0.0/20  — zone infra
@@ -780,21 +777,23 @@ input "network_self_link" {
   value         = outputs.network_self_link.value
   mock          = "projects/mock-project/global/networks/mock-vpc"
 }
+
+## ---- consumes from its own subnet stack (gcp-demos-gke-subnet) ----
 input "subnet_self_link" {
   backend       = "tofu"
-  from_stack_id = global.platform.network_stack_id
+  from_stack_id = global.platform.cluster_subnet_stack_id
   value         = outputs.subnet_self_link.value
   mock          = "projects/mock-project/regions/europe-west1/subnetworks/mock-subnet"
 }
 input "gke_pods_range_name" {
   backend       = "tofu"
-  from_stack_id = global.platform.network_stack_id
+  from_stack_id = global.platform.cluster_subnet_stack_id
   value         = outputs.gke_pods_range_name.value
   mock          = "mock-pods"
 }
 input "gke_services_range_name" {
   backend       = "tofu"
-  from_stack_id = global.platform.network_stack_id
+  from_stack_id = global.platform.cluster_subnet_stack_id
   value         = outputs.gke_services_range_name.value
   mock          = "mock-services"
 }
@@ -821,7 +820,7 @@ stack {
   id    = "gcp-demos-gke"
   name  = "GCP demos — GKE"
   tags  = ["gcp", "demos", "cluster", "gke", "platform", "producer", "consumer"]
-  after = ["/stacks/platforms/gcp/demos/network"]   # MANDATORY
+  after = ["/stacks/platforms/gcp/demos/network", "/stacks/platforms/gcp/demos/gke-subnet"]   # MANDATORY
 }
 
 globals {
@@ -829,7 +828,8 @@ globals {
 }
 
 globals "platform" {
-  network_stack_id = "gcp-demos-network"
+  network_stack_id        = "gcp-demos-network"
+  cluster_subnet_stack_id = "gcp-demos-gke-subnet"
 }
 ```
 
@@ -1303,8 +1303,8 @@ Backing SCPs (§11.7): deny `iam:CreateUser`, deny `iam:DeleteRolePermissionsBou
 | CA certificate | `cluster_ca` (base64) | `cluster_ca` (base64) | Same shape |
 | Auth token | *not shared* — `google_client_config` | *not shared* — `aws_eks_cluster_auth` | Never share |
 | Workload identity | `workload_identity_pool` | `oidc_provider_arn` + `oidc_provider_url` | AWS needs two facts, GCP one |
-| Network handle | `network_self_link`, `subnet_self_link` | `vpc_id`, `private_subnet_ids` (list) | GCP self-links are strings, AWS subnets are lists |
-| Pod networking | `gke_pods_range_name`, `gke_services_range_name` | — (VPC CNI uses subnet CIDRs) | GCP requires named secondary ranges |
+| Network handle | `network_self_link` (network); `subnet_self_link` (the runtime's own subnet stack) | `vpc_id`, `private_subnet_ids` (list) | GCP self-links are strings, AWS subnets are lists |
+| Pod networking | `gke_pods_range_name`, `gke_services_range_name` (the runtime's own subnet stack) | — (VPC CNI uses subnet CIDRs) | GCP requires named secondary ranges |
 | Ingress class | `"gce"` | `"alb"` | Both from the services stack |
 
 Keeping the *names* aligned where the *meaning* is aligned (`cluster_name`, `cluster_endpoint`, `cluster_ca`, `ingress_class`) is what lets one `gen_app.tm.hcl` generator serve both clouds with a single `condition` branch for the cloud-specific parts.

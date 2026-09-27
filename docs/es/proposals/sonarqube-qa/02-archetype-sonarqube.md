@@ -275,7 +275,7 @@ globals "sonarqube" {
   cpu_request_m    = 4000
 
   es_pvc_gib      = 50
-  storage_class   = "hyperdisk-balanced"
+  storage_class   = global.cluster.storage_class   # contrato cluster 2.5.0: standard-rwo en GKE (propuesta de GKE §6)
 
   db_instances    = 2
   db_storage_gib  = 100
@@ -474,7 +474,7 @@ spec:
     kind: ClusterImageCatalog
     name: postgresql                     # global image_catalog
     major: <mayor soportada por SonarQube>   # verificar
-  storage: { size: 100Gi, storageClass: hyperdisk-balanced }
+  storage: { size: 100Gi, storageClass: standard-rwo }   # global storage_class
   resources: { requests: { cpu: "2", memory: 8Gi }, limits: { memory: 8Gi } }
   postgresql:
     parameters:
@@ -642,7 +642,7 @@ sonarqube:
     requests: { cpu: "4", memory: 12Gi }
     limits: { memory: 12Gi }                    # sin límite de CPU (DG §8.3)
 
-  persistence: { enabled: true, storageClass: hyperdisk-balanced, size: 50Gi }
+  persistence: { enabled: true, storageClass: standard-rwo, size: 50Gi }   # global storage_class
 
   postgresql: { enabled: false }
   jdbcOverwrite:
@@ -747,7 +747,7 @@ assert {
 
 ### 7.4 Gatekeeper (admisión, capa 2b)
 
-El catálogo completo, con el dueño de cada regla, está en la propuesta de Gatekeeper (§4); las reglas del núcleo son P1–P10. Esta tabla solo recoge su efecto sobre SonarQube.
+El catálogo completo, con el dueño de cada regla, está en la propuesta de Gatekeeper (§4); las reglas del núcleo son P1–P11. Esta tabla solo recoge su efecto sobre SonarQube.
 
 | Constraint | Efecto sobre `sonarqube` |
 |---|---|

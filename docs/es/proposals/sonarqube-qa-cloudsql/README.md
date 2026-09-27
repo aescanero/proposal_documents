@@ -376,7 +376,7 @@ platform:
   project_id: disasterproject-qa
 bindings:
   network:             { archetype: environment, version: 2.1.0,          stack_id: gcp-qa-network }
-  cluster:             { archetype: gke, version: 2.4.0,                  stack_id: gcp-qa-gke }
+  cluster:             { archetype: gke, version: 2.5.0,                  stack_id: gcp-qa-gke }
   cloud-observability: { archetype: cloud-monitoring-gcp, version: 1.2.0, stack_id: gcp-qa-cloudmon }
   policy:              { archetype: policy-gatekeeper, version: 1.0.0,    stack_id: gcp-qa-policy }
   ingress:             { archetype: gateway-envoy-gke, version: 3.1.0,    stack_id: gcp-qa-gateway }

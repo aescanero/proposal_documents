@@ -119,11 +119,11 @@ graph TD
         DATA["data: demo-alpha<br/>id: gcp-demos-alpha-data"]
     end
 
-    NET -->|"network_self_link<br/>subnet_self_link<br/>pods_range_name"| CLU
+    NET -->|"network_self_link"| CLU
     CLU -->|"cluster_name<br/>cluster_endpoint<br/>cluster_ca"| SVC
     CLU -->|"cluster_name, endpoint, pool WI"| APPA
     CLU -->|"cluster_name, endpoint, pool WI"| APPB
-    NET -->|"subnet_self_link"| DATA
+    NET -->|"network_self_link<br/>private_service_range"| DATA
     DATA -->|"db_connection_name<br/>secret_id"| APPA
     SVC -->|"ingress_class<br/>dns_zone"| APPA
     SVC -->|"ingress_class<br/>dns_zone"| APPB
@@ -318,9 +318,9 @@ output "network_self_link" {
   description = "Self link de la VPC compartida"
 }
 
-output "gke_pods_range_name" {
+output "private_service_range" {
   backend = "tofu"
-  value   = module.network.secondary_range_names.pods
+  value   = module.network.psa_range_name
 }
 ```
 
@@ -339,11 +339,9 @@ output "gke_pods_range_name" {
 ```hcl
 # imports/contracts/contract_network_gcp.tm.hcl
 # Importado por cada stack de network de GCP.
-output "network_self_link" { backend = "tofu"  value = module.network.network_self_link }
-output "subnet_self_link"  { backend = "tofu"  value = module.network.subnet_self_link }
-output "gke_pods_range_name"     { backend = "tofu"  value = module.network.range_pods }
-output "gke_services_range_name" { backend = "tofu"  value = module.network.range_services }
-output "project_id"        { backend = "tofu"  value = var.project_id }
+output "network_self_link"     { backend = "tofu"  value = module.network.network_self_link }
+output "private_service_range" { backend = "tofu"  value = module.network.psa_range_name }
+output "project_id"            { backend = "tofu"  value = var.project_id }
 ```
 
 ```hcl
@@ -373,7 +371,7 @@ input "network_self_link" {
 
 input "subnet_self_link" {
   backend       = "tofu"
-  from_stack_id = global.platform.network_stack_id
+  from_stack_id = global.platform.cluster_subnet_stack_id   # el stack de subred del propio arquetipo gke (§5.2)
   value         = outputs.subnet_self_link.value
   mock          = "projects/mock-project/regions/europe-west1/subnetworks/mock-subnet"
 }
@@ -717,7 +715,8 @@ sola pasada.
 
 ```mermaid
 graph LR
-    NET["<b>network</b><br/>gcp-ENV-network"] --> GKE["<b>gke</b><br/>gcp-ENV-gke"]
+    NET["<b>network</b><br/>gcp-ENV-network"] --> SUB["<b>gke-subnet</b><br/>gcp-ENV-gke-subnet"] --> GKE["<b>gke</b><br/>gcp-ENV-gke"]
+    NET --> GKE
     GKE --> SVC["<b>services</b><br/>gcp-ENV-services"]
     NET --> DATA["<b>data</b><br/>gcp-ENV-INST-data"]
     GKE --> APP["<b>app</b><br/>gcp-ENV-INST-app"]
@@ -725,19 +724,20 @@ graph LR
     DATA --> APP
 ```
 
-Cuatro stacks, cuatro applies, en este orden. Los stacks del mismo nivel se ejecutan en paralelo.
+Cuatro niveles, aplicados en este orden; los stacks del mismo nivel se ejecutan en paralelo. Los dos stacks de `gke` son de un mismo arquetipo y se aplican seguidos.
 
 | # | Stack | Capability | Produce | Consume |
 |---|---|---|---|---|
-| 1 | `gcp-ENV-network` | network | VPC, subred, rangos secundarios, Cloud NAT, acceso privado a servicios | — |
-| 2 | `gcp-ENV-gke` | cluster | Cluster, node pools, pool de Workload Identity | network |
+| 1 | `gcp-ENV-network` | network | VPC, Cloud NAT, acceso privado a servicios | — |
+| 2a | `gcp-ENV-gke-subnet` | cluster | Subred de nodos y sus dos rangos secundarios — los claims del runtime (AM §9.5) — con Private Google Access | network |
+| 2b | `gcp-ENV-gke` | cluster | Cluster, node pools, pool de Workload Identity | network, gke-subnet |
 | 3 | `gcp-ENV-services` | platform-services | Controlador de ingress, external-dns, cert-manager, namespaces | gke |
 | 4a | `gcp-ENV-INST-data` | data | Cloud SQL, entradas de Secret Manager | network |
 | 4b | `gcp-ENV-INST-app` | app | Workload, service account, bindings de IAM | gke, services, data |
 
 ### 5.2 Stack 1 — network (solo productor)
 
-GKE en modo VPC-native requiere que existan **rangos IP secundarios para pods y servicios** en la subred antes de crear el cluster. Esos *nombres* de rango son el contrato.
+GKE en modo VPC-native requiere que existan **rangos IP secundarios para pods y servicios** en la subred antes de crear el cluster. **No** son de la red: el runtime reclama la subred de nodos y el rango de pods (AM §9.5), porque cada runtime tiene una forma distinta, así que los crea el arquetipo `gke` en su primer stack (§5.3). El contrato de la red lleva solo lo que comparten todos los runtimes. Dueño del claim, creador y autor de las reglas de firewall del rango son el mismo.
 
 ```hcl
 # imports/contracts/contract_network_gcp.tm.hcl
@@ -745,9 +745,6 @@ output "project_id"              { backend = "tofu"  value = var.project_id }
 output "region"                  { backend = "tofu"  value = var.region }
 output "network_self_link"       { backend = "tofu"  value = module.network.network_self_link }
 output "network_name"            { backend = "tofu"  value = module.network.network_name }
-output "subnet_self_link"        { backend = "tofu"  value = module.network.subnet_self_link }
-output "gke_pods_range_name"     { backend = "tofu"  value = module.network.range_pods_name }
-output "gke_services_range_name" { backend = "tofu"  value = module.network.range_services_name }
 output "private_service_range"   { backend = "tofu"  value = module.network.psa_range_name }
 ```
 
@@ -770,7 +767,7 @@ import { source = "/imports/contracts/contract_network_gcp.tm.hcl" }
 **Dimensionar los rangos es un asunto de globals, no de sharing.** Los rangos de pods deben dimensionarse para el número máximo de nodos multiplicado por pods-por-nodo; hacerlo mal requiere reconstruir el cluster. Calcúlalo de forma determinista:
 
 ```hcl
-# stacks/platforms/gcp/demos/config.tm.hcl
+# stacks/platforms/gcp/demos/config.tm.hcl — los claims del arquetipo gke, tal como los asigna el ledger (AM §9.6)
 globals {
   vpc_cidr           = "10.4.0.0/17"
   subnet_cidr        = tm_cidrsubnet(global.vpc_cidr, 3, 0)   # 10.4.0.0/20  — infra de zona
@@ -791,21 +788,23 @@ input "network_self_link" {
   value         = outputs.network_self_link.value
   mock          = "projects/mock-project/global/networks/mock-vpc"
 }
+
+## ---- consume del stack de subred propio (gcp-demos-gke-subnet) ----
 input "subnet_self_link" {
   backend       = "tofu"
-  from_stack_id = global.platform.network_stack_id
+  from_stack_id = global.platform.cluster_subnet_stack_id
   value         = outputs.subnet_self_link.value
   mock          = "projects/mock-project/regions/europe-west1/subnetworks/mock-subnet"
 }
 input "gke_pods_range_name" {
   backend       = "tofu"
-  from_stack_id = global.platform.network_stack_id
+  from_stack_id = global.platform.cluster_subnet_stack_id
   value         = outputs.gke_pods_range_name.value
   mock          = "mock-pods"
 }
 input "gke_services_range_name" {
   backend       = "tofu"
-  from_stack_id = global.platform.network_stack_id
+  from_stack_id = global.platform.cluster_subnet_stack_id
   value         = outputs.gke_services_range_name.value
   mock          = "mock-services"
 }
@@ -832,7 +831,7 @@ stack {
   id    = "gcp-demos-gke"
   name  = "GCP demos — GKE"
   tags  = ["gcp", "demos", "cluster", "gke", "platform", "producer", "consumer"]
-  after = ["/stacks/platforms/gcp/demos/network"]   # OBLIGATORIO
+  after = ["/stacks/platforms/gcp/demos/network", "/stacks/platforms/gcp/demos/gke-subnet"]   # OBLIGATORIO
 }
 
 globals {
@@ -840,7 +839,8 @@ globals {
 }
 
 globals "platform" {
-  network_stack_id = "gcp-demos-network"
+  network_stack_id        = "gcp-demos-network"
+  cluster_subnet_stack_id = "gcp-demos-gke-subnet"
 }
 ```
 
@@ -1314,8 +1314,8 @@ SCPs de respaldo (§11.7): denegar `iam:CreateUser`, denegar `iam:DeleteRolePerm
 | Certificado CA | `cluster_ca` (base64) | `cluster_ca` (base64) | Misma forma |
 | Token de autenticación | *no se comparte* — `google_client_config` | *no se comparte* — `aws_eks_cluster_auth` | Nunca compartir |
 | Identidad de workload | `workload_identity_pool` | `oidc_provider_arn` + `oidc_provider_url` | AWS necesita dos hechos, GCP uno |
-| Handle de network | `network_self_link`, `subnet_self_link` | `vpc_id`, `private_subnet_ids` (lista) | Los self-links de GCP son cadenas, las subredes de AWS son listas |
-| Networking de pods | `gke_pods_range_name`, `gke_services_range_name` | — (VPC CNI usa los CIDR de subred) | GCP requiere rangos secundarios con nombre |
+| Handle de network | `network_self_link` (network); `subnet_self_link` (stack de subred propio del runtime) | `vpc_id`, `private_subnet_ids` (lista) | Los self-links de GCP son cadenas, las subredes de AWS son listas |
+| Networking de pods | `gke_pods_range_name`, `gke_services_range_name` (stack de subred propio del runtime) | — (VPC CNI usa los CIDR de subred) | GCP requiere rangos secundarios con nombre |
 | Clase de ingress | `"gce"` | `"alb"` | Ambos desde el stack de services |
 
 Mantener los *nombres* alineados donde el *significado* está alineado (`cluster_name`, `cluster_endpoint`, `cluster_ca`, `ingress_class`) es lo que permite que un único generador `gen_app.tm.hcl` sirva a ambas clouds con una sola rama `condition` para las partes específicas de cloud.

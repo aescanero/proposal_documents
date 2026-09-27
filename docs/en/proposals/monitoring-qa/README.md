@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 3 |
+| **Status** | Proposal · revision 4 |
 | **Scope** | The layer 3 `monitoring-oss` archetype on `qa` (metrics, alerts, logs, dashboards, probes) and what layer 1b `cloud-monitoring-gcp` contributes alongside it: the boundary between them, stack, security, the `monitoring` contract, alert routing, who watches the watcher, network, stacks, policies, execution and plan |
 | **Why now** | SonarQube (S1 §4.7, S2 §5.9), the Cloud SQL variant (§8), Keycloak (§10) and ESO (§9) already take for granted the `prometheus=qa` selector, the dashboard sidecar, the blackbox exporter, Loki and the shared notification channel. ESO also left the rules for layer 3 components here |
 | **Reference specification** | `archetype-model.md` (AM §n; §3 layer 1b, §4.2 `monitoring` traits), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -78,7 +78,7 @@ SonarQube (S2 §3) and Keycloak (§11.1 of its proposal) require `monitoring` wi
 | Component | Replicas | Resources (request = memory limit) | Storage |
 |---|---|---|---|
 | Prometheus operator | 1 | 100m / 256 MiB | — |
-| Prometheus | **1** | 1 vCPU / 4 GiB | PVC 50 GiB `hyperdisk-balanced`, `retention: 15d`, `retentionSize: 45GB` |
+| Prometheus | **1** | 1 vCPU / 4 GiB | PVC 50 GiB `standard-rwo` (`storage_class` global), `retention: 15d`, `retentionSize: 45GB` |
 | Alertmanager | 2 (gossip cluster) | 50m / 128 MiB | PVC 1 GiB (silences) |
 | kube-state-metrics | 1 | 100m / 256 MiB | — |
 | node-exporter | 1 per node | 50m / 64 MiB | — |

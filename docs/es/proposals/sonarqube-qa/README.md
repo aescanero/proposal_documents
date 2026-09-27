@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 15 (alineada con la etapa 2) |
+| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 16 (alineada con la etapa 2) |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
@@ -131,14 +131,14 @@ Herramientas de plataforma sin cambios: Terramate, OpenTofu, conftest, Checkov.
 | Node pool `kafka` | 3 × **n2-standard-4** (4 vCPU, 16 GB), uno por zona, taint `dedicated=kafka:NoSchedule` | Kafka vive de la caché de páginas del sistema y reparte sus réplicas por zona (propuesta de Kafka §2.1) |
 | Sysctl | `node_config.linux_node_config.sysctls = { "vm.max_map_count" = "524288" }` | Elimina el init container privilegiado |
 | `fs.file-max` | Sin acción: el kernel lo dimensiona con la RAM y en 32 GB supera 131072 de sobra | Verificar en V1 |
-| StorageClass | `hyperdisk-balanced`, `WaitForFirstConsumer`, `allowVolumeExpansion: true` | IOPS configurables sin sobredimensionar disco |
+| StorageClass | El global `storage_class` del contrato `cluster`: `standard-rwo` (`pd-balanced`, `WaitForFirstConsumer`, `allowVolumeExpansion: true`) | La serie N2 no admite Hyperdisk Balanced; `pd-balanced` da 3000 IOPS de base más 6 por GiB (propuesta de GKE §6, DN3) |
 | Acceso del pipeline al plano de control | Endpoint público del plano de control con **redes autorizadas vacías por defecto**; la IP del runner se abre y cierra por job | Decisión del equipo (§4.13); cubre R18 |
 
 **Por qué no Autopilot.** No permite configurar sysctl de nodo ni contenedores privilegiados. Se propone el trait **`sysctl-max-map-count`** en `cluster`: `gke` lo tiene, `gke-autopilot` no, y un binding equivocado falla en resolución en vez de en el primer arranque con `max virtual memory areas vm.max_map_count [65530] is too low`.
 
 **Plan B** si V1 falla: `SONAR_SEARCH_JAVAADDITIONALOPTS=-Dnode.store.allow_mmap=false`, a costa de rendimiento de ES. Con 200 proyectos habría que medirlo antes de aceptarlo.
 
-**Zona única.** Si cae la zona, SonarQube queda caído hasta que vuelva. Para `qa` se acepta. La alternativa es `hyperdisk-balanced-high-availability` (réplica síncrona entre dos zonas) con el node pool en esas dos zonas: RTO de minutos ante caída de zona, a costa del doble de coste de disco.
+**Zona única.** Si cae la zona, SonarQube queda caído hasta que vuelva. Para `qa` se acepta. La alternativa es `pd-balanced` regional (`replication-type: regional-pd`, réplica síncrona entre dos zonas) con el node pool en esas dos zonas: RTO de minutos ante caída de zona, a costa del doble de coste de disco.
 
 ### 4.2 Política de admisión (capa 2b)
 
@@ -345,7 +345,7 @@ Estimación confirmada: mediana de 50 k líneas por proyecto, ≈ 10 M líneas e
 | Node pool `kafka` | 3 × n2-standard-4 (4 vCPU, 16 GB), uno por zona | Heap de 4 GiB por broker, límite de 12 GiB; el resto, caché de páginas (propuesta de Kafka §2.1) |
 | Pod SonarQube | request 4 vCPU / 12 GiB, limit 12 GiB, **sin límite de CPU** | Con `limits.cpu` bajo, las JVM eligen SerialGC y el CE se ralentiza (DG §8.3) |
 | Heaps | web `-Xmx2g`, CE `-Xmx3g`, search `-Xmx3g` | Σ 8 GiB + ≈ 1,5 GiB non-heap + margen = 12 GiB. **Nunca** heap = límite |
-| PVC de ES | 50 GiB `hyperdisk-balanced`, 3000 IOPS | Expandible |
+| PVC de ES | 50 GiB `standard-rwo` (`pd-balanced`), ≈ 3300 IOPS | Expandible |
 | PostgreSQL | 2 instancias (primaria + réplica), 2 vCPU / 8 GiB, 100 GiB, `max_connections` 200 | Pool de SonarQube ≈ 60 por proceso |
 | GCS backups | ≈ 2–3× el tamaño de la BD con 14 días de WAL | — |
 
@@ -581,7 +581,7 @@ platform:
   project_id: disasterproject-qa
 bindings:
   network:             { archetype: environment, version: 2.1.0,          stack_id: gcp-qa-network }
-  cluster:             { archetype: gke, version: 2.4.0,                  stack_id: gcp-qa-gke }
+  cluster:             { archetype: gke, version: 2.5.0,                  stack_id: gcp-qa-gke }
   cloud-observability: { archetype: cloud-monitoring-gcp, version: 1.2.0, stack_id: gcp-qa-cloudmon }
   policy:              { archetype: policy-gatekeeper, version: 1.0.0,    stack_id: gcp-qa-policy }
   ingress:             { archetype: gateway-envoy-gke, version: 3.1.0,    stack_id: gcp-qa-gateway }
@@ -597,7 +597,27 @@ network:
   dns_zone: qa-disasterproject-com
   dns_suffix: qa.disasterproject.com
 cluster:
+  max_nodes: 32                     # techo, no tamaño: 13 nodos + surge (propuesta de GKE §5.3)
   max_pods_per_node: 64
+  node_pools:                       # del entorno, no de los arquetipos (propuesta de GKE §5.3)
+    - name: general
+      machine_type: n2-standard-8
+      zones: [europe-west1-b, europe-west1-c, europe-west1-d]
+      autoscaling: { min_per_zone: 1, max_per_zone: 3 }
+    - name: sonar
+      machine_type: n2-standard-8
+      zones: [europe-west1-b]
+      autoscaling: { min_per_zone: 1, max_per_zone: 1 }
+      taint: dedicated=sonar:NoSchedule
+      sysctls: { vm.max_map_count: "524288" }
+      traits: [sysctl-max-map-count]
+      owners: [sonarqube]
+    - name: kafka
+      machine_type: n2-standard-4
+      zones: [europe-west1-b, europe-west1-c, europe-west1-d]
+      autoscaling: { min_per_zone: 1, max_per_zone: 1 }
+      taint: dedicated=kafka:NoSchedule
+      owners: [kafka]
 capacity:                           # qa es dedicado: se calculan y publican, no se aplican (propuesta de Kafka §5)
   kafka_topics: 200
   kafka_partitions: 1000

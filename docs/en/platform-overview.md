@@ -271,7 +271,7 @@ All five guides — GKE, EKS, Cloud Run, ECS Fargate, AKS — are this graph. Wh
 ```mermaid
 flowchart TD
     subgraph NET["network produces"]
-        G1["GKE: network_self_link, subnet_self_link,<br/>pods_range_name, services_range_name"]
+        G1["GKE: network_self_link<br/>(subnet and ranges: the gke archetype's own)"]
         A1["EKS/Fargate: vpc_id, private_subnet_ids (list)"]
         Z1["AKS: vnet_id, node_subnet_id"]
     end

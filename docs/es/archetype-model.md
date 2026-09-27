@@ -157,6 +157,8 @@ provides:
 
 `monitoring-managed` provee la misma capability y versión pero requiere `managed-prometheus`. Una aplicación requiere `monitoring`; el resolver elige el proveedor cuyos traits satisface el cluster del entorno, y falla nombrando el trait ausente en lugar de producir un `CreateContainerError` veinte minutos dentro de un apply.
 
+**Traits de node pool.** Algunos traits son propiedades de un node pool, no del cluster entero: `sysctl-max-map-count`, `gpu`, `spot`, `arm64`. El manifiesto del runtime los enumera porque **puede** ofrecerlos; el resolver da uno por presente solo si un node pool del binding del entorno (`cluster.node_pools[].traits`) lo declara. Si no, un consumidor que pide `sysctl-max-map-count` resolvería contra un entorno sin ese pool y fallaría al arrancar: justo el fallo que los traits existen para evitar. El consumidor llega a su pool por el taint del pool, y solo los `owners` del pool pueden tolerarlo (Gatekeeper; propuesta `gke-qa` §5.3).
+
 ### 4.3 Registro de traits
 
 Los traits son un vocabulario controlado. Un trait no registrado es un error de resolución, porque una errata que coincide silenciosamente con nada es peor que ninguna comprobación.

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 1 |
+| **Estado** | Propuesta · revisión 2 |
 | **Alcance** | El cluster de `qa` como arquetipo: direcciones y subred, plano de control y acceso, seguridad de nodos, node pools y su asignación a consumidores, almacenamiento, red del cluster, upgrades, el contrato `cluster`, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | Todo lo desplegado en las propuestas anteriores corre en él, y cada una le dejó un requisito (§0.1). Es la dependencia de todas: el último eslabón antes de la red y el borde |
 | **Base** | E1 §4.1 (runtime), §4.13 (acceso del pipeline), §4.14 (KMS), §4.15 (VPC separada); arquitectura §5.2–§5.7 (guía GKE y línea base de seguridad); AM §9 (pools y rangos). Este documento **no repite** lo que ya está allí: lo concreta y cierra huecos |
@@ -10,7 +10,7 @@
 | **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano. `diagrams/06-bloques-presentacion.svg` (1920×1080, para presentaciones) se genera con `06-bloques-presentacion.py`, no con Mermaid |
 | **Identificadores propios** | Decisiones `DN1…`, riesgos candidatos `RN1…`, verificaciones `VN1…`. Los riesgos reciben número `R54+` en `risk-register.md` si se adopta, detrás de los de las propuestas anteriores |
 
-No reabre ninguna decisión de `CLAUDE.md`. Sí propone corregir tres puntos de documentos ya cerrados, porque tal como están no funcionan o se contradicen: el tipo de disco (§6), quién crea la subred de nodos (§1.2) y los traits que dependen de un node pool (§5.3). Los tres quedan como **Propuesto** en §11.
+No reabre ninguna decisión de `CLAUDE.md`. Sí corrige tres puntos de documentos ya cerrados, porque tal como estaban no funcionaban o se contradecían: el tipo de disco (§6), quién crea la subred de nodos (§1.2) y los traits que dependen de un node pool (§5.3). Los tres están **aplicados** (§11).
 
 ![Arquetipo gke en bloques](diagrams/06-bloques-presentacion.svg)
 
@@ -77,6 +77,8 @@ La arquitectura (§5.2) pone la subred y sus rangos secundarios en el stack de r
 | Reconstruir el cluster por R26 toca el stack de red | Toca solo stacks de `gke` |
 
 Private Google Access se activa en la subred de nodos: la crea `gke`, así que lo activa `gke`.
+
+**Solo GKE.** Las guías de EKS y AKS (arquitectura §6, §9) siguen con las subredes en `network`. El mismo argumento se les aplica, pero el ciclo de etiquetado de subredes de EKS ya tiene su propia solución (`cluster_name` como global) y cambiarlas queda fuera de esta propuesta: se revisa cuando se diseñe el primer entorno en esas nubes.
 
 ---
 
@@ -186,7 +188,7 @@ Un n2-standard-8 deja ≈ 7,9 vCPU y ≈ 28 GiB asignables. Con un nodo por zona
 | Traits de pool | `sysctl-max-map-count`, `gpu`, `spot` y `arm64` no son propiedades del cluster sino de **un** pool. Hoy el manifiesto de `gke` declara `sysctl-max-map-count` y `gpu` siempre, y un consumidor que los pida resuelve aunque el binding no tenga el pool: falla al arrancar, justo lo que los traits existen para evitar (RN7). **Propuesta:** el resolver da por presentes esos traits solo si un pool del binding los declara (AM §4.2) |
 
 ```yaml
-# environments/qa/binding.yaml — bloque cluster propuesto (DN5)
+# environments/qa/binding.yaml — bloque cluster (DN5; aplicado en E1 §7)
 cluster:
   max_nodes: 32
   max_pods_per_node: 64
@@ -399,11 +401,11 @@ assert {
 | Documento | Cambio | Estado |
 |---|---|---|
 | E1 §6 (`docs/en/` y `docs/es/`) | La arista `…-data-tenant → gcp-qa-postgres-operator` pasa de outputs sharing a global (`operator_version`, propuesta `postgres-operator-qa` §7.1): corrige lo que quedó sin actualizar en el commit anterior | **Aplicado** |
-| E1 §4.1 y §4.12, E2 §5.x, monitorización §2 | `hyperdisk-balanced` → el global `storage_class` (`standard-rwo`, `pd-balanced`) | **Propuesto** (DN3) |
-| Arquitectura §5.1–§5.3 | La subred y los rangos secundarios los crea `gke`, no `network`; el contrato de `network` pierde `subnet_self_link` y los nombres de rango | **Propuesto** (DN2) |
-| `schemas/environment-binding.schema.json` y binding de `qa` (E1 §7) | Bloque `cluster.node_pools` (§5.3) | **Propuesto** (DN5) |
-| AM §4.2 | Traits de pool: presentes solo si un pool del binding los declara | **Propuesto** (DN5) |
-| Gatekeeper §4.1 | Regla nueva: tolerar `dedicated=<pool>` solo desde los namespaces de sus dueños | **Propuesto** (DN5) |
+| E1 §4.1 y §4.12, E2 §4.2, §5.3 y §6.1, monitorización §3.1, diagrama 08 de E1 | `hyperdisk-balanced` → el global `storage_class` (`standard-rwo`, `pd-balanced`); la alternativa HA de E1 §4.1 pasa a `pd-balanced` regional | **Aplicado** (DN3) |
+| Arquitectura §3.1, §4.3, §4.4, §5.1–§5.3 y §6.8; `platform-overview` | La subred y los rangos secundarios los crea `gke` en su stack `gke-subnet`, no `network`; el contrato de `network` pierde `subnet_self_link` y los nombres de rango y gana `private_service_range` | **Aplicado** (DN2) |
+| `schemas/environment-binding.schema.json` y bindings de `qa` (E1 §7, variante Cloud SQL) | Bloque `cluster.node_pools` (§5.3), con `owners` obligatorio si hay taint; `gke` 2.5.0 en el binding | **Aplicado** (DN5) |
+| AM §4.2 y `registry/traits.yaml` | Traits de pool: presentes solo si un pool del binding los declara; marcados en el registro | **Aplicado** (DN5) |
+| Gatekeeper §4.1 y §7.1 | Regla P11: tolerar `dedicated=<pool>` solo desde los namespaces de sus dueños; sus parámetros salen del binding | **Aplicado** (DN5) |
 | Consumidores de `workload_identity_pool` | Leerlo como global; la salida sigue hasta 3.0.0 | **Propuesto** (DN7) |
 
 ---
@@ -413,10 +415,10 @@ assert {
 | # | Decisión | Estado | Recomendación | Alternativa |
 |---|---|---|---|---|
 | DN1 | Modo y acceso | Consecuencia de E1 §4.1 y §4.13 | Standard regional, nodos privados, endpoint público con redes vacías | Autopilot; endpoint DNS |
-| DN2 | Quién crea la subred de nodos | Propuesta | `gke`, que la reclama | `network`, como en la arquitectura §5.2 |
-| DN3 | Disco | Propuesta, pendiente de VN1 | `pd-balanced` (`standard-rwo`) en n2; `storage_class` como global | Hyperdisk Balanced con n4 o c3 |
+| DN2 | Quién crea la subred de nodos | **Aprobada** | `gke`, que la reclama | `network`, como en la arquitectura §5.2 |
+| DN3 | Disco | **Aprobada**; VN1 lo confirma | `pd-balanced` (`standard-rwo`) en n2; `storage_class` como global | Hyperdisk Balanced con n4 o c3 |
 | DN4 | Pool `general` | Propuesta | n2-standard-8, 1–3 por zona | n2-standard-4, 2–6 por zona |
-| DN5 | Pools | Propuesta | Declarados en el binding; traits de pool comprobados por el resolver; tolerancias limitadas por Gatekeeper | Pools fijos en el manifiesto de `gke` |
+| DN5 | Pools | **Aprobada** | Declarados en el binding; traits de pool comprobados por el resolver; tolerancias limitadas por Gatekeeper | Pools fijos en el manifiesto de `gke` |
 | DN6 | Rango de servicios | Propuesta | /22 | /24 |
 | DN7 | `workload_identity_pool` | Propuesta | Global | Outputs sharing |
 | DN8 | Upgrades | Propuesta | `STABLE` en los dos entornos, ventana de `qa` una semana antes que la de `prod` | `REGULAR` en `qa`, `STABLE` en `prod` |

@@ -13,11 +13,11 @@ traits:
   - daemonset-privileged
   - hostpath
   - node-agent
-  - gpu
-  - arm64
-  - spot
+  - gpu                     # node-pool scoped (AM §4.2): present only if a binding pool declares it
+  - arm64                   # node-pool scoped
+  - spot                    # node-pool scoped
   - overlay-pods
-  - sysctl-max-map-count    # node-level sysctl without privileged pods (Elasticsearch)
+  - sysctl-max-map-count    # node-pool scoped; node-level sysctl without privileged pods (Elasticsearch)
 
   # --- ingress ---
   - gateway-api

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 2 |
+| **Estado** | Propuesta · revisión 3 |
 | **Alcance** | El arquetipo de capa 2b `policy-gatekeeper` en `qa`: instalación y alta disponibilidad, alcance del webhook, quién es dueño de cada regla, el catálogo consolidado de reglas de todas las propuestas, el ciclo de vida de una regla, el modelo de excepciones, datos del registro, pruebas en CI, observabilidad, red, contrato `policy`, stacks, ejecución y plan |
 | **Por qué ahora** | Cada propuesta anterior le ha dejado reglas: SonarQube, Keycloak, ESO, monitorización, cert-manager, Envoy Gateway y Kafka. Hoy están repartidas en nueve documentos, nadie ha comprobado que encajen, y varias dependen de un mecanismo de excepciones que no está especificado |
 | **Especificación de referencia** | `terramate-outputs-sharing-architecture.md` §13 (arquitectura), `archetype-model.md` (AM §n), `risk-register.md` (R33–R37) |
@@ -109,6 +109,7 @@ Fuente: [`diagrams/05-propiedad.mmd`](diagrams/05-propiedad.mmd)
 | P8 | Anotación de identidad | `ServiceAccount` | `iam.gke.io/gcp-service-account`. La plataforma usa Workload Identity directa sobre el principal del KSA; esa anotación haría que un KSA suplantara una cuenta de servicio de GCP | E2 §5.1, R15 | `deny` |
 | P9 | Accesos anónimos | `RoleBinding`, `ClusterRoleBinding` | Sujetos `system:anonymous` o `system:unauthenticated` | — | `deny` |
 | P10 | `NetworkPolicy` por defecto | `Namespace` (referencial) | Namespace de tenant sin `NetworkPolicy` default-deny | Todas las propuestas | **Solo auditoría**: la política llega después del namespace en el mismo despliegue |
+| P11 | Tolerancias a pools dedicados | `Pod` y plantillas de workloads | Tolerancia a `dedicated=<pool>` desde un namespace que no es de un arquetipo dueño del pool (`cluster.node_pools[].owners` del binding, por el camino de §7.1) | Propuesta de GKE §5.3, RN5 | `deny` |
 
 ### 4.2 Reglas de los proveedores (las despliega cada uno)
 
@@ -216,6 +217,7 @@ La tercera es la que convierte R34 en un fallo de CI. Si el generador deja de em
 | Registros permitidos | Globals de la landing zone (proyecto y región del Artifact Registry) | Parámetros de P2 |
 | Namespaces con PSS especial | Valores de `policy-gatekeeper` (§5.2) | Parámetros de P7 |
 | Excepciones | `resolution.json` | Parámetros escritos por el stack `exemptions` |
+| Dueños de los pools dedicados | Binding del entorno (`cluster.node_pools[].owners`), vía `resolution.json` | Parámetros de P11, escritos por el stack `exemptions` |
 
 Los tres primeros los genera `registry-generate` en el `values.yaml` del chart (arquitectura §13.8). La prueba de §6.2 corre sobre ese mismo `values.yaml`.
 
@@ -307,7 +309,7 @@ La versión del arquetipo se queda en **1.0.0**, la que fijan los bindings; sube
 | Stack | Contenido | Entradas por sharing |
 |---|---|---|
 | `controller` | Namespace `gatekeeper-system`; `helm_release` de Gatekeeper (§2.1) con CRDs con `keep`; `Config` con exclusiones y `SyncSet` propio; `NetworkPolicy` | `cluster_endpoint`, `cluster_ca` |
-| `library` | Chart propio con los `ConstraintTemplate` y `Constraint` de P1–P10, con los parámetros generados desde el registro (§7.1) | `cluster_*` |
+| `library` | Chart propio con los `ConstraintTemplate` y `Constraint` de P1–P11, con los parámetros generados desde el registro (§7.1) | `cluster_*` |
 | `exemptions` | Los parámetros de excepciones de P3, P5 y P6, generados desde `resolution.json` (§5.1) | `cluster_*` |
 
 **Por qué tres stacks.** Un upgrade del motor no debe tocar las reglas; un cambio de reglas no debe reinstalar el motor; y una excepción nueva de un consumidor no debe replanificar ni el motor ni las reglas. Cada uno tiene su dueño en `CODEOWNERS`: plataforma, plataforma y seguridad, y seguridad.
@@ -450,7 +452,7 @@ Las reglas las declara el arquetipo de monitorización (monitorización §5.1), 
 |---|---|---|---|
 | **0 · Prerrequisitos** | GKE de `qa`; **VP1**, VP10 | Webhook alcanzable | 1 día |
 | **1 · Motor** | `controller` | Webhook con 3 réplicas, auditoría, exclusiones; **VP4**, **VP5** | 1 día |
-| **2 · Reglas del núcleo** | `library` con P1–P10 en `dryrun`; `registry-generate` de los parámetros; `gator` en CI | **VP2**, **VP3**, **VP9**; informe de auditoría revisado | 2 días |
+| **2 · Reglas del núcleo** | `library` con P1–P11 en `dryrun`; `registry-generate` de los parámetros; `gator` en CI | **VP2**, **VP3**, **VP9**; informe de auditoría revisado | 2 días |
 | **3 · Excepciones y promoción** | `exemptions`; `admission_exceptions` en el registro; promoción a `deny` de lo revisado; medida del Rego compartido | **VP8**; P1, P2, P4–P9 en `deny` | 2 días |
 | **4 · Proveedores** | Cada proveedor despliega sus reglas con su propio arquetipo; **VP6**, **VP7** | `gator test` de todos los charts en verde | Con cada proveedor |
 

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 3 |
+| **Estado** | Propuesta · revisión 4 |
 | **Alcance** | El arquetipo de capa 3 `monitoring-oss` en `qa` (métricas, alertas, logs, dashboards, sondas) y lo que la capa 1b `cloud-monitoring-gcp` aporta junto a él: frontera entre ambos, pila, seguridad, contrato `monitoring`, enrutado de alertas, quién vigila al vigilante, red, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | SonarQube (E1 §4.7, E2 §5.9), la variante Cloud SQL (§8), Keycloak (§10) y ESO (§9) ya dan por hechos el selector `prometheus=qa`, el sidecar de dashboards, el blackbox exporter, Loki y el canal de notificación compartido. ESO además dejó aquí las reglas de los componentes de capa 3 |
 | **Especificación de referencia** | `archetype-model.md` (AM §n; §3 capa 1b, §4.2 traits de `monitoring`), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -78,7 +78,7 @@ SonarQube (E2 §3) y Keycloak (§11.1 de su propuesta) exigen `monitoring` con `
 | Componente | Réplicas | Recursos (petición = límite de memoria) | Almacenamiento |
 |---|---|---|---|
 | Operador de Prometheus | 1 | 100m / 256 MiB | — |
-| Prometheus | **1** | 1 vCPU / 4 GiB | PVC 50 GiB `hyperdisk-balanced`, `retention: 15d`, `retentionSize: 45GB` |
+| Prometheus | **1** | 1 vCPU / 4 GiB | PVC 50 GiB `standard-rwo` (global `storage_class`), `retention: 15d`, `retentionSize: 45GB` |
 | Alertmanager | 2 (clúster gossip) | 50m / 128 MiB | PVC 1 GiB (silencios) |
 | kube-state-metrics | 1 | 100m / 256 MiB | — |
 | node-exporter | 1 por nodo | 50m / 64 MiB | — |

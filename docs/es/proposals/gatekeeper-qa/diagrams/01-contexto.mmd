@@ -3,7 +3,7 @@ flowchart LR
     subgraph L2B["Capa 2b · policy · gcp-qa-policy"]
         direction TB
         CTRL["controller<br/>webhook 3 réplicas · puerto 10250<br/>auditoría · sin mutación"]
-        LIB["library<br/>reglas del núcleo P1–P10"]
+        LIB["library<br/>reglas del núcleo P1–P11"]
         EXC["exemptions<br/>generado desde resolution.json"]
     end
     PSA["Pod Security Admission<br/>del API server · restricted"]

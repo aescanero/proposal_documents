@@ -275,7 +275,7 @@ globals "sonarqube" {
   cpu_request_m    = 4000
 
   es_pvc_gib      = 50
-  storage_class   = "hyperdisk-balanced"
+  storage_class   = global.cluster.storage_class   # cluster 2.5.0 contract: standard-rwo on GKE (GKE proposal §6)
 
   db_instances    = 2
   db_storage_gib  = 100
@@ -474,7 +474,7 @@ spec:
     kind: ClusterImageCatalog
     name: postgresql                     # global image_catalog
     major: <major supported by SonarQube>   # verify
-  storage: { size: 100Gi, storageClass: hyperdisk-balanced }
+  storage: { size: 100Gi, storageClass: standard-rwo }   # storage_class global
   resources: { requests: { cpu: "2", memory: 8Gi }, limits: { memory: 8Gi } }
   postgresql:
     parameters:
@@ -642,7 +642,7 @@ sonarqube:
     requests: { cpu: "4", memory: 12Gi }
     limits: { memory: 12Gi }                    # no CPU limit (DG §8.3)
 
-  persistence: { enabled: true, storageClass: hyperdisk-balanced, size: 50Gi }
+  persistence: { enabled: true, storageClass: standard-rwo, size: 50Gi }   # storage_class global
 
   postgresql: { enabled: false }
   jdbcOverwrite:
@@ -747,7 +747,7 @@ assert {
 
 ### 7.4 Gatekeeper (admission, layer 2b)
 
-The complete catalogue, with each rule's owner, is in the Gatekeeper proposal (§4); the core rules are P1–P10. This table only records their effect on SonarQube.
+The complete catalogue, with each rule's owner, is in the Gatekeeper proposal (§4); the core rules are P1–P11. This table only records their effect on SonarQube.
 
 | Constraint | Effect on `sonarqube` |
 |---|---|
