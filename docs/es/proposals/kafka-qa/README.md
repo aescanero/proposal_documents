@@ -519,6 +519,7 @@ Nombres de métricas según la configuración del exportador JMX de Strimzi **(v
 | AM §10.1 y `registry/zones.yaml` | Sin el claim `kafka-storage-subnet` (y sin ese propósito en la zona `data`); sin `schema-registry` ni `tls-mtls` en los traits del ejemplo; párrafo sobre la autenticación SCRAM y el contrato 2.1.0 | **Aplicado** |
 | cert-manager §3 | Política `private-names`: approver-policy admite `*.<namespace>.qa.internal` al namespace que los pide; nombres de la zona privada, nunca públicos (DT10) | **Aplicado** |
 | Envoy Gateway §4.4 | Kafka sale de los casos admisibles: nunca fuera de la VPC. Q-B1 pasa allí como pregunta de las excepciones con TLS | **Aplicado** |
+| ESO §9.2 y §11.3 | `eso-kafka` y las cuentas de servicio de clientes de la VPC en la lista de lectores explícitos, con alcance `qa-<instancia>-kafka-*` | **Aplicado** |
 | E1 §4.15 (red) | Zona privada de Cloud DNS `qa.internal`, enlazada solo a la VPC de `qa`, propiedad del stack de red | **Aplicado** |
 
 ---

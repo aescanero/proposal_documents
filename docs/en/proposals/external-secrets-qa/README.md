@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 2 |
+| **Status** | Proposal · revision 3 |
 | **Scope** | The layer 3 `secrets-eso-gsm` archetype on `qa`: security model, installation, the `secrets` 2.0.0 contract consumers use, rotation, network, availability, observability, policies, execution and plan |
 | **Why now** | SonarQube (S1 §4.3, S2 §5.2), the Cloud SQL variant (§5) and Keycloak (§6.5, §7) already depend on ESO and have each, separately, pinned down parts of its contract. This document gathers them in one place and completes them |
 | **Reference specification** | `archetype-model.md` (AM §n; AM §14.2 assigns Secret Manager to `secrets` on GCP), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -300,7 +300,13 @@ The general rule is now written down: **between capabilities of the same layer, 
 | Controller or webhook without replicas | kube-state-metrics | < 1 ready for 5 min | — |
 | **Read of a secret by an unauthorised principal** | Secret Manager *Data Access audit log*, log-based alert from layer 1b | Any `AccessSecretVersion` whose principal is neither `…/sa/eso-*` nor on the explicit readers list | S1 §4.3, extended with the list |
 
-**Explicit readers list.** The Keycloak reconciler reads OIDC client secrets with its own identity (Keycloak proposal §6.5), not through ESO: its principal `…/ns/keycloak/sa/keycloak-config` goes on the list. Without it, the S1 §4.3 alert would fire on every reconciler pass. A new reader is a reviewed PR to that list.
+**Explicit readers list.** Principals that read secrets that are not their own archetype's, or outside ESO. Each entry carries its **scope**: the prefix of the secrets it may read. The alert filters by principal **and** prefix, and G1 checks the same scope on every `secretAccessor` (§11.3). A new reader is a reviewed PR to this list.
+
+| Principal | Scope | Why |
+|---|---|---|
+| `…/ns/keycloak/sa/keycloak-config` | `qa-<instance>-oidc` granted by each consumer | The Keycloak reconciler reads OIDC client secrets under its own identity, not through ESO (Keycloak proposal §6.5). Without the entry, the S1 §4.3 alert would fire on every pass |
+| `…/ns/kafka/sa/eso-kafka` | `qa-<instance>-kafka-*` granted by each consumer | The provider's ESO materialises the consumers' SCRAM passwords in `kafka` (Kafka proposal §3.1). The `eso-*` wildcard already silences it in the alert, but it reads **other** archetypes' secrets: without the entry, G1 would reject the consumer's `secretAccessor` |
+| The service account of a VPC Kafka client | Only `qa-<its instance>-kafka-*` | It reads its password without ESO, under its GCP identity (Kafka proposal §6.3). Declared per instance, in its manifest |
 
 ---
 
@@ -403,7 +409,7 @@ assert {
 | Rule | What it checks |
 |---|---|
 | **New:** per-resource Secret Manager IAM | In archetype stacks, `secretmanager.*` only as `google_secret_manager_secret_iam_member`; never `google_project_iam_*` (S2 §7.2, generalised) |
-| **New:** IAM member | The `member` of each `secretAccessor` is `…/sa/eso-<the same archetype>` or a principal on the explicit readers list (§9.2) |
+| **New:** IAM member | The `member` of each `secretAccessor` is `…/sa/eso-<the same archetype>`, or a principal from the explicit readers list (§9.2) **on a secret within its scope** |
 | **New:** trait | An archetype whose chart contains `SecretStore` or `ExternalSecret` requires `secrets` with the `eso` trait |
 | Existing (R8, R40) | No output exports values; no plaintext `secret_data` in `plan.json` |
 
@@ -436,6 +442,7 @@ It stops at `prevent_destroy`. Tearing down ESO without tearing down its consume
 | `registry/traits.yaml` and the `enum` in `schemas/archetype-manifest.schema.json` | `eso` trait, in the same commit and mechanically (R34) | **Applied** |
 | S2 §3 (SonarQube), Cloud SQL variant §9.1, Keycloak proposal §11.1 | `secrets` now requires `traits: [eso]` | **Applied** |
 | S1 §4.3 and §4.7 | The audit alert admits the explicit readers list (§9.2) | **Applied** |
+| This proposal, §9.2 and §11.3 | Readers list with a per-prefix scope; `eso-kafka` and VPC Kafka client entries (Kafka proposal) | **Applied** |
 | S1 §4.7 and S2 §5.9 | The "`ExternalSecret` not synchronised" alert becomes a platform alert (§9.2) and leaves SonarQube, the only archetype that declared it | **Applied** |
 | S2 §9, `secrets-eso-gsm` row | Requirement met: ESO with Workload Identity in a namespaced `SecretStore` | — |
 
@@ -481,7 +488,7 @@ It stops at `prevent_destroy`. Tearing down ESO without tearing down its consume
 | VE4 | Webhook on 10250 reachable from the control plane with private nodes | `apply` of an `ExternalSecret` without timeout |
 | VE5 | `force-sync` annotation | Immediate refresh visible in `status.refreshTime` |
 | VE6 | ESO under PSS `restricted` with the chart's default values | Pods admitted without exemptions |
-| VE7 | Audit alert filter with the readers list | Fires with an unlisted reader; stays silent with `eso-*` and `keycloak-config` |
+| VE7 | Audit alert filter with the readers list | Fires with an unlisted reader and with a listed reader outside its scope; silent with `eso-*`, `keycloak-config` and `eso-kafka` within theirs |
 | VE8 | Webhook certificate issued by cert-manager and injected into the `ValidatingWebhookConfiguration` | Webhook healthy after the certificate is renewed |
 
 ---

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 2 |
+| **Estado** | Propuesta · revisión 3 |
 | **Alcance** | El arquetipo de capa 3 `secrets-eso-gsm` en `qa`: modelo de seguridad, instalación, el contrato `secrets` 2.0.0 que usan los consumidores, rotación, red, disponibilidad, observabilidad, políticas, ejecución y plan |
 | **Por qué ahora** | SonarQube (E1 §4.3, E2 §5.2), la variante Cloud SQL (§5) y Keycloak (§6.5, §7) ya dependen de ESO y han fijado, cada uno por su lado, partes de su contrato. Aquí se reúnen en un solo sitio y se completan |
 | **Especificación de referencia** | `archetype-model.md` (AM §n; AM §14.2 asigna Secret Manager a `secrets` en GCP), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -300,7 +300,13 @@ La regla general queda escrita: **entre capabilities de la misma capa, la observ
 | Controlador o webhook sin réplicas | kube-state-metrics | < 1 lista durante 5 min | — |
 | **Lectura de un secreto por un principal no autorizado** | *Data Access audit log* de Secret Manager, alerta basada en logs de la capa 1b | Cualquier `AccessSecretVersion` cuyo principal no sea `…/sa/eso-*` ni esté en la lista de lectores explícitos | E1 §4.3, ampliada con la lista |
 
-**Lista de lectores explícitos.** El reconciliador de Keycloak lee secretos de clientes OIDC con su propia identidad (propuesta de Keycloak §6.5), no por ESO: su principal `…/ns/keycloak/sa/keycloak-config` entra en la lista. Sin ella, la alerta de E1 §4.3 saltaría en cada pasada del reconciliador. Un lector nuevo es un PR a esa lista, revisado.
+**Lista de lectores explícitos.** Principales que leen secretos que no son de su propio arquetipo, o fuera de ESO. Cada entrada lleva su **alcance**: el prefijo de los secretos que puede leer. La alerta filtra por principal **y** prefijo, y G1 comprueba el mismo alcance en cada `secretAccessor` (§11.3). Un lector nuevo es un PR a esta lista, revisado.
+
+| Principal | Alcance | Por qué |
+|---|---|---|
+| `…/ns/keycloak/sa/keycloak-config` | `qa-<instancia>-oidc` que cada consumidor le concede | El reconciliador de Keycloak lee secretos de clientes OIDC con su propia identidad, no por ESO (propuesta de Keycloak §6.5). Sin la entrada, la alerta de E1 §4.3 saltaría en cada pasada |
+| `…/ns/kafka/sa/eso-kafka` | `qa-<instancia>-kafka-*` que cada consumidor le concede | El ESO del proveedor materializa en `kafka` las contraseñas SCRAM de los consumidores (propuesta de Kafka §3.1). El comodín `eso-*` ya lo silencia en la alerta, pero lee secretos de **otros** arquetipos: sin la entrada, G1 rechazaría el `secretAccessor` del consumidor |
+| Cuenta de servicio de un cliente de Kafka de la VPC | Solo `qa-<su instancia>-kafka-*` | Lee su contraseña sin ESO, con su identidad de GCP (propuesta de Kafka §6.3). Se declara por instancia, en su manifiesto |
 
 ---
 
@@ -403,7 +409,7 @@ assert {
 | Regla | Qué comprueba |
 |---|---|
 | **Nueva:** IAM de Secret Manager por recurso | En stacks de arquetipo, `secretmanager.*` solo como `google_secret_manager_secret_iam_member`; nunca `google_project_iam_*` (E2 §7.2, generalizada) |
-| **Nueva:** miembro del IAM | El `member` de cada `secretAccessor` es `…/sa/eso-<el mismo arquetipo>` o un principal de la lista de lectores explícitos (§9.2) |
+| **Nueva:** miembro del IAM | El `member` de cada `secretAccessor` es `…/sa/eso-<el mismo arquetipo>`, o un principal de la lista de lectores explícitos (§9.2) **sobre un secreto dentro de su alcance** |
 | **Nueva:** trait | Un arquetipo cuyo chart contiene `SecretStore` o `ExternalSecret` exige `secrets` con el trait `eso` |
 | Existente (R8, R40) | Ninguna salida exporta valores; ningún `secret_data` en claro en `plan.json` |
 
@@ -436,6 +442,7 @@ Se detiene en `prevent_destroy`. Desmontar ESO sin desmontar a sus consumidores 
 | `registry/traits.yaml` y el `enum` de `schemas/archetype-manifest.schema.json` | Trait `eso`, en el mismo commit y de forma mecánica (R34) | **Aplicado** |
 | E2 §3 (SonarQube), variante Cloud SQL §9.1, propuesta de Keycloak §11.1 | `secrets` pasa a exigir `traits: [eso]` | **Aplicado** |
 | E1 §4.3 y §4.7 | La alerta de auditoría admite la lista de lectores explícitos (§9.2) | **Aplicado** |
+| Esta propuesta, §9.2 y §11.3 | Lista de lectores con alcance por prefijo; entradas `eso-kafka` y clientes de Kafka de la VPC (propuesta de Kafka) | **Aplicado** |
 | E1 §4.7 y E2 §5.9 | La alerta "`ExternalSecret` sin sincronizar" pasa a ser de plataforma (§9.2) y sale de SonarQube, el único arquetipo que la declaraba | **Aplicado** |
 | E2 §9, fila `secrets-eso-gsm` | Requisito cumplido: ESO con Workload Identity en `SecretStore` namespaced | — |
 
@@ -481,7 +488,7 @@ Se detiene en `prevent_destroy`. Desmontar ESO sin desmontar a sus consumidores 
 | VE4 | Webhook en 10250 alcanzable desde el plano de control con nodos privados | `apply` de un `ExternalSecret` sin timeout |
 | VE5 | Anotación `force-sync` | Refresco inmediato visible en `status.refreshTime` |
 | VE6 | ESO bajo PSS `restricted` con los valores por defecto del chart | Pods admitidos sin exenciones |
-| VE7 | Filtro de la alerta de auditoría con la lista de lectores | Salta con un lector no listado; calla con `eso-*` y `keycloak-config` |
+| VE7 | Filtro de la alerta de auditoría con la lista de lectores | Salta con un lector no listado y con un lector listado fuera de su alcance; calla con `eso-*`, `keycloak-config` y `eso-kafka` dentro del suyo |
 | VE8 | Certificado del webhook emitido por cert-manager e inyectado en la `ValidatingWebhookConfiguration` | Webhook sano tras renovar el certificado |
 
 ---
