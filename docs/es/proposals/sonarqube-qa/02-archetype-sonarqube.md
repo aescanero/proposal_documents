@@ -482,8 +482,7 @@ spec:
       shared_buffers: "2GB"
   bootstrap:
     initdb: { database: sonarqube, owner: sonarqube, secret: { name: sonarqube-db } }
-  serviceAccountTemplate:
-    metadata: { name: qa-sonarqube-db }   # prefijo del entorno: el pool de Workload Identity es del proyecto (R54); verificar que CNPG admite un KSA con nombre distinto del Cluster
+  serviceAccountName: qa-sonarqube-db   # CNPG ≥ 1.29: KSA ya existente (lo crea el stack iam) con el prefijo del entorno (R54); inmutable, excluyente con serviceAccountTemplate
   affinity: { enablePodAntiAffinity: true, topologyKey: kubernetes.io/hostname }
   monitoring: { enablePodMonitor: true }
 ```

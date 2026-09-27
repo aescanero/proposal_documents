@@ -95,7 +95,7 @@ Source: [`diagrams/03-backups.mmd`](diagrams/03-backups.mmd)
 | Piece | Design | Reference |
 |---|---|---|
 | Destination | One bucket **per consumer**, `gs://disasterproject-<env>-<instance>-pgbackup` (with the environment: the non-prod project is shared), created by the consumer's `data-tenant` stack | E2 §5.3 |
-| Identity | The `Cluster`'s KSA (`serviceAccountTemplate`), with the environment prefix (`qa-<instance>-db`, R54), through direct Workload Identity; `objectAdmin` on **that** bucket | E1 §4.4 |
+| Identity | A KSA with the environment prefix (`qa-<instance>-db`, R54), created by the consumer's `iam` stack and referenced with `spec.serviceAccountName` (§5), through direct Workload Identity; `objectAdmin` on **that** bucket | E1 §4.4 |
 | Plugin | barman-cloud: daily base (`ScheduledBackup`) and continuous WAL, with PITR | — |
 | Retention | 14 days in the `ObjectStore`; GCS soft delete 7 days; **no** versioning or retention lock, which break barman's purge | E1 §4.9 |
 | Deleting the `Cluster` | The bucket belongs to another stack and carries `prevent_destroy`: backups outlive the `Cluster` | RO1 |
@@ -108,6 +108,7 @@ Source: [`diagrams/03-backups.mmd`](diagrams/03-backups.mmd)
 | Setting | Value | Reason |
 |---|---|---|
 | Namespace | `cnpg-system`, PSS `restricted` | — |
+| Minimum version | **1.29** | The first with `spec.serviceAccountName` (checked in the code of the `release-1.28` and `release-1.29` branches). Up to 1.28 the operator creates and uses a KSA named after the `Cluster`, and ignores the `name` in `serviceAccountTemplate`; in the shared non-prod project that would force naming the `Cluster` `qa-<instance>-db` to carry the environment prefix (R54). From 1.29 the operator uses the given KSA, which must exist (otherwise the `Cluster` fails with `serviceAccount not found`), creates no other, and binds its `RoleBinding` to it. The field is immutable and mutually exclusive with `serviceAccountTemplate` |
 | Replicas | **2**, leader election, `PodDisruptionBudget` | A `Cluster`'s failover is decided by the operator: without the operator, a failed primary is not replaced (RO2) |
 | Webhook | Port **10250** **(verify the chart option, VO1)** | Same reason as Gatekeeper, ESO and cert-manager: GKE with private nodes |
 | Instance manager update | In place (`ENABLE_INSTANCE_MANAGER_INPLACE_UPDATES`) **(verify, VO2)** | Without it, **every operator upgrade restarts every database of every consumer** (RO3) |
@@ -264,7 +265,7 @@ assert {
 
 | Rule | Where | What it checks |
 |---|---|---|
-| **New:** `Cluster` shape | Gatekeeper | §1.2; `instances` ≥ 2 except in ephemerals; `imageCatalogRef` mandatory; zone anti-affinity in `prod` |
+| **New:** `Cluster` shape | Gatekeeper | §1.2; `instances` ≥ 2 except in ephemerals; `imageCatalogRef` mandatory; `serviceAccountName` mandatory and carrying the environment prefix, no `serviceAccountTemplate`; zone anti-affinity in `prod` |
 | **New:** `ObjectStore` shape | Gatekeeper | Destination `gs://…-<instance>-pgbackup`; Workload Identity only |
 | **New:** own bucket | G1 | The `ObjectStore` destination is the bucket of the same instance's `data-tenant` stack |
 | Existing | Gatekeeper | P2 (catalog images by digest), P4 (the `Cluster`'s memory limit) |
@@ -303,6 +304,7 @@ assert {
 | VO4 | Server certificate from `internal-ca` in `spec.certificates` | The client connects with `sslmode=verify-full` against `internal-ca-bundle` |
 | VO5 | Declarative major upgrade on the pinned version | New major with no data loss in an ephemeral; if unsupported, the import procedure |
 | VO6 | Restore to a new `Cluster` | = E1's V5 |
+| VO7 | `spec.serviceAccountName` with a Workload Identity KSA on the pinned version (≥ 1.29) | Backup in the bucket with the principal `…/sa/qa-<instance>-db`; the operator creates no KSA named after the `Cluster`. **Checked in the code**; the test on a cluster is pending |
 
 ---
 
@@ -336,6 +338,6 @@ assert {
 | **0 · Prerequisites** | GKE, Gatekeeper and cert-manager in an ephemeral; **VO1** | Webhook reachable | 1 day |
 | **1 · Operator** | `operator` stack; **VO2**, **VO3** | Operator and plugin healthy; upgrade without restarts | 1 day |
 | **2 · Catalog and rules** | `catalog` stack; rules of §8.2 | `gator test` of SonarQube's chart on the CNPG branch green | 1 day |
-| **3 · Consumers** | SonarQube and Keycloak through `data-tenant` in the ephemeral; **VO4**, **VO6**; VO5 | Smoke tests green; weekly ephemeral scheduled | 2 days |
+| **3 · Consumers** | SonarQube and Keycloak through `data-tenant` in the ephemeral; **VO4**, **VO6**, **VO7**; VO5 | Smoke tests green; weekly ephemeral scheduled | 2 days |
 
 Five days for one person. Its ongoing use on this platform is the weekly ephemeral.
