@@ -142,7 +142,7 @@ Herramientas de plataforma sin cambios: Terramate, OpenTofu, conftest, Checkov.
 
 ### 4.2 Política de admisión (capa 2b)
 
-`qa`: `enforcementAction: deny`, `failurePolicy: Ignore` (§13.7).
+`qa`: `enforcementAction: deny`, `failurePolicy: Ignore` (§13.7). Pod Security lo aplica **Pod Security Admission**, integrado en el API server, con la etiqueta `pod-security.kubernetes.io/enforce: restricted` del namespace; Gatekeeper impide rebajarla y añade lo que PSS no cubre: raíz de solo lectura, registros permitidos por digest y límite de memoria (propuesta de Gatekeeper §3, §4).
 
 ![Pod de SonarQube](diagrams/08-pod-sonarqube.svg)
 
@@ -155,7 +155,7 @@ Herramientas de plataforma sin cambios: Terramate, OpenTofu, conftest, Checkov.
 | `readOnlyRootFilesystem` (si hay constraint) | `emptyDir` en `temp` y `logs`; verificar qué más escribe (V2) |
 | Imágenes solo de registros permitidos | `europe-docker.pkg.dev/<proyecto>/…` por digest |
 
-Si SonarQube no puede correr con raíz de solo lectura, la salida es una **exención por nombre** para `sonarqube/sonarqube-0`, revisada en PR — nunca relajar el constraint para todo `qa`.
+Si SonarQube no puede correr con raíz de solo lectura, la salida es una excepción por nombre a la regla P3 para el `StatefulSet` `sonarqube`, declarada en `admission_exceptions` del manifiesto con su justificación y fecha de revisión, y generada por el stack `exemptions` (propuesta de Gatekeeper §5.1) — nunca relajar la regla para todo `qa`.
 
 ### 4.3 Secretos
 

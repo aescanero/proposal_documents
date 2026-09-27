@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 1 |
+| **Estado** | Propuesta · revisión 2 |
 | **Alcance** | El arquetipo de capa 2b `policy-gatekeeper` en `qa`: instalación y alta disponibilidad, alcance del webhook, quién es dueño de cada regla, el catálogo consolidado de reglas de todas las propuestas, el ciclo de vida de una regla, el modelo de excepciones, datos del registro, pruebas en CI, observabilidad, red, contrato `policy`, stacks, ejecución y plan |
 | **Por qué ahora** | Cada propuesta anterior le ha dejado reglas: SonarQube, Keycloak, ESO, monitorización, cert-manager, Envoy Gateway y Kafka. Hoy están repartidas en nueve documentos, nadie ha comprobado que encajen, y varias dependen de un mecanismo de excepciones que no está especificado |
 | **Especificación de referencia** | `terramate-outputs-sharing-architecture.md` §13 (arquitectura), `archetype-model.md` (AM §n), `risk-register.md` (R33–R37) |
@@ -387,11 +387,11 @@ Las reglas las declara el arquetipo de monitorización (monitorización §5.1), 
 | Documento | Cambio | Estado |
 |---|---|---|
 | `schemas/archetype-manifest.schema.json` | `metadata.layer` admite `"1b"` y `"2b"` además de 0–5. AM define esas subcapas (AM §3), pero el esquema no podía expresarlas, y este manifiesto no validaba | **Aplicado** |
-| SonarQube E1 §4.2 | Pod Security con PSA y la etiqueta del namespace; Gatekeeper vigila la etiqueta (§3). La excepción por nombre de raíz de solo lectura pasa a `admission_exceptions` (§5.1) | Propuesto |
-| SonarQube E2 §7.4 | Tabla de constraints: remite al catálogo (§4) | Propuesto |
-| Envoy Gateway §4.2 y §11 | La regla de `Service` `LoadBalancer`/`NodePort` es P5 y la de `externalIPs` es P6, aquí | Propuesto |
-| `registry/` y el esquema de manifiesto | Bloque `admission_exceptions` junto a `exposures`, generado desde el registro (R34) | Propuesto |
-| Arquitectura §13.8 | `registry-generate` también emite los parámetros de P1, P2 y P7 | Propuesto |
+| SonarQube E1 §4.2 | Pod Security con PSA y la etiqueta del namespace; Gatekeeper vigila la etiqueta (§3). La excepción por nombre de raíz de solo lectura pasa a `admission_exceptions` (§5.1) | **Aplicado** |
+| SonarQube E2 §7.4 | Tabla de constraints: remite al catálogo (§4) | **Aplicado** |
+| Envoy Gateway §4.2 y §11 | La regla de `Service` `LoadBalancer`/`NodePort` es P5 y la de `externalIPs` es P6, aquí | **Aplicado** |
+| Esquema de manifiesto | Bloques `exposures` y `admission_exceptions` con una definición común de justificación (`review_by` obligatorio). Añadidos a mano, como `managed_db_instances`, hasta que `registry-generate` exista y los emita (R34) | **Aplicado** |
+| Arquitectura §13.8 | `registry-generate` también emite los parámetros de P1, P2 y P7 | **Aplicado** |
 | `CLAUDE.md`, pregunta abierta nº 5 | El método de medida de §6.3; la pregunta sigue abierta hasta medir | Sin cambio hasta la fase 3 |
 
 ---

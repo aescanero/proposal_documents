@@ -740,9 +740,11 @@ assert {
 
 ### 7.4 Gatekeeper (admisión, capa 2b)
 
+El catálogo completo, con el dueño de cada regla, está en la propuesta de Gatekeeper (§4); las reglas del núcleo son P1–P10. Esta tabla solo recoge su efecto sobre SonarQube.
+
 | Constraint | Efecto sobre `sonarqube` |
 |---|---|
-| PSS `restricted` | Rechaza los init containers del chart si alguien los reactiva |
+| PSS `restricted` (Pod Security Admission, etiqueta del namespace) | Rechaza los init containers del chart si alguien los reactiva |
 | Etiquetas obligatorias | Namespace, pods y PVC con `archetype`, `instance`, `app.kubernetes.io/*` |
 | Registros permitidos | Solo Artifact Registry de la landing zone |
 | **Nueva:** `SecurityPolicy` en namespaces de aplicación | Denegada salvo en namespaces con `gateway.disasterproject.com/security-policy: "true"`, que solo lleva quien exige el trait `oidc-security-policy` o `jwt-auth` (propuesta de Envoy Gateway §9.2). `sonarqube` no lo exige; refuerza R44 en admisión |

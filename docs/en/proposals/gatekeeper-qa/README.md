@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 1 |
+| **Status** | Proposal · revision 2 |
 | **Scope** | The layer 2b `policy-gatekeeper` archetype on `qa`: installation and high availability, the webhook's reach, who owns each rule, the consolidated catalogue of rules from every proposal, a rule's lifecycle, the exceptions model, registry data, CI tests, observability, network, the `policy` contract, stacks, execution and plan |
 | **Why now** | Every earlier proposal has left it rules: SonarQube, Keycloak, ESO, monitoring, cert-manager, Envoy Gateway and Kafka. Today they are spread across nine documents, nobody has checked that they fit together, and several depend on an exceptions mechanism that is not specified |
 | **Reference specification** | `terramate-outputs-sharing-architecture.md` §13 (architecture), `archetype-model.md` (AM §n), `risk-register.md` (R33–R37) |
@@ -387,11 +387,11 @@ The monitoring archetype declares the rules (monitoring §5.1), for the same cyc
 | Document | Change | Status |
 |---|---|---|
 | `schemas/archetype-manifest.schema.json` | `metadata.layer` admits `"1b"` and `"2b"` in addition to 0–5. AM defines those sub-layers (AM §3), but the schema could not express them, and this manifest did not validate | **Applied** |
-| SonarQube S1 §4.2 | Pod Security with PSA and the namespace label; Gatekeeper guards the label (§3). The read-only-root exception by name moves to `admission_exceptions` (§5.1) | Proposed |
-| SonarQube S2 §7.4 | The constraints table points to the catalogue (§4) | Proposed |
-| Envoy Gateway §4.2 and §11 | The `LoadBalancer`/`NodePort` `Service` rule is P5 and the `externalIPs` rule is P6, here | Proposed |
-| `registry/` and the manifest schema | An `admission_exceptions` block next to `exposures`, generated from the registry (R34) | Proposed |
-| Architecture §13.8 | `registry-generate` also emits the parameters of P1, P2 and P7 | Proposed |
+| SonarQube S1 §4.2 | Pod Security with PSA and the namespace label; Gatekeeper guards the label (§3). The read-only-root exception by name moves to `admission_exceptions` (§5.1) | **Applied** |
+| SonarQube S2 §7.4 | The constraints table points to the catalogue (§4) | **Applied** |
+| Envoy Gateway §4.2 and §11 | The `LoadBalancer`/`NodePort` `Service` rule is P5 and the `externalIPs` rule is P6, here | **Applied** |
+| Manifest schema | `exposures` and `admission_exceptions` blocks with a common justification definition (`review_by` mandatory). Added by hand, like `managed_db_instances`, until `registry-generate` exists and emits them (R34) | **Applied** |
+| Architecture §13.8 | `registry-generate` also emits the parameters of P1, P2 and P7 | **Applied** |
 | `CLAUDE.md`, open question no. 5 | The measurement method of §6.3; the question stays open until measured | No change until phase 3 |
 
 ---

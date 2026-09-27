@@ -32,10 +32,20 @@
           "$ref": "#/$defs/semver"
         },
         "layer": {
-          "description": "0-5, or the sub-layers 1b (cloud observability) and 2b (admission policy), AM §3.",
+          "description": "0-5, or the sub-layers 1b (cloud observability) and 2b (admission policy), AM \u00a73.",
           "anyOf": [
-            { "type": "integer", "minimum": 0, "maximum": 5 },
-            { "type": "string", "enum": ["1b", "2b"] }
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5
+            },
+            {
+              "type": "string",
+              "enum": [
+                "1b",
+                "2b"
+              ]
+            }
           ]
         },
         "description": {
@@ -426,6 +436,116 @@
           }
         }
       }
+    },
+    "exposures": {
+      "description": "Non-HTTP L4 exposures (Envoy Gateway proposal \u00a74.4): pattern B, or its internal variant D.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "service",
+          "protocol",
+          "port",
+          "pattern",
+          "sources",
+          "tls",
+          "justification"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/$defs/slug"
+          },
+          "service": {
+            "$ref": "#/$defs/slug"
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "TCP",
+              "UDP"
+            ]
+          },
+          "tls": {
+            "type": "boolean",
+            "description": "false is only admitted with pattern: internal"
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "targetPort": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "nodePort": {
+            "type": "integer",
+            "minimum": 30000,
+            "maximum": 32767
+          },
+          "externalIP": {
+            "type": "string",
+            "enum": [
+              "claim"
+            ],
+            "description": "The Service declares externalIPs with the claimed IP (CVE-2020-8554: only that IP)"
+          },
+          "pattern": {
+            "type": "string",
+            "enum": [
+              "passthrough",
+              "internal"
+            ]
+          },
+          "sources": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "public": {
+            "type": "boolean"
+          },
+          "justification": {
+            "$ref": "#/$defs/justification"
+          }
+        }
+      }
+    },
+    "admission_exceptions": {
+      "description": "Exceptions to core admission rules, by object name, never a whole namespace (Gatekeeper proposal \u00a75.1).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rule",
+          "kind",
+          "name",
+          "justification"
+        ],
+        "properties": {
+          "rule": {
+            "type": "string",
+            "pattern": "^P[0-9]+$"
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "justification": {
+            "$ref": "#/$defs/justification"
+          }
+        }
+      }
     }
   },
   "$defs": {
@@ -620,6 +740,44 @@
           }
         }
       ]
+    },
+    "justification": {
+      "description": "Business justification for an exception; G1 fails the PR once review_by has passed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "business_owner",
+        "reason",
+        "alternative_rejected",
+        "review_by"
+      ],
+      "properties": {
+        "business_owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 10
+        },
+        "alternative_rejected": {
+          "type": "string",
+          "minLength": 10
+        },
+        "data_classification": {
+          "type": "string",
+          "enum": [
+            "public",
+            "internal",
+            "confidential",
+            "restricted"
+          ]
+        },
+        "review_by": {
+          "type": "string",
+          "format": "date"
+        }
+      }
     }
   },
   "allOf": [

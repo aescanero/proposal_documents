@@ -3111,7 +3111,7 @@ Everything else is **generated** from these:
 |---|---|
 | `enum` blocks in `schemas/*.schema.json` | `check-jsonschema` |
 | `registry/*.json` bundle | `conftest --data` |
-| Gatekeeper chart `values.yaml` | `ConstraintTemplate` parameters |
+| Gatekeeper chart `values.yaml` | `ConstraintTemplate` parameters: mandatory labels, allowed registries and the namespaces with a Pod Security level other than `restricted` (Gatekeeper proposal §7.1) |
 
 Guard it with a `registry-generate --check` gate in CI, exactly like `terramate generate --check`. The YAML is the source; a schema edited by hand is a bug.
 

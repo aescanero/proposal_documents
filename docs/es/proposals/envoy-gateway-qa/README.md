@@ -134,7 +134,7 @@ Con un Gateway compartido, la precedencia de Gateway API decide entre rutas **de
 | `EnvoyPatchPolicy` | Parchea xDS a mano: cualquier cosa, incluida otra ruta | **Desactivada** en el controlador (`extensionApis.enableEnvoyPatchPolicy: false`) y denegada por Gatekeeper |
 | `Backend` (CRD de Envoy Gateway) | Un backend por IP o FQDN arbitrario: desde el Gateway se llegaría a `169.254.169.254` (servidor de metadatos) o a cualquier IP de la VPC | **Desactivado** (`extensionApis.enableBackend: false`) y denegado |
 | `EnvoyExtensionPolicy` | Wasm, Lua o `ext_proc` corriendo **dentro** del proxy compartido | Gatekeeper: denegada fuera de `envoy-gateway-system` |
-| `Service` de tipo `LoadBalancer` o `NodePort` | Un balanceador de Google al lado del Gateway, sin Cloud Armor (RG5) | Gatekeeper, **regla del arquetipo `policy`** (§11): no es un kind de este arquetipo. Para protocolos que no son HTTP, excepción por nombre con justificación de negocio (§4.4) |
+| `Service` de tipo `LoadBalancer` o `NodePort`, y `externalIPs` | Un balanceador de Google al lado del Gateway, sin Cloud Armor (RG5) | Reglas P5 y P6 de `policy-gatekeeper` (propuesta de Gatekeeper §4.1): no son kinds de este arquetipo. Para protocolos que no son HTTP, excepción por nombre con justificación de negocio (§4.4) |
 
 ### 4.3 Lo que un tenant sí puede crear, con límites
 
@@ -534,7 +534,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | SonarQube E2 §9, §7.4 y cambios respecto a E1; E1 §4.5 | Requisito del Gateway cumplido: sin límite de cuerpo (§2.3), `BackendTrafficPolicy` de tenant permitida con límites y `SecurityPolicy` solo en namespaces etiquetados (§9.2) | **Aplicado** |
 | SonarQube E1 §4.1 | `gateway_api_config.channel = CHANNEL_DISABLED` en la tabla de GKE | **Aplicado** |
 | Propuesta de cert-manager §1, §3, §4.1 | Política `gateway-backend` eliminada: la CA interna solo firma nombres internos, y la validación externa es de los balanceadores con SNI y comodines (cert-manager DT10). El certificado del backend `envoy-qa.envoy-gateway-system.svc` lo cubre `namespace-services` | **Aplicado** |
-| `policy-gatekeeper`, `registry/` y el esquema de manifiesto, `gcp-qa-edge` | Regla sin `Service` `LoadBalancer` ni `NodePort` salvo excepción por nombre; bloque `exposures` con justificación de negocio y caducidad; un balanceador L4 por excepción en el borde (§4.4) | Propuesto |
+| `policy-gatekeeper`, `registry/` y el esquema de manifiesto, `gcp-qa-edge` | Regla sin `Service` `LoadBalancer` ni `NodePort` salvo excepción por nombre; bloque `exposures` con justificación de negocio y caducidad; un balanceador L4 por excepción en el borde (§4.4) | **Aplicado** en `policy-gatekeeper` (P5, P6) y en el esquema (`exposures`); el borde, pendiente de su propuesta |
 | `gcp-qa-edge` (E1 §4.15) | Health check en el puerto de readiness de Envoy; `connection_draining_timeout_sec: 60`; `after` a `gcp-qa-gateway-proxy`; lee `neg_name` y `health_check` | Propuesto, se recoge al proponer el borde |
 | Stacks `iam` de SonarQube (E2 §5.1, generador `gen_tenant_namespace`), Keycloak (§11.2) y monitorización (§10.2) | Etiqueta `route_namespace_label` y anotación `gateway.disasterproject.com/hostnames` con los hostnames reclamados; sin `security_policy_label`, porque ninguno exige `oidc-security-policy` | **Aplicado** |
 

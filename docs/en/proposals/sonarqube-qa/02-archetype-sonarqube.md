@@ -740,9 +740,11 @@ assert {
 
 ### 7.4 Gatekeeper (admission, layer 2b)
 
+The complete catalogue, with each rule's owner, is in the Gatekeeper proposal (§4); the core rules are P1–P10. This table only records their effect on SonarQube.
+
 | Constraint | Effect on `sonarqube` |
 |---|---|
-| PSS `restricted` | Rejects the chart's init containers if anyone re-enables them |
+| PSS `restricted` (Pod Security Admission, namespace label) | Rejects the chart's init containers if someone re-enables them |
 | Mandatory labels | Namespace, pods and PVC carry `archetype`, `instance`, `app.kubernetes.io/*` |
 | Allowed registries | Only the landing zone's Artifact Registry |
 | **New:** `SecurityPolicy` in application namespaces | Denied except in namespaces labelled `gateway.disasterproject.com/security-policy: "true"`, which only those requiring the `oidc-security-policy` or `jwt-auth` trait carry (Envoy Gateway proposal §9.2). `sonarqube` does not require it; reinforces R44 at admission |
