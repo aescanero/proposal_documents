@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 1 |
+| **Status** | Proposal · revision 2 |
 | **Scope** | The public edge of `qa`: IP, public DNS zone and records, certificate, Cloud Armor, the Global external Application LB towards Envoy's NEG, TLS, L4 exceptions (pattern B), observability, the `env-edge` contract, stacks, policies, execution and plan |
 | **Why now** | It is the last piece before SonarQube, Keycloak and Grafana can be reached. The Envoy Gateway proposal left it requirements (health check, draining, `after`, NEG as `data`) and SonarQube's two more (120 s timeout and Cloud Armor exclusions) |
 | **Base** | S1 §4.5 (publication), §4.15 (separate VPC and own edge); Envoy Gateway proposal §1, §2, §4.4, §5.2, §7.1; `network-qa` proposal; architecture §10.2 and §10.8; AM §3 (edge capabilities in layer 1). What is there is not repeated |
@@ -325,12 +325,12 @@ assert {
 
 | Document | Change | Status |
 |---|---|---|
-| S1 §4.5, §4.15 and §6 | Two edge stacks (`gcp-qa-edge-base` in phase A, `gcp-qa-edge` in B); the public zone and its delegation belong to the landing zone | **Proposed** (DL1, DL2) |
-| Envoy Gateway proposal §11 | The requirement on `gcp-qa-edge` is resolved here | **Proposed** |
-| S2 §9 | The `gcp-qa-edge` row is resolved (§3.2, §4) | **Proposed** |
-| GKE proposal §7.1 and §7.3 | New sharing output `node_pool_instance_groups` from `nodepools`, for `edge-l4` | **Proposed** (DL7) |
-| Monitoring proposal §10.3 | The §7 edge alerts in layer 1b | **Proposed** |
-| `network-qa` proposal §8.2 | The manifest becomes 3.1.0 with the edge | **Proposed** |
+| S1 §4.5, §4.15 and §6 | Two edge stacks (`gcp-qa-edge-base` in phase A, `gcp-qa-edge` in B); the public zone and its delegation belong to the landing zone | **Applied** (DL1, DL2) |
+| Envoy Gateway proposal §11 | The requirement on `gcp-qa-edge` is resolved here | **Applied** |
+| S2 §9 | The `gcp-qa-edge` row is resolved (§3.2, §4) | **Applied** |
+| GKE proposal §7.1 and §7.3 | New sharing output `node_pool_instance_groups` from `nodepools`, for `edge-l4` | **Applied** (DL7) |
+| Monitoring proposal §10.3 | The §7 edge alerts in layer 1b | **Applied** |
+| `network-qa` proposal §8.2 | The manifest becomes 3.1.0 with the edge | **Applied** |
 
 ---
 
@@ -338,14 +338,14 @@ assert {
 
 | # | Decision | Status | Recommendation | Alternative |
 |---|---|---|---|---|
-| DL1 | Stacks | Proposed | `edge-base` (phase A) and `edge` (after the Gateway) | A single `gcp-qa-edge` in phase B |
-| DL2 | Public zone | Proposed | Created by the landing zone with the delegation and the `DS`; the environment writes records | Created by the environment, with the landing zone reading its name servers |
-| DL3 | Load balancer scheme | Proposed | `EXTERNAL_MANAGED` | Classic `EXTERNAL` |
-| DL4 | Cloud Armor | Proposed | CRS at sensitivity 1, preview → `deny`, exclusions per field and path, host rule, per-IP limit | Own rules only |
-| DL5 | TLS at the edge | Proposed | `MODERN` profile, TLS ≥ 1.2, HSTS at the edge, 301 redirect | TLS 1.3 mandatory (`RESTRICTED`) |
-| DL6 | `CAA` | Proposed | `pki.goog` and `letsencrypt.org` | No `CAA` |
-| DL7 | L4 exceptions | Proposed | Conditional stack; instance groups via sharing from GKE | Instance groups read as `data` by name |
-| DL8 | IPv6 | Proposed | Not on `qa` | Dual stack |
+| DL1 | Stacks | **Approved** | `edge-base` (phase A) and `edge` (after the Gateway) | A single `gcp-qa-edge` in phase B |
+| DL2 | Public zone | **Approved** | Created by the landing zone with the delegation and the `DS`; the environment writes records | Created by the environment, with the landing zone reading its name servers |
+| DL3 | Load balancer scheme | **Approved** | `EXTERNAL_MANAGED` | Classic `EXTERNAL` |
+| DL4 | Cloud Armor | **Approved** | CRS at sensitivity 1, preview → `deny`, exclusions per field and path, host rule, per-IP limit | Own rules only |
+| DL5 | TLS at the edge | **Approved** | `MODERN` profile, TLS ≥ 1.2, HSTS at the edge, 301 redirect | TLS 1.3 mandatory (`RESTRICTED`) |
+| DL6 | `CAA` | **Approved** | `pki.goog` and `letsencrypt.org` | No `CAA` |
+| DL7 | L4 exceptions | **Approved** | Conditional stack; instance groups via sharing from GKE | Instance groups read as `data` by name |
+| DL8 | IPv6 | **Approved** | Not on `qa` | Dual stack |
 
 ---
 

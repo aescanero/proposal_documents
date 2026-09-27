@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 2 |
+| **Status** | Proposal · revision 3 |
 | **Scope** | The network part of the environment archetype on `qa`: project APIs, VPC, baseline firewall, Cloud NAT, private access to Google APIs, private services access (PSA), private DNS zones, the environment's address pool, the `network` contract, stacks, policies, execution and plan. The edge (`env-edge`, `gcp-qa-edge`) is the next proposal |
 | **Why now** | It is the first thing applied on `qa` after the landing zone, and six proposals have left it requirements (§0.1). The GKE proposal took the node subnet away from it (DN2), so its contract changes |
 | **Base** | S1 §4.14 (KMS), §4.15 (separate VPC); architecture §5.2 (network stack), §11.7 (org policies), §11.9 (network baseline); AM §8–§9 (claims and pools). What is there is not repeated |
@@ -232,7 +232,7 @@ stacks:
     after: [apis]
 ```
 
-`env-edge` and the `edge` stack are added in the edge proposal, in a minor version of this same archetype.
+`env-edge` and the edge stacks are added by version **3.1.0** of this same archetype: the full manifest is in the `edge-qa` proposal §8.2.
 
 ---
 

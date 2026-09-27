@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · stage 2 · revision 3 |
+| **Status** | Proposal · stage 2 · revision 4 |
 | **Part of** | [`README.md`](README.md) (stage 1: elements and dependencies, closed) |
 | **Scope** | The layer-5 archetype `sonarqube`: repository structure, manifest, the stacks that make it up, each stack's template (generator), contracts, execution, configuration, policies, what it provides, and a phased implementation plan |
 | **Out of scope** | `qa`'s layers 0–4 (they belong to the platform; here they appear only as producers and requirements) |
@@ -817,7 +817,7 @@ What this archetype needs from others, and is not yet specified:
 | `keycloak` | `ConfigMap` client reconciler; outputs `saml_sso_url` and `saml_idp_certificate`; `oidc-idp` 4.2.0 | `sso`, `app` |
 | `postgres-operator` | **Resolved** in the `postgres-operator-qa` proposal: `Cluster`, `ObjectStore`, `ScheduledBackup`, `Backup` and `Pooler` as tenant resources in the consumer's namespace (§1); barman-cloud plugin (§5); `operator_version` as a global (§7.1); `ClusterImageCatalog` (§2) | `data-tenant` |
 | `gateway-envoy-gke` | **Resolved** in the Envoy Gateway proposal (`../envoy-gateway-qa/`): no body limit (§2.3); per-route timeout with `timeouts.request` up to 120 s and 60 s by default on the Gateway (§2.2); tenant `BackendTrafficPolicy` allowed within limits and `SecurityPolicy` only in labelled namespaces (§9.2) | `frontdoor` |
-| `gcp-qa-edge` | Backend-service timeout ≥ 120 s (R45); Cloud Armor exclusions on `/api/ce/submit` | Large analyses |
+| `gcp-qa-edge` | **Resolved** in the `edge-qa` proposal: 120 s timeout (§4); Cloud Armor exclusions on `/api/ce/submit` and on `SAMLResponse` of `/oauth2/callback/saml` (§3.2) | Large analyses, login |
 | `monitoring-oss` | Rule selector `prometheus=qa`; Grafana dashboard sidecar; blackbox exporter | `observability` |
 | `secrets-eso-gsm` | ESO installed with Workload Identity support in a namespaced `SecretStore` | `secrets` |
 

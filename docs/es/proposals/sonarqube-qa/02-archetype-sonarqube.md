@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 2 · revisión 3 |
+| **Estado** | Propuesta · etapa 2 · revisión 4 |
 | **Parte de** | [`README.md`](README.md) (etapa 1: elementos y dependencias, cerrada) |
 | **Alcance** | El arquetipo de capa 5 `sonarqube`: estructura en el repositorio, manifiesto, los stacks que lo forman, la plantilla (generador) de cada stack, contratos, ejecución, configuración, políticas, lo que provee y el plan de implementación por fases |
 | **Fuera de alcance** | Las capas 0–4 de `qa` (son de la plataforma; aquí solo aparecen como productores y como requisitos) |
@@ -817,7 +817,7 @@ Lo que este arquetipo necesita de otros y que todavía no está especificado:
 | `keycloak` | Reconciliador de clientes por `ConfigMap`; salidas `saml_sso_url` y `saml_idp_certificate`; `oidc-idp` 4.2.0 | `sso`, `app` |
 | `postgres-operator` | **Resuelto** en la propuesta `postgres-operator-qa`: `Cluster`, `ObjectStore`, `ScheduledBackup`, `Backup` y `Pooler` como tenant resources en el namespace del consumidor (§1); plugin barman-cloud (§5); `operator_version` como global (§7.1); `ClusterImageCatalog` (§2) | `data-tenant` |
 | `gateway-envoy-gke` | **Resuelto** en la propuesta de Envoy Gateway (`../envoy-gateway-qa/`): sin límite de cuerpo (§2.3); timeout por ruta con `timeouts.request` hasta 120 s y 60 s por defecto en el Gateway (§2.2); `BackendTrafficPolicy` de tenant permitida con límites y `SecurityPolicy` solo en namespaces etiquetados (§9.2) | `frontdoor` |
-| `gcp-qa-edge` | Timeout del backend service ≥ 120 s (R45); exclusiones de Cloud Armor en `/api/ce/submit` | Análisis grandes |
+| `gcp-qa-edge` | **Resuelto** en la propuesta `edge-qa`: timeout de 120 s (§4); exclusiones de Cloud Armor en `/api/ce/submit` y en `SAMLResponse` de `/oauth2/callback/saml` (§3.2) | Análisis grandes, login |
 | `monitoring-oss` | Selector de reglas `prometheus=qa`; sidecar de dashboards de Grafana; blackbox exporter | `observability` |
 | `secrets-eso-gsm` | ESO instalado con soporte de Workload Identity en `SecretStore` namespaced | `secrets` |
 

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 3 |
+| **Status** | Proposal · revision 4 |
 | **Scope** | The `qa` cluster as an archetype: addresses and subnet, control plane and access, node security, node pools and how consumers are assigned to them, storage, cluster networking, upgrades, the `cluster` contract, stacks, policies, execution and plan |
 | **Why now** | Everything deployed in the earlier proposals runs on it, and each of them left it a requirement (§0.1). It is everyone's dependency: the last link before the network and the edge |
 | **Base** | S1 §4.1 (runtime), §4.13 (pipeline access), §4.14 (KMS), §4.15 (separate VPC); architecture §5.2–§5.7 (GKE guide and security baseline); AM §9 (pools and ranges). This document **does not repeat** what is there: it makes it concrete and closes the gaps |
@@ -241,6 +241,7 @@ cluster:
 | `cluster_name`, `cluster_location` | Global | `qa`, `europe-west1` | Still outputs too, for compatibility |
 | `workload_identity_pool` | **Global** | `disasterproject-qa.svc.id.goog` | Was a sharing output. It is deterministic (the project), so it becomes a global: one edge fewer in every consumer (DN7). The output stays, deprecated, until 3.0.0 |
 | `node_service_account` | Global | `gke-nodes-qa@disasterproject-qa.iam.gserviceaccount.com` | Same |
+| `node_pool_instance_groups` | Outputs sharing, from `nodepools`, **new** | Instance group URLs per pool | For the edge's L4 exceptions (`edge-qa` proposal §5). Not deterministic: they change if a pool is recreated |
 | `storage_class` | Global, **new** | `standard-rwo` | §6 |
 | `node_pools` | Global, **new**, from the binding | Name, taint and owners of each pool | §5.3 |
 
@@ -278,6 +279,7 @@ provides:
       - { name: cluster_location,       from: cluster }
       - { name: workload_identity_pool, from: cluster }     # deprecated: a global since 2.5.0
       - { name: node_service_account,   from: cluster }
+      - { name: node_pool_instance_groups, from: nodepools }   # for edge-l4 (edge-qa proposal §5)
 
 claims:
   - kind: cidr
@@ -313,7 +315,7 @@ stacks:
 |---|---|---|
 | `subnet` | Node subnet with its two secondary ranges, Private Google Access and flow logs from the environment's `flow_logs` global (`network-qa` proposal §2) | `network_self_link` |
 | `cluster` | `google_container_cluster` (§2–§4), node SA and its roles | `network_self_link`, `subnet_self_link` (from its own `subnet`) |
-| `nodepools` | One `google_container_node_pool` per entry in `cluster.node_pools` | — (globals) |
+| `nodepools` | One `google_container_node_pool` per entry in `cluster.node_pools`; publishes `node_pool_instance_groups` | — (globals) |
 | `access` | S1 §4.13's intermediary service: a Cloud Run function with a custom role holding only `container.clusters.get` and `container.clusters.update`, with an IAM condition on **this** cluster; Cloud Scheduler for the 15-minute reconciler | — |
 | `baseline` | `PriorityClass` `platform-critical` for layers 2b–4, so a tenant cannot evict Gatekeeper or the Gateway; nothing else | `cluster_endpoint`, `cluster_ca` |
 

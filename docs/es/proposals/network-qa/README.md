@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 2 |
+| **Estado** | Propuesta · revisión 3 |
 | **Alcance** | La parte de red del arquetipo de entorno en `qa`: APIs del proyecto, VPC, firewall base, Cloud NAT, acceso privado a las APIs de Google, acceso privado a servicios (PSA), zonas DNS privadas, el pool de direcciones del entorno, el contrato `network`, stacks, políticas, ejecución y plan. El borde (`env-edge`, `gcp-qa-edge`) es la propuesta siguiente |
 | **Por qué ahora** | Es lo primero que se aplica en `qa` después de la landing zone, y seis propuestas le han dejado requisitos (§0.1). La propuesta de GKE le quitó la subred de nodos (DN2), así que su contrato cambia |
 | **Base** | E1 §4.14 (KMS), §4.15 (VPC separada); arquitectura §5.2 (stack de red), §11.7 (org policies), §11.9 (línea base de red); AM §8–§9 (claims y pools). No se repite lo que ya está allí |
@@ -232,7 +232,7 @@ stacks:
     after: [apis]
 ```
 
-`env-edge` y el stack `edge` se añaden en la propuesta del borde, en una versión menor de este mismo arquetipo.
+`env-edge` y los stacks del borde los añade la versión **3.1.0** de este mismo arquetipo: el manifiesto completo está en la propuesta `edge-qa` §8.2.
 
 ---
 

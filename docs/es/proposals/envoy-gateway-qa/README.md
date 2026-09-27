@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 4 |
+| **Estado** | Propuesta · revisión 5 |
 | **Alcance** | El arquetipo de capa 3 `gateway-envoy-gke` en `qa`: el camino de una petición desde el GLB hasta el pod, el Gateway único del entorno, quién puede enganchar qué ruta y con qué política, los CRDs de Gateway API, la flota de proxies y su relación con el NEG, tiempos de espera, observabilidad, red, contrato `ingress`, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | SonarQube (E1 §4.5, E2 §5.8), Keycloak (§8), monitorización (Grafana) y cert-manager (§1, §3) ya publican rutas en el Gateway `qa` o le emiten certificados, y cada uno lo daba por hecho. E2 §9 le dejó tres requisitos pendientes |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -241,7 +241,7 @@ exposures:
 | Aprobación | `CODEOWNERS` sobre `exposures` | Plataforma y seguridad revisan la PR, como una subida de `capacity` en un entorno compartido (guía del desarrollador, `CLAUDE.md`) |
 | Exención en admisión | Gatekeeper (`policy-gatekeeper`) | La exención es por `namespace/Service`, generada por el resolver en los parámetros del constraint, **nunca por namespace entero**. Tipo A (`LoadBalancer` sin `internal`) siempre denegado |
 | `externalIPs` | Gatekeeper | Solo en un `Service` con excepción y solo con la IP reclamada por ella; en cualquier otro, denegado (CVE-2020-8554) |
-| El balanceador | `gcp-qa-edge` | Forwarding rule, backend service y regla de firewall por excepción, con `sources` en la regla. La IP es un claim del entorno (AM §8) |
+| El balanceador | `gcp-qa-edge-l4` (propuesta `edge-qa` §5) | Forwarding rule, backend service y regla de firewall por excepción, con `sources` en la regla. La IP es un claim del entorno (AM §8) |
 | Controles compensatorios | Arquetipo consumidor | Sin Cloud Armor L7, la aplicación autentica con claves, nunca con contraseña (SFTP), registra la IP de origen, y su `NetworkPolicy` solo admite el puerto publicado |
 
 ---
@@ -535,7 +535,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | SonarQube E1 §4.1 | `gateway_api_config.channel = CHANNEL_DISABLED` en la tabla de GKE | **Aplicado** |
 | Propuesta de cert-manager §1, §3, §4.1 | Política `gateway-backend` eliminada: la CA interna solo firma nombres internos, y la validación externa es de los balanceadores con SNI y comodines (cert-manager DT10). El certificado del backend `envoy-qa.envoy-gateway-system.svc` lo cubre `namespace-services` | **Aplicado** |
 | `policy-gatekeeper`, `registry/` y el esquema de manifiesto, `gcp-qa-edge` | Regla sin `Service` `LoadBalancer` ni `NodePort` salvo excepción por nombre; bloque `exposures` con justificación de negocio y caducidad; un balanceador L4 por excepción en el borde (§4.4) | **Aplicado** en `policy-gatekeeper` (P5, P6) y en el esquema (`exposures`); el borde, pendiente de su propuesta |
-| `gcp-qa-edge` (E1 §4.15) | Health check en el puerto de readiness de Envoy; `connection_draining_timeout_sec: 60`; `after` a `gcp-qa-gateway-proxy`; lee `neg_name` y `health_check` | Propuesto, se recoge al proponer el borde |
+| `gcp-qa-edge` (E1 §4.15) | Health check en el puerto de readiness de Envoy; `connection_draining_timeout_sec: 60`; `after` a `gcp-qa-gateway-proxy`; lee `neg_name` y `health_check` | **Resuelto** en la propuesta `edge-qa` (§4) |
 | Stacks `iam` de SonarQube (E2 §5.1, generador `gen_tenant_namespace`), Keycloak (§11.2) y monitorización (§10.2) | Etiqueta `route_namespace_label` y anotación `gateway.disasterproject.com/hostnames` con los hostnames reclamados; sin `security_policy_label`, porque ninguno exige `oidc-security-policy` | **Aplicado** |
 
 ---

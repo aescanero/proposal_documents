@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 1 |
+| **Estado** | Propuesta · revisión 2 |
 | **Alcance** | El borde público de `qa`: IP, zona DNS pública y registros, certificado, Cloud Armor, el Global external Application LB hacia el NEG de Envoy, TLS, las excepciones L4 (patrón B), observabilidad, el contrato `env-edge`, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | Es la última pieza para que SonarQube, Keycloak y Grafana sean alcanzables. La propuesta de Envoy Gateway le dejó requisitos (health check, drenaje, `after`, NEG como `data`) y la de SonarQube, dos más (timeout de 120 s y exclusiones de Cloud Armor) |
 | **Base** | E1 §4.5 (publicación), §4.15 (VPC separada y borde propio); propuesta de Envoy Gateway §1, §2, §4.4, §5.2, §7.1; propuesta `network-qa`; arquitectura §10.2 y §10.8; AM §3 (capabilities de borde en la capa 1). No se repite lo que ya está allí |
@@ -325,12 +325,12 @@ assert {
 
 | Documento | Cambio | Estado |
 |---|---|---|
-| E1 §4.5, §4.15 y §6 | Dos stacks de borde (`gcp-qa-edge-base` en la fase A, `gcp-qa-edge` en la B); la zona pública y su delegación son de la landing zone | **Propuesto** (DL1, DL2) |
-| Propuesta de Envoy Gateway §11 | El requisito a `gcp-qa-edge` queda resuelto aquí | **Propuesto** |
-| E2 §9 | La fila de `gcp-qa-edge` queda resuelta (§3.2, §4) | **Propuesto** |
-| Propuesta de GKE §7.1 y §7.3 | Salida nueva por sharing `node_pool_instance_groups` desde `nodepools`, para `edge-l4` | **Propuesto** (DL7) |
-| Propuesta de monitorización §10.3 | Alertas del borde de §7 en la capa 1b | **Propuesto** |
-| Propuesta `network-qa` §8.2 | El manifiesto pasa a 3.1.0 con el borde | **Propuesto** |
+| E1 §4.5, §4.15 y §6 | Dos stacks de borde (`gcp-qa-edge-base` en la fase A, `gcp-qa-edge` en la B); la zona pública y su delegación son de la landing zone | **Aplicado** (DL1, DL2) |
+| Propuesta de Envoy Gateway §11 | El requisito a `gcp-qa-edge` queda resuelto aquí | **Aplicado** |
+| E2 §9 | La fila de `gcp-qa-edge` queda resuelta (§3.2, §4) | **Aplicado** |
+| Propuesta de GKE §7.1 y §7.3 | Salida nueva por sharing `node_pool_instance_groups` desde `nodepools`, para `edge-l4` | **Aplicado** (DL7) |
+| Propuesta de monitorización §10.3 | Alertas del borde de §7 en la capa 1b | **Aplicado** |
+| Propuesta `network-qa` §8.2 | El manifiesto pasa a 3.1.0 con el borde | **Aplicado** |
 
 ---
 
@@ -338,14 +338,14 @@ assert {
 
 | # | Decisión | Estado | Recomendación | Alternativa |
 |---|---|---|---|---|
-| DL1 | Stacks | Propuesta | `edge-base` (fase A) y `edge` (tras el Gateway) | Un solo `gcp-qa-edge` en la fase B |
-| DL2 | Zona pública | Propuesta | La crea la landing zone con la delegación y el `DS`; el entorno escribe registros | La crea el entorno y la landing zone lee sus name servers |
-| DL3 | Esquema del balanceador | Propuesta | `EXTERNAL_MANAGED` | `EXTERNAL` clásico |
-| DL4 | Cloud Armor | Propuesta | CRS con sensibilidad 1, preview → `deny`, exclusiones por campo y ruta, regla de host, límite por IP | Solo reglas propias |
-| DL5 | TLS en el borde | Propuesta | Perfil `MODERN`, TLS ≥ 1.2, HSTS en el borde, redirección 301 | TLS 1.3 obligatorio (`RESTRICTED`) |
-| DL6 | `CAA` | Propuesta | `pki.goog` y `letsencrypt.org` | Sin `CAA` |
-| DL7 | Excepciones L4 | Propuesta | Stack condicional; grupos de instancias por sharing desde GKE | Grupos de instancias leídos como `data` por nombre |
-| DL8 | IPv6 | Propuesta | No en `qa` | Doble pila |
+| DL1 | Stacks | **Aprobada** | `edge-base` (fase A) y `edge` (tras el Gateway) | Un solo `gcp-qa-edge` en la fase B |
+| DL2 | Zona pública | **Aprobada** | La crea la landing zone con la delegación y el `DS`; el entorno escribe registros | La crea el entorno y la landing zone lee sus name servers |
+| DL3 | Esquema del balanceador | **Aprobada** | `EXTERNAL_MANAGED` | `EXTERNAL` clásico |
+| DL4 | Cloud Armor | **Aprobada** | CRS con sensibilidad 1, preview → `deny`, exclusiones por campo y ruta, regla de host, límite por IP | Solo reglas propias |
+| DL5 | TLS en el borde | **Aprobada** | Perfil `MODERN`, TLS ≥ 1.2, HSTS en el borde, redirección 301 | TLS 1.3 obligatorio (`RESTRICTED`) |
+| DL6 | `CAA` | **Aprobada** | `pki.goog` y `letsencrypt.org` | Sin `CAA` |
+| DL7 | Excepciones L4 | **Aprobada** | Stack condicional; grupos de instancias por sharing desde GKE | Grupos de instancias leídos como `data` por nombre |
+| DL8 | IPv6 | **Aprobada** | No en `qa` | Doble pila |
 
 ---
 

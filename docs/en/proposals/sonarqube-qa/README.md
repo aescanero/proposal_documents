@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · stage 1 of N · **stage 1 closed** · revision 17 (aligned with stage 2) |
+| **Status** | Proposal · stage 1 of N · **stage 1 closed** · revision 18 (aligned with stage 2) |
 | **Scope** | What elements a complete `qa` environment needs to run SonarQube Community Build, what each one depends on, and which open source tool covers it |
 | **Out of scope** | Code (generators, contracts, charts), detailed per-pipeline integration, upgrade procedure. Later stages |
 | **Reference specification** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `developer-guide.md` (DG §n), `risk-register.md` |
@@ -207,7 +207,7 @@ Backups to GCS via **Workload Identity**: IAM `roles/storage.objectAdmin` on the
 | Element | Proposal |
 |---|---|
 | Hostname | `sonar.qa.disasterproject.com` — a ledger **claim** even though the DNS record is a wildcard: name uniqueness remains a scarce resource |
-| DNS | Wildcard record `*.qa.disasterproject.com` → global IP, created once by `gcp-qa-edge` |
+| DNS | Wildcard record `*.qa.disasterproject.com` → global IP, created once by `gcp-qa-edge-base` (`edge-qa` proposal §1) |
 | Public TLS | Certificate Manager, wildcard, on the GLB |
 | Internal TLS | GLB → Envoy over HTTPS, certificate from cert-manager's internal CA |
 | Gateway | One per environment, `allowedRoutes.namespaces.from: Selector` (§10.6); standalone NEG `eg-qa-neg` (§10.2, R20) |
@@ -425,9 +425,9 @@ What the documentation does **not** say: which stack creates the keys, at what l
 
 | Element | Where | Why |
 |---|---|---|
-| Global external Application LB (backend service, URL map, proxy, forwarding rule) | Stack `gcp-qa-edge`, layer 1, in `disasterproject-qa` | The backend service and Envoy's NEG sit in the same VPC. A global external LB needs no proxy-only subnet |
-| Global IP, Cloud Armor policy, wildcard certificate | Stack `gcp-qa-edge`, layer 1, in `disasterproject-qa` | Must be in the **same project as the LB**. With one project per environment, the `cert`, `waf` and `edge-ip` capabilities are provided by the environment, not the landing zone |
-| `qa.disasterproject.com` zone | In `disasterproject-qa`, delegated from `disasterproject.com` (landing zone project) | The wildcard and the certificate's DNS authorization records are written without any permission on the parent zone |
+| Global external Application LB (backend service, URL map, proxy, forwarding rule) | Stack `gcp-qa-edge`, layer 1, in `disasterproject-qa`, after Envoy's proxy (`edge-qa` proposal §4) | The backend service and Envoy's NEG sit in the same VPC. A global external LB needs no proxy-only subnet |
+| Global IP, Cloud Armor policy, wildcard certificate | Stack `gcp-qa-edge-base`, layer 1, in `disasterproject-qa`, in phase A: the certificate is active before the Gateway (`edge-qa` proposal DL1) | Must be in the **same project as the LB**. With one project per environment, the `cert`, `waf` and `edge-ip` capabilities are provided by the environment, not the landing zone |
+| `qa.disasterproject.com` zone | In `disasterproject-qa`, **created by the landing zone** together with the delegation from `disasterproject.com` and the DNSSEC `DS`; the environment writes the records with `dns.admin` on that zone | So layer 0 reads no name servers from layer 1, and zone, delegation and `DS` cannot drift apart (`edge-qa` proposal DL2) |
 | Private `qa.internal` zone | A **private** Cloud DNS zone in `disasterproject-qa`, bound only to `qa`'s VPC; the network stack creates it and each archetype writes its records under `<namespace>.qa.internal` | Names for VPC clients outside the cluster (Kafka proposal §6.3). `.internal` is reserved for private use: it does not resolve outside the VPC, nor through the hub peering unless deliberately bound there |
 | KMS, Artifact Registry, GitHub WIF | Landing zone project | Cross-project grants: `disasterproject-qa`'s GKE agent on the `gke-secrets` key; the node SA reading the registry; pipeline identities via WIF |
 | GKE control plane | Public endpoint with empty authorized networks; private nodes in `qa`'s VPC | Pipeline access per §4.13 |
@@ -465,8 +465,8 @@ Since the environment is new, deploying SonarQube means deploying the entire pla
 | Phase | Stacks | Blocked by |
 |---|---|---|
 | **0** | Throwaway repository, `CLAUDE.md` checks | Nothing. Must happen first |
-| **A** | Landing zone, network, GKE | Phase 0 |
-| **B** | Gatekeeper, cert-manager, monitoring, ESO, buckets, CNPG, Keycloak, Gateway, edge | A |
+| **A** | Landing zone (with the public zone), network, edge base (`gcp-qa-edge-base`), GKE | Phase 0 |
+| **B** | Gatekeeper, cert-manager, monitoring, ESO, buckets, CNPG, Keycloak, Gateway, edge load balancer (`gcp-qa-edge`) | A |
 | **C** | The 9 stacks of `gcp-qa-sonarqube-main` (stage 2 §5) | B; V1–V3 |
 
 New edges introduced by SonarQube (each with its `after`, R2):

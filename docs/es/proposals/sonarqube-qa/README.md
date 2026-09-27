@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 17 (alineada con la etapa 2) |
+| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 18 (alineada con la etapa 2) |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
@@ -207,7 +207,7 @@ Backups a GCS con **Workload Identity**: IAM `roles/storage.objectAdmin` sobre e
 | Elemento | Propuesta |
 |---|---|
 | Hostname | `sonar.qa.disasterproject.com` — **claim** en el ledger aunque el DNS sea wildcard: la unicidad del nombre sigue siendo escasa |
-| DNS | Registro wildcard `*.qa.disasterproject.com` → IP global, creado una vez por `gcp-qa-edge` |
+| DNS | Registro wildcard `*.qa.disasterproject.com` → IP global, creado una vez por `gcp-qa-edge-base` (propuesta `edge-qa` §1) |
 | TLS público | Certificate Manager, wildcard, en el GLB |
 | TLS interno | GLB → Envoy por HTTPS con certificado de la CA interna de cert-manager |
 | Gateway | Uno por entorno, `allowedRoutes.namespaces.from: Selector` (§10.6); NEG standalone `eg-qa-neg` (§10.2, R20) |
@@ -425,9 +425,9 @@ Lo que la documentación **no** dice: qué stack crea las claves, en qué capa, 
 
 | Elemento | Dónde | Por qué |
 |---|---|---|
-| Global external Application LB (backend service, URL map, proxy, forwarding rule) | Stack `gcp-qa-edge`, capa 1, en `disasterproject-qa` | El backend service y el NEG de Envoy quedan en la misma VPC. Un LB externo global no necesita subred proxy-only |
-| IP global, política de Cloud Armor, certificado wildcard | Stack `gcp-qa-edge`, capa 1, en `disasterproject-qa` | Deben estar en el **mismo proyecto que el LB**. Con un proyecto por entorno, las capabilities `cert`, `waf` y `edge-ip` las provee el entorno, no la landing zone |
-| Zona `qa.disasterproject.com` | En `disasterproject-qa`, delegada desde `disasterproject.com` (proyecto de landing zone) | El wildcard y los registros de DNS authorization del certificado se escriben sin permisos sobre la zona padre |
+| Global external Application LB (backend service, URL map, proxy, forwarding rule) | Stack `gcp-qa-edge`, capa 1, en `disasterproject-qa`, después del proxy de Envoy (propuesta `edge-qa` §4) | El backend service y el NEG de Envoy quedan en la misma VPC. Un LB externo global no necesita subred proxy-only |
+| IP global, política de Cloud Armor, certificado wildcard | Stack `gcp-qa-edge-base`, capa 1, en `disasterproject-qa`, en la fase A: el certificado queda activo antes que el Gateway (propuesta `edge-qa` DL1) | Deben estar en el **mismo proyecto que el LB**. Con un proyecto por entorno, las capabilities `cert`, `waf` y `edge-ip` las provee el entorno, no la landing zone |
+| Zona `qa.disasterproject.com` | En `disasterproject-qa`, **creada por la landing zone** junto con la delegación desde `disasterproject.com` y el `DS` de DNSSEC; el entorno escribe los registros con `dns.admin` sobre esa zona | Así la capa 0 no lee name servers de la capa 1, y zona, delegación y `DS` no se desincronizan (propuesta `edge-qa` DL2) |
 | Zona privada `qa.internal` | Cloud DNS **privada** en `disasterproject-qa`, enlazada solo a la VPC de `qa`; la crea el stack de red y cada arquetipo escribe sus registros bajo `<namespace>.qa.internal` | Nombres para clientes de la VPC fuera del cluster (propuesta de Kafka §6.3). `.internal` está reservado para uso privado: no resuelve fuera de la VPC, ni por el peering con el hub salvo que se enlace allí a propósito |
 | KMS, Artifact Registry, WIF de GitHub | Proyecto de landing zone | Permisos entre proyectos: agente de GKE de `disasterproject-qa` sobre la clave `gke-secrets`; SA de nodos lectora del registro; identidades de pipeline por WIF |
 | Plano de control de GKE | Endpoint público con redes autorizadas vacías; nodos privados en la VPC de `qa` | Acceso del pipeline según §4.13 |
@@ -465,8 +465,8 @@ Como el entorno es nuevo, el despliegue de SonarQube es el despliegue de la plat
 | Fase | Stacks | Bloqueada por |
 |---|---|---|
 | **0** | Repositorio desechable, verificaciones de `CLAUDE.md` | Nada. Hay que hacerla primero |
-| **A** | Landing zone, red, GKE | Fase 0 |
-| **B** | Gatekeeper, cert-manager, monitorización, ESO, buckets, CNPG, Keycloak, Gateway, borde | A |
+| **A** | Landing zone (con la zona pública), red, base del borde (`gcp-qa-edge-base`), GKE | Fase 0 |
+| **B** | Gatekeeper, cert-manager, monitorización, ESO, buckets, CNPG, Keycloak, Gateway, balanceador del borde (`gcp-qa-edge`) | A |
 | **C** | Los 9 stacks de `gcp-qa-sonarqube-main` (etapa 2 §5) | B; V1–V3 |
 
 Aristas nuevas que introduce SonarQube (cada una con su `after`, R2):
