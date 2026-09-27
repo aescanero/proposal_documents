@@ -1,0 +1,22 @@
+flowchart LR
+    subgraph BIND["Binding del entorno · un proveedor global"]
+        direction TB
+        QA["qa y prod<br/>database-platform: postgres-cloudsql"]
+        CL["cliente que elige CNPG<br/>database-platform: postgres-operator"]
+    end
+    subgraph PROV["Proveedores de database-platform 2.0.0"]
+        direction TB
+        CS["postgres-cloudsql<br/>trait cloudsql · por defecto<br/>prerrequisitos + generador"]
+        OP["postgres-operator<br/>trait cnpg · alternativa<br/>operador CNPG compartido"]
+    end
+    subgraph CONS["Cada consumidor · su propia instancia"]
+        direction TB
+        SQ["SonarQube<br/>data · data-tenant"]
+        KC["Keycloak<br/>data · data-tenant"]
+    end
+    QA --> CS
+    CL --> OP
+    CS -. "has_trait cloudsql → stack data" .-> CONS
+    OP -. "has_trait cnpg → stack data-tenant" .-> CONS
+
+    style CS fill:#e6f4ea

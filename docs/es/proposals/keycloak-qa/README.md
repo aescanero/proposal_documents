@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 5 |
+| **Estado** | Propuesta · revisión 6 |
 | **Alcance** | El arquetipo de capa 4 `keycloak` en `qa`: instalación, datos, configuración, realm `qa` con Entra ID como IdP de origen, clientes de los consumidores como tenant resources, claves, publicación, red, disponibilidad, observabilidad, stacks, políticas, ejecución y plan |
-| **Supuesto de datos** | La variante Cloud SQL ([`../sonarqube-qa-cloudsql/`](../sonarqube-qa-cloudsql/README.md), DC1): `database-platform` sin enlazar en `qa`, así que Keycloak trae su propia instancia (DC8 de esa variante). Si DC1 se rechaza, el mismo manifiesto toma el camino `data-tenant` con un `Cluster` CNPG (AM §5.5) y solo cambia §3 |
+| **Supuesto de datos** | El proveedor global de `database-platform` del entorno ([`../postgres-cloudsql-qa/`](../postgres-cloudsql-qa/README.md)). En `qa`, `postgres-cloudsql`: Keycloak crea su propia instancia Cloud SQL (stack `data`, §3). Con `postgres-operator`, su propio `Cluster` CNPG (stack `data-tenant`) |
 | **Consumidores conocidos** | SonarQube por SAML ([`../sonarqube-qa/`](../sonarqube-qa/README.md), E1/E2), Grafana por OIDC, aplicaciones futuras con `SecurityPolicy` OIDC en el Gateway |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `developer-guide.md` (DG §n), `risk-register.md` |
 | **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano. `diagrams/09-bloques-presentacion.svg` (1920×1080, para presentaciones) se genera con `09-bloques-presentacion.py`, no con Mermaid |
@@ -444,10 +444,7 @@ requires:
     version: "^1.5.0"
     traits: [prometheus-operator-crds]
   - capability: database-platform
-    version: "^1.0.0"
-    traits: [cnpg]
-    optional: true
-    reason: "Sin database-platform, el arquetipo trae su instancia gestionada (AM §5.5)"
+    version: "^2.0.0"                              # sin trait de proveedor: lo decide el entorno
 
 provides:
   - capability: oidc-idp
@@ -473,10 +470,10 @@ stacks:
   - name: secrets
     after: [iam]
   - name: data
-    condition: "!resolved(database-platform)"
+    condition: "has_trait(database-platform, cloudsql)"
     after: [iam, secrets]
   - name: data-tenant
-    condition: "resolved(database-platform)"
+    condition: "has_trait(database-platform, cnpg)"
     after: [iam, secrets]
     creates_tenant_resources: [database-platform]
   - name: firewall
@@ -661,7 +658,7 @@ Se detiene en la instancia Cloud SQL (doble protección) y en `qa-keycloak-realm
 | # | Decisión | Estado | Recomendación | Alternativa |
 |---|---|---|---|---|
 | DK1 | Instalación | Propuesta | Keycloak Operator oficial | Chart `keycloakx` |
-| DK2 | Datos | Heredada de DC1/DC8 | Cloud SQL propio | `Cluster` CNPG si DC1 se rechaza |
+| DK2 | Datos | Consecuencia de la propuesta `postgres-cloudsql` (DQ1, DQ2) | Cloud SQL propio en `qa` | `Cluster` CNPG propio si el entorno enlaza `postgres-operator` |
 | DK3 | Conexión a la BD | Propuesta | Auth Proxy por `unsupported.podTemplate` | IP privada con `verify-ca` |
 | DK4 | Configuración del realm y clientes | Propuesta | keycloak-config-cli con documento fusionado y remote state | `KeycloakRealmImport` (solo crea); proveedor de OpenTofu (credenciales de admin en el pipeline, E2 §5.5) |
 | DK5 | Grupos | Propuesta | Atributo `entra_roles` importado del claim `roles` | Mapper por app role (E1 §4.6) |

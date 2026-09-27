@@ -169,7 +169,7 @@ La tabla siguiente es una **copia de lectura**; la fuente de verdad es `registry
 | Ingress | `gateway-api`, `ingress-api`, `http-route`, `grpc-route`, `tcp-route`, `cross-namespace-refgrant`, `oidc-security-policy`, `jwt-auth`, `local-rate-limit`, `global-rate-limit`, `mtls-backend`, `backend-tls` |
 | Borde | `iac-owned-edge`, `managed-cert`, `waf`, `global-anycast`, `regional-only` |
 | Identidad | `workload-identity`, `irsa`, `pod-identity`, `managed-identity`, `saml-idp` |
-| Datos | `private-endpoint`, `iam-auth`, `multi-az`, `psa-shared`, `cnpg` |
+| Datos | `private-endpoint`, `iam-auth`, `multi-az`, `psa-shared`, `cnpg`, `cloudsql` |
 | Mensajería | `strimzi`, `kraft`, `acl-authz`, `tls-mtls`, `schema-registry`, `tiered-storage` |
 | Política | `gatekeeper`, `custom-templates`, `audit-api`, `referential-constraints`, `mutation` |
 | Observabilidad | `managed-prometheus`, `otlp-native`, `managed-tracing`, `prometheus-operator-crds` |
@@ -349,24 +349,23 @@ Kafka es deliberadamente un arquetipo: la intención de diseño es **un bus com�
 
 ### 5.5 Stacks condicionales
 
-Un arquetipo que puede traer su propia base de datos o usar una plataforma compartida declara ambos caminos en un único manifiesto:
+Un arquetipo que puede funcionar con cualquiera de los dos proveedores de `database-platform` declara ambos caminos en un único manifiesto, elegidos por el trait del proveedor enlazado:
 
 ```yaml
 requires:
   - capability: database-platform
-    version: "^1.0.0"
-    optional: true                # se usa cuando el entorno lo provee
+    version: "^2.0.0"
 
 stacks:
   - name: data
-    condition: "!resolved(database-platform)"     # Cloud SQL dedicado, solo cuando no
+    condition: "has_trait(database-platform, cloudsql)"   # su propia instancia gestionada (Cloud SQL)
   - name: data-tenant
-    condition: "resolved(database-platform)"      # un Database CR contra el operador compartido
+    condition: "has_trait(database-platform, cnpg)"       # su propio Cluster contra el operador compartido
 ```
 
-El mismo arquetipo crea una instancia dedicada donde `database-platform` está sin enlazar y una base de datos de tenant donde está enlazado, a partir de un manifiesto.
+El proveedor es **global por entorno** (§2), se elige en el binding, y el consumidor no elige. Los servicios son **gestionados primero**: `postgres-cloudsql` es el proveedor por defecto y `postgres-operator` (CloudNativePG) la alternativa mantenida para los clientes que lo quieren todo en el cluster. Ambos caminos dan a cada consumidor su propia instancia, así que la elección es **gestionado frente a operado**, nunca compartido frente a aislado. Ninguna elección toca el arquetipo.
 
-Qué camino toma un entorno es una **decisión de aislamiento de datos, no de coste**. En `demos` el entorno deja deliberadamente `database-platform` sin enlazar: las demos de la oficina de proyecto llegan con requisitos arbitrarios y datos que no deben co-ubicarse, así que cada tenant obtiene su propia instancia gestionada. Un entorno que prefiere densidad — un entorno de formación o integración con cargas homogéneas y de confianza — lo enlaza y comparte el operador. Ninguna elección toca el arquetipo.
+`!resolved(database-platform)` sigue siendo válido para un entorno que deja la capability sin enlazar, como hace hoy `demos` (§7). Expresar `demos` como un binding a `postgres-cloudsql`, con la misma semántica, se propone en `proposals/postgres-cloudsql-qa/`.
 
 ---
 
@@ -1285,10 +1284,11 @@ Los manifiestos de la capa 5 son la recompensa: `webapp-3tier` no nombra ninguna
 | `certs` (dentro del cluster) | `cert-manager` | `cert-manager` | `cert-manager` |
 | `secrets` | Secret Manager | Secrets Manager | Key Vault |
 | `event-bus` | `kafka` (Strimzi) | `kafka` (Strimzi) | `kafka` (Strimzi) |
+| `database-platform` | `postgres-cloudsql` (por defecto), `postgres-operator` | RDS (por defecto), `postgres-operator` | Flexible Server (por defecto), `postgres-operator` |
 | `cloud-observability` | Cloud Monitoring | CloudWatch | Azure Monitor |
 | trait `workload-identity` | Workload Identity Federation | IRSA / Pod Identity | Workload Identity |
 
-Los arquetipos de capa 4 respaldados por operador (Kafka, Postgres, Redis, Keycloak) son iguales en todas partes — corren sobre Kubernetes. Es una ventaja de portabilidad significativa y un argumento para preferir operadores frente a servicios gestionados donde el compromiso esté equilibrado.
+Los arquetipos de capa 4 respaldados por operador (Kafka, Postgres, Redis, Keycloak) son iguales en todas partes — corren sobre Kubernetes. Es una ganancia real de portabilidad, pero la regla de la plataforma es **gestionado primero** (`CLAUDE.md`): donde un servicio gestionado es equivalente, es el proveedor por defecto, y el arquetipo respaldado por operador es la alternativa mantenida para los clientes que la quieren. Ambos quedan detrás del mismo contrato de capability, así que la elección se hace en el binding del entorno, no en los arquetipos.
 
 ### 14.3 Añadir una cuarta cloud
 

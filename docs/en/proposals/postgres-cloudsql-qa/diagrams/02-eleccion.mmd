@@ -1,0 +1,17 @@
+flowchart TB
+    B["environment binding<br/>database-platform"]
+    R4["step 4 · BIND<br/>one provider, one lookup"]
+    R9{"step 9 · CONDITION<br/>the provider's traits"}
+    D["data stack<br/>the consumer's Cloud SQL"]
+    T["data-tenant stack<br/>the consumer's CNPG Cluster"]
+    X["migration (described, not built)<br/>per instance, with review_by"]
+    N["No per-consumer selection:<br/>it breaks qa ↔ prod parity"]
+
+    B --> R4 --> R9
+    R9 -->|"cloudsql"| D
+    R9 -->|"cnpg"| T
+    X -. "only if built" .-> R4
+    N -.-x R4
+
+    style N fill:#fce8e6
+    style X fill:#f5f5f5,stroke-dasharray: 5 5

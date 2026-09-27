@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 2 · **variante** de [`../sonarqube-qa/`](../sonarqube-qa/README.md) |
+| **Estado** | Propuesta · revisión 3 · **camino de `qa`**: el proveedor global de `database-platform` es `postgres-cloudsql` ([`../postgres-cloudsql-qa/`](../postgres-cloudsql-qa/README.md)). La base CNPG ([`../sonarqube-qa/`](../sonarqube-qa/README.md)) es el camino de los clientes que eligen `postgres-operator` |
 | **Alcance** | Sustituir el `Cluster` de CloudNativePG de SonarQube por una instancia **Cloud SQL for PostgreSQL** dedicada: modelo, instancia, conectividad, identidad, secretos, red, backup, observabilidad, stacks, políticas, ejecución y plan |
 | **Base** | Etapa 1 [`README.md`](../sonarqube-qa/README.md) (E1 §n) y etapa 2 [`02-archetype-sonarqube.md`](../sonarqube-qa/02-archetype-sonarqube.md) (E2 §n). **Todo lo que este documento no menciona queda igual que en la base** |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `developer-guide.md` (DG §n), `risk-register.md` |
@@ -59,7 +59,7 @@ Nada de este documento reabre decisiones de `CLAUDE.md`. Sí reabre **D2** de la
 | Paso de resolución (AM §12) | Resultado en `qa` |
 |---|---|
 | 4 · vincular capability → proveedor | `database-platform` **sin proveedor**. Es `optional`: aviso, no error |
-| 9 · evaluar condiciones de stack | `!resolved(database-platform)` es verdadero: se genera `data`, se **omite** `data-tenant` |
+| 9 · evaluar condiciones de stack | `has_trait(database-platform, cloudsql)` es verdadero: se genera `data`, se **omite** `data-tenant` |
 | 12 · claims | **Ninguno nuevo.** La IP de Cloud SQL sale del rango PSA, que reclama el entorno en la zona `data`; una base de datos dentro de ese rango no es un claim de CIDR (AM §9.3) |
 | 14 · capacity | `managed_db_instances: 1`. En un entorno dedicado no se aplican budgets (E1 §0); se declara para que el mismo manifiesto funcione en un entorno compartido |
 
@@ -312,10 +312,7 @@ requires:
     version: "^4.2.0"
     traits: [saml-idp]
   - capability: database-platform
-    version: "^1.0.0"
-    traits: [cnpg]
-    optional: true                                 # sin enlazar → stack data (Cloud SQL)
-    reason: "Sin database-platform, el arquetipo trae su instancia gestionada (AM §5.5)"
+    version: "^2.0.0"                              # sin trait de proveedor: lo decide el entorno
   - capability: monitoring
     version: "^1.5.0"
     traits: [prometheus-operator-crds]
@@ -325,10 +322,10 @@ stacks:
   - name: secrets
     after: [iam]
   - name: data
-    condition: "!resolved(database-platform)"      # Cloud SQL dedicado
+    condition: "has_trait(database-platform, cloudsql)"   # Cloud SQL (proveedor postgres-cloudsql)
     after: [iam, secrets]
   - name: data-tenant
-    condition: "resolved(database-platform)"       # Cluster CNPG, como en la base
+    condition: "has_trait(database-platform, cnpg)"       # Cluster CNPG (proveedor postgres-operator)
     after: [iam, secrets]
     creates_tenant_resources: [database-platform]
   - name: firewall
@@ -387,7 +384,7 @@ bindings:
   secrets:             { archetype: secrets-eso-gsm, version: 0.1.0,      stack_id: gcp-qa-secrets }
   monitoring:          { archetype: monitoring-oss, version: 0.1.0,       stack_id: gcp-qa-monitoring }
   oidc-idp:            { archetype: keycloak, version: 4.1.0,             stack_id: gcp-qa-keycloak }
-  # database-platform: SIN ENLAZAR — cada arquetipo trae su Cloud SQL (AM §5.5), como en demos
+  database-platform:   { archetype: postgres-cloudsql, version: 0.1.0,    stack_id: gcp-qa-postgres-cloudsql }  # cada consumidor crea su Cloud SQL
   # dns: sin enlazar — wildcard en env-edge
 network:
   cidr: 10.4.128.0/17
@@ -672,14 +669,14 @@ Fuente: [`diagrams/07-upgrade.mmd`](diagrams/07-upgrade.mmd)
 
 | # | Decisión | Estado | Recomendación | Alternativa |
 |---|---|---|---|---|
-| DC1 | Motor de PostgreSQL de SonarQube en `qa` | **Propuesta** — reabre D2 | Cloud SQL, `database-platform` sin enlazar | CNPG (la base) |
+| DC1 | Motor de PostgreSQL de SonarQube en `qa` | **Consecuencia** de la propuesta `postgres-cloudsql` (DQ2) | Cloud SQL, proveedor global `postgres-cloudsql` | CNPG, con `postgres-operator` como proveedor global |
 | DC2 | Edición | Propuesta | Enterprise | Enterprise Plus: PITR 35 días y mantenimiento casi sin corte, más cara |
 | DC3 | Disponibilidad | Propuesta | `ZONAL` en la zona de `sonar` | `REGIONAL`, solo junto con el disco HA de E1 §4.1 |
 | DC4 | Conexión | Propuesta | Auth Proxy como sidecar nativo | IP privada directa con `verify-ca`; Java Connector |
 | DC5 | Autenticación de la aplicación | Propuesta | Contraseña (en Secret Manager) + autorización IAM del proxy | Autenticación IAM de base de datos, con cuenta de servicio de GCP |
 | DC6 | Alertas de PostgreSQL | Propuesta | Cloud Monitoring desde el stack `data` | `stackdriver-exporter` hacia Prometheus |
 | DC7 | Restauración | Propuesta | Restore en sitio para rollback de upgrade; clon con generación para PITR | Solo clon |
-| DC8 | Keycloak en `qa` | **Consecuencia** de DC1 | Cloud SQL propio | — (el binding no permite mezclar, §2.2) |
+| DC8 | Keycloak en `qa` | **Consecuencia** de DQ1 y DQ2 | Cloud SQL propio | — (el proveedor es global por entorno) |
 
 ---
 

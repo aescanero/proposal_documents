@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 14 (alineada con la etapa 2) |
+| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 15 (alineada con la etapa 2) |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
@@ -190,7 +190,7 @@ Tres piezas, cada una con una sola responsabilidad:
 
 ### 4.4 Datos: PostgreSQL con CloudNativePG
 
-`database-platform` sin enlazar es la decisión de `demos`. En `qa` se propone **enlazarlo** a CloudNativePG, con una instancia **propia** por consumidor:
+**Actualizado por la propuesta `postgres-cloudsql`** ([`../postgres-cloudsql-qa/`](../postgres-cloudsql-qa/README.md)). El motor no lo elige SonarQube: lo fija el proveedor global de `database-platform` del entorno, y los servicios gestionados van primero. En `qa`, como en `prod`, es **Cloud SQL**, y SonarQube sigue el camino `data` de la variante Cloud SQL ([`../sonarqube-qa-cloudsql/`](../sonarqube-qa-cloudsql/README.md)). Lo que sigue describe el camino **CNPG** (`data-tenant`), que se mantiene soportado para los clientes que eligen `postgres-operator`. Dentro de ese camino, la opción es:
 
 | Opción | Qué crea SonarQube | Recomendación |
 |---|---|---|
@@ -588,7 +588,7 @@ bindings:
   certs:               { archetype: cert-manager, version: 1.0.4,         stack_id: gcp-qa-certs }
   secrets:             { archetype: secrets-eso-gsm, version: 0.1.0,      stack_id: gcp-qa-secrets }
   monitoring:          { archetype: monitoring-oss, version: 0.1.0,       stack_id: gcp-qa-monitoring }
-  database-platform:   { archetype: postgres-operator, version: 0.1.0,    stack_id: gcp-qa-postgres-operator }  # SÍ en qa
+  database-platform:   { archetype: postgres-cloudsql, version: 0.1.0,    stack_id: gcp-qa-postgres-cloudsql }  # proveedor por defecto: gestionado primero
   oidc-idp:            { archetype: keycloak, version: 4.1.0,             stack_id: gcp-qa-keycloak }
   event-bus:           { archetype: kafka, version: 2.1.0,                stack_id: gcp-qa-kafka }   # bus interno, nunca fuera de la VPC
   # dns: sin enlazar — wildcard en env-edge
@@ -627,7 +627,7 @@ Añadidos en `registry/traits.yaml`, con el `enum` de `schemas/archetype-manifes
 | # | Decisión | Estado | Recomendación | Alternativa |
 |---|---|---|---|---|
 | D1 | Backend de secretos | **Cerrada** | ESO + Secret Manager; OpenBao fuera de `qa` | — |
-| D2 | PostgreSQL | **Cerrada** | `Cluster` CNPG propio | Cloud SQL |
+| D2 | PostgreSQL | **Cerrada** (propuesta `postgres-cloudsql`) | Lo decide el proveedor global del entorno: Cloud SQL en `qa` y `prod`; con CNPG, `Cluster` propio | — |
 | D3 | Exposición | **Cerrada** | Pública tras GLB + Cloud Armor, sin filtrado por IP; auth en SonarQube | — |
 | D4 | Autenticación de personas | **Cerrada** | SAML desde Keycloak, que hace broker OIDC hacia Entra ID; grupos por app roles | SAML directo SonarQube ↔ Entra ID: menos piezas, pero rompe la uniformidad del realm `qa` |
 | D5 | Runtime | **Cerrada** | GKE Standard | — (Autopilot sin sysctl) |

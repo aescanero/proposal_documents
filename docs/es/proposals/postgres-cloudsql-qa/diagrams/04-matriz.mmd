@@ -1,0 +1,13 @@
+flowchart LR
+    PR["PR que toca un consumidor<br/>de database-platform"]
+    subgraph G1["G1 · matriz de proveedores"]
+        direction TB
+        A["resolve + generate<br/>binding con postgres-cloudsql"]
+        B["resolve + generate<br/>binding con postgres-operator"]
+        G["gator test<br/>proxy-sidecar y service"]
+    end
+    EPH["efímero semanal con CNPG<br/>pruebas de humo de SonarQube y Keycloak"]
+    OK["merge"]
+
+    PR --> G1 --> OK
+    EPH -. "detecta lo que G1 no ve" .-> PR

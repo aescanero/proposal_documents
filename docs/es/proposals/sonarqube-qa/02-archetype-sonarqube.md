@@ -150,8 +150,7 @@ requires:
     version: "^4.2.0"                              # 4.2 añade las salidas SAML (§5.5)
     traits: [saml-idp]
   - capability: database-platform
-    version: "^1.0.0"
-    traits: [cnpg]
+    version: "^2.0.0"                              # sin trait de proveedor: lo decide el entorno
   - capability: monitoring
     version: "^1.5.0"
     traits: [prometheus-operator-crds]
@@ -163,11 +162,15 @@ stacks:
   - name: iam
   - name: secrets
     after: [iam]
+  - name: data
+    condition: "has_trait(database-platform, cloudsql)"   # Cloud SQL, variante §9.3
+    after: [iam, secrets]
   - name: data-tenant
+    condition: "has_trait(database-platform, cnpg)"       # CNPG, §5.3
     after: [iam, secrets]
     creates_tenant_resources: [database-platform]
   - name: firewall
-    after: [data-tenant]
+    after: [data, data-tenant]                     # el resolver descarta el omitido
   - name: sso
     after: [iam]
     creates_tenant_resources: [oidc-idp]
@@ -195,6 +198,7 @@ capacity:
   cpu_millicores: 8000
   memory_mib: 28672
   pvc_gib: 250
+  managed_db_instances: 1                          # camino data
   ingress_routes: 1
   workload_identities: 2
 

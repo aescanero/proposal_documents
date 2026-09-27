@@ -169,7 +169,7 @@ The table below is a **reading copy**; the source of truth is `registry/traits.y
 | Ingress | `gateway-api`, `ingress-api`, `http-route`, `grpc-route`, `tcp-route`, `cross-namespace-refgrant`, `oidc-security-policy`, `jwt-auth`, `local-rate-limit`, `global-rate-limit`, `mtls-backend`, `backend-tls` |
 | Edge | `iac-owned-edge`, `managed-cert`, `waf`, `global-anycast`, `regional-only` |
 | Identity | `workload-identity`, `irsa`, `pod-identity`, `managed-identity`, `saml-idp` |
-| Data | `private-endpoint`, `iam-auth`, `multi-az`, `psa-shared`, `cnpg` |
+| Data | `private-endpoint`, `iam-auth`, `multi-az`, `psa-shared`, `cnpg`, `cloudsql` |
 | Messaging | `strimzi`, `kraft`, `acl-authz`, `tls-mtls`, `schema-registry`, `tiered-storage` |
 | Policy | `gatekeeper`, `custom-templates`, `audit-api`, `referential-constraints`, `mutation` |
 | Observability | `managed-prometheus`, `otlp-native`, `managed-tracing`, `prometheus-operator-crds` |
@@ -349,24 +349,23 @@ Kafka is deliberately an archetype: the design intent is **a common bus with sep
 
 ### 5.5 Conditional stacks
 
-An archetype that can either bring its own database or use a shared platform declares both paths in one manifest:
+An archetype that can run on either `database-platform` provider declares both paths in one manifest, selected by the bound provider's trait:
 
 ```yaml
 requires:
   - capability: database-platform
-    version: "^1.0.0"
-    optional: true                # used when the environment provides it
+    version: "^2.0.0"
 
 stacks:
   - name: data
-    condition: "!resolved(database-platform)"     # dedicated Cloud SQL, only when not
+    condition: "has_trait(database-platform, cloudsql)"   # its own managed instance (Cloud SQL)
   - name: data-tenant
-    condition: "resolved(database-platform)"      # a Database CR against the shared operator
+    condition: "has_trait(database-platform, cnpg)"       # its own Cluster against the shared operator
 ```
 
-The same archetype creates a dedicated instance where `database-platform` is unbound and a tenant database where it is bound, from one manifest.
+The provider is **global per environment** (§2), chosen in the binding, and the consumer does not choose. Services are **managed first**: `postgres-cloudsql` is the default, and `postgres-operator` (CloudNativePG) is the maintained alternative for clients who want everything in the cluster. Either path gives each consumer its own instance, so the choice is **managed versus operated**, never shared versus isolated. Neither choice touches the archetype.
 
-Which path an environment takes is a **data-isolation decision, not a cost one**. In `demos` the environment deliberately leaves `database-platform` unbound: project-office demos arrive with arbitrary requirements and data that must not be co-located, so each tenant gets its own managed instance. An environment that prefers density — a training or integration environment with homogeneous, trusted workloads — binds it and shares the operator. Neither choice touches the archetype.
+`!resolved(database-platform)` remains legal for an environment that leaves the capability unbound, as `demos` does today (§7). Expressing `demos` as a `postgres-cloudsql` binding, with the same semantics, is proposed in `proposals/postgres-cloudsql-qa/`.
 
 ---
 
@@ -1284,10 +1283,11 @@ Layer 5 manifests are the payoff: `webapp-3tier` names no cloud. Moving it from 
 | `certs` (in-cluster) | `cert-manager` | `cert-manager` | `cert-manager` |
 | `secrets` | Secret Manager | Secrets Manager | Key Vault |
 | `event-bus` | `kafka` (Strimzi) | `kafka` (Strimzi) | `kafka` (Strimzi) |
+| `database-platform` | `postgres-cloudsql` (default), `postgres-operator` | RDS (default), `postgres-operator` | Flexible Server (default), `postgres-operator` |
 | `cloud-observability` | Cloud Monitoring | CloudWatch | Azure Monitor |
 | `workload-identity` trait | Workload Identity Federation | IRSA / Pod Identity | Workload Identity |
 
-Operator-backed layer-4 archetypes (Kafka, Postgres, Redis, Keycloak) are the same everywhere — they run on Kubernetes. That is a significant portability win and an argument for preferring operators over managed services where the trade-off is close.
+Operator-backed layer-4 archetypes (Kafka, Postgres, Redis, Keycloak) are the same everywhere — they run on Kubernetes. That is a real portability win, but the platform's rule is **managed first** (`CLAUDE.md`): where a managed service is equivalent it is the default provider, and the operator-based archetype is the maintained alternative for clients who want it. Both stay behind the same capability contract, so the choice is made in the environment binding, not in the archetypes.
 
 ### 14.3 Adding a fourth cloud
 

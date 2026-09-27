@@ -53,6 +53,7 @@ traits:
   - multi-az
   - psa-shared
   - cnpg                    # database-platform is CloudNativePG; Cluster allowed as tenant resource
+  - cloudsql                # database-platform is Cloud SQL: the consumer creates its own managed instance (stack data)
 
   # --- messaging ---
   - strimzi

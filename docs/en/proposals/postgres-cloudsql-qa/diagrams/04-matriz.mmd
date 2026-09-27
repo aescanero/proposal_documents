@@ -1,0 +1,13 @@
+flowchart LR
+    PR["PR touching a consumer<br/>of database-platform"]
+    subgraph G1["G1 · provider matrix"]
+        direction TB
+        A["resolve + generate<br/>binding with postgres-cloudsql"]
+        B["resolve + generate<br/>binding with postgres-operator"]
+        G["gator test<br/>proxy-sidecar and service"]
+    end
+    EPH["weekly ephemeral with CNPG<br/>SonarQube and Keycloak smoke tests"]
+    OK["merge"]
+
+    PR --> G1 --> OK
+    EPH -. "catches what G1 cannot see" .-> PR

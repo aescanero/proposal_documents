@@ -599,6 +599,7 @@
         "audit-api",
         "backend-tls",
         "cert-manager",
+        "cloudsql",
         "cnpg",
         "cross-namespace-refgrant",
         "custom-templates",
