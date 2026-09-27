@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 4 |
+| **Status** | Proposal · revision 5 |
 | **Scope** | The layer 4 `keycloak` archetype on `qa`: installation, data, configuration, `qa` realm with Entra ID as upstream IdP, consumer clients as tenant resources, keys, publishing, network, availability, observability, stacks, policies, execution and plan |
 | **Data assumption** | The Cloud SQL variant ([`../sonarqube-qa-cloudsql/`](../sonarqube-qa-cloudsql/README.md), DC1): `database-platform` unbound on `qa`, so Keycloak brings its own instance (DC8 of that variant). If DC1 is rejected, the same manifest takes the `data-tenant` path with a CNPG `Cluster` (AM §5.5) and only §3 changes |
 | **Known consumers** | SonarQube over SAML ([`../sonarqube-qa/`](../sonarqube-qa/README.md), S1/S2), Grafana over OIDC, future applications with an OIDC `SecurityPolicy` on the Gateway |
@@ -521,7 +521,7 @@ Source: [`diagrams/02-stacks-arquetipo.mmd`](diagrams/02-stacks-arquetipo.mmd)
 
 | Stack | Generator | Contents | Inputs via sharing |
 |---|---|---|---|
-| `iam` | `gen_tenant_namespace.tm.hcl` | Namespace `keycloak` (PSS `restricted`); KSAs `keycloak`, `eso-keycloak`, `keycloak-config` | `cluster_*` (gke) |
+| `iam` | `gen_tenant_namespace.tm.hcl` | Namespace `keycloak` (PSS `restricted`; label `gateway.disasterproject.com/routes: "true"` and annotation `gateway.disasterproject.com/hostnames: sso.qa.disasterproject.com`, S2 §5.1); KSAs `keycloak`, `eso-keycloak`, `keycloak-config` | `cluster_*` (gke) |
 | `secrets` | `gen_secrets.tm.hcl` | `qa-keycloak-db` (no version), `-admin`, `-config-cli` (generated write-only), `-realm-signing`, `-entra-cert` (version from the bootstrap script); `SecretStore` and `ExternalSecret` | `cluster_*`, `workload_identity_pool` |
 | `data` | `gen_data.tm.hcl` | §3.1 | `workload_identity_pool`, `notification_channel_id` |
 | `firewall` | `gen_helm_stack.tm.hcl` | §8.3 | `cluster_*` |

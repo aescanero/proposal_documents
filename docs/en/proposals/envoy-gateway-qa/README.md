@@ -509,6 +509,7 @@ Default-deny ingress and egress `NetworkPolicy` in `envoy-gateway-system`:
 | cert-manager proposal §3 | The `gateway-backend` policy authorises "the name the GLB expects", but nobody has fixed that name. With the listener without `hostname` (DG2) and no validation at the GLB (cert-manager DT7), the certificate's name does not matter and `envoy-qa.envoy-gateway-system.svc` is already covered by `namespace-services`: the policy is unnecessary. Filling it with `*.qa.disasterproject.com` would be worse than removing it, because the internal CA would sign public hostnames. It would only be needed, with a single name, if backend validation (`TrustConfig`) is enabled | Pending VG1 and DT7 |
 | `policy-gatekeeper`, `registry/` and the manifest schema, `gcp-qa-edge` | Rule: no `LoadBalancer` or `NodePort` `Service` except an exception by name; an `exposures` block with a business justification and expiry; one L4 load balancer per exception at the edge (§4.4) | Proposed |
 | `gcp-qa-edge` (S1 §4.15) | Health check on Envoy's readiness port; `connection_draining_timeout_sec: 60`; `after` to `gcp-qa-gateway-proxy`; reads `neg_name` and `health_check` | Proposed, picked up when the edge is proposed |
+| `iam` stacks of SonarQube (S2 §5.1, generator `gen_tenant_namespace`), Keycloak (§11.2) and monitoring (§10.2) | The `route_namespace_label` label and the `gateway.disasterproject.com/hostnames` annotation with the claimed hostnames; no `security_policy_label`, because none requires `oidc-security-policy` | **Applied** |
 
 ---
 

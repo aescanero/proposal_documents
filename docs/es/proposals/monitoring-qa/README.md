@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 2 |
+| **Estado** | Propuesta · revisión 3 |
 | **Alcance** | El arquetipo de capa 3 `monitoring-oss` en `qa` (métricas, alertas, logs, dashboards, sondas) y lo que la capa 1b `cloud-monitoring-gcp` aporta junto a él: frontera entre ambos, pila, seguridad, contrato `monitoring`, enrutado de alertas, quién vigila al vigilante, red, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | SonarQube (E1 §4.7, E2 §5.9), la variante Cloud SQL (§8), Keycloak (§10) y ESO (§9) ya dan por hechos el selector `prometheus=qa`, el sidecar de dashboards, el blackbox exporter, Loki y el canal de notificación compartido. ESO además dejó aquí las reglas de los componentes de capa 3 |
 | **Especificación de referencia** | `archetype-model.md` (AM §n; §3 capa 1b, §4.2 traits de `monitoring`), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -356,7 +356,7 @@ Fuente: [`diagrams/02-stacks-arquetipo.mmd`](diagrams/02-stacks-arquetipo.mmd)
 
 | Stack | Contenido | Entradas por sharing |
 |---|---|---|
-| `iam` | Namespaces `monitoring` (`restricted`) y `monitoring-agents` (`privileged`); KSAs `eso-monitoring-oss`, `loki`, `grafana` | `cluster_*` |
+| `iam` | Namespaces `monitoring` (`restricted`; etiqueta `gateway.disasterproject.com/routes: "true"` y anotación `gateway.disasterproject.com/hostnames: grafana.qa.disasterproject.com`, E2 §5.1) y `monitoring-agents` (`privileged`, sin etiqueta: no publica rutas); KSAs `eso-monitoring-oss`, `loki`, `grafana` | `cluster_*` |
 | `secrets` | §8.2: contenedores, IAM por secreto, `SecretStore` y `ExternalSecret` | `cluster_*`, `workload_identity_pool` |
 | `storage` | Bucket de Loki, ciclo de vida, `objectAdmin` para `loki`; `monitoring.viewer` para `grafana` | `workload_identity_pool` |
 | `firewall` | §8.3 | `cluster_*` |

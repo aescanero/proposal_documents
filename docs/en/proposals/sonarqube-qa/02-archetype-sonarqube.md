@@ -343,7 +343,7 @@ import { source = "/imports/generators/v1/gen_app.tm.hcl" }
 |---|---|
 | **Purpose** | The instance's namespace and Kubernetes service accounts. It is the first stack: everything else lives inside it |
 | **Generator** | `gen_tenant_namespace.tm.hcl` (generic, cloud-agnostic except for the identity annotation) |
-| **Resources** | `kubernetes_namespace` `sonarqube` (labels `archetype`, `instance`, `pod-security.kubernetes.io/enforce: restricted`); KSAs `sonarqube`, `eso-sonarqube`, `sonarqube-db`; a default `LimitRange` |
+| **Resources** | `kubernetes_namespace` `sonarqube` (labels `archetype`, `instance`, `pod-security.kubernetes.io/enforce: restricted` and `gateway.disasterproject.com/routes: "true"`; annotation `gateway.disasterproject.com/hostnames: sonar.qa.disasterproject.com`); KSAs `sonarqube`, `eso-sonarqube`, `sonarqube-db`; a default `LimitRange` |
 | **Does not create** | GCP service accounts. With direct Workload Identity, IAM is granted to the KSA's principal on the resource that needs it, in the stack that creates that resource |
 | **Inputs** | `cluster_endpoint`, `cluster_ca` (from `gcp-qa-gke`) |
 | **Outputs (CMDB)** | `namespace` |
@@ -358,7 +358,10 @@ generate_hcl "_namespace.tf" {
         name   = global.platform.namespace
         labels = merge(global.labels.namespace, {
           "pod-security.kubernetes.io/enforce" = "restricted"
-        })
+        }, tm_length(global.claims.hostnames) > 0 ? global.ingress.route_namespace_label : {})
+        annotations = tm_length(global.claims.hostnames) > 0 ? {      # the instance claimed at least one hostname
+          "gateway.disasterproject.com/hostnames" = tm_join(",", global.claims.hostnames)
+        } : {}
       }
     }
     resource "kubernetes_service_account_v1" "ksa" {
@@ -375,6 +378,8 @@ generate_hcl "_namespace.tf" {
 ```
 
 `automount_service_account_token` only on ESO's KSA: SonarQube does not talk to the Kubernetes API and must not have a token mounted.
+
+**The Gateway's label and annotation.** Every instance that claims a hostname gets, on its namespace, the `route_namespace_label` label (an output of the `ingress` contract, a global) and the annotation with its claimed hostnames. Without the label, the Gateway ignores the `HTTPRoute` (`allowedRoutes`); without the annotation, Gatekeeper rejects it (Envoy Gateway proposal §4.1). Both come from resolution, not from the manifest: conftest (G1) checks that the annotation matches the instance's claims. The `security_policy_label` label is not set: SonarQube does not require `oidc-security-policy`.
 
 ### 5.2 `secrets` — Secret Manager and External Secrets
 

@@ -509,6 +509,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | Propuesta de cert-manager §3 | La política `gateway-backend` autoriza "el nombre que el GLB espera", pero nadie lo ha fijado. Con el listener sin `hostname` (DG2) y sin validación en el GLB (cert-manager DT7), el nombre del certificado es indiferente y `envoy-qa.envoy-gateway-system.svc` ya lo cubre `namespace-services`: la política sobra. Rellenarla con `*.qa.disasterproject.com` sería peor que quitarla, porque la CA interna firmaría hostnames públicos. Solo haría falta, con un nombre único, si se activa la validación del backend (`TrustConfig`) | Pendiente de VG1 y de DT7 |
 | `policy-gatekeeper`, `registry/` y el esquema de manifiesto, `gcp-qa-edge` | Regla sin `Service` `LoadBalancer` ni `NodePort` salvo excepción por nombre; bloque `exposures` con justificación de negocio y caducidad; un balanceador L4 por excepción en el borde (§4.4) | Propuesto |
 | `gcp-qa-edge` (E1 §4.15) | Health check en el puerto de readiness de Envoy; `connection_draining_timeout_sec: 60`; `after` a `gcp-qa-gateway-proxy`; lee `neg_name` y `health_check` | Propuesto, se recoge al proponer el borde |
+| Stacks `iam` de SonarQube (E2 §5.1, generador `gen_tenant_namespace`), Keycloak (§11.2) y monitorización (§10.2) | Etiqueta `route_namespace_label` y anotación `gateway.disasterproject.com/hostnames` con los hostnames reclamados; sin `security_policy_label`, porque ninguno exige `oidc-security-policy` | **Aplicado** |
 
 ---
 
