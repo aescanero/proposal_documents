@@ -10,7 +10,7 @@ flowchart LR
     NLB(["NLB passthrough interno<br/>solo la VPC de qa"])
     INET(["Internet"])
 
-    APPS -->|"TCP 9093 mTLS"| BR
+    APPS -->|"TCP 9093 SCRAM sobre TLS"| BR
     OPR -->|"9091, 9093"| BR
     CC -->|"9091"| BR
     P -->|"9404 y métricas"| BR

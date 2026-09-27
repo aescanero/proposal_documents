@@ -890,7 +890,7 @@ stacks:
 provides:
   - capability: event-bus
     version: 2.0.0
-    traits: [strimzi, kraft, acl-authz, tls-mtls]
+    traits: [strimzi, kraft, acl-authz]
     outputs:
       - { name: bootstrap_servers,  from: cluster }
       - { name: cluster_ca_secret,  from: cluster }
@@ -916,7 +916,7 @@ stacks:
     creates_tenant_resources: [event-bus]
 ```
 
-**The user's identity.** A consumer authenticates by mTLS with the internal CA: it requests its own client certificate in its own namespace, and the `KafkaUser` is named exactly as that certificate's `CN`, `<instance>-<purpose>.<namespace>.svc`. The prefix rule of §10.2 still holds, and the suffix names the source namespace, which approver-policy prevents from being forged. The Kafka proposal (`proposals/kafka-qa/`) specifies it, together with the 2.1.0 version of the contract (`client_auth`, `ca_bundle_configmap`, `client_namespace_label`; `cluster_ca_secret` deprecated). The bus uses persistent volumes and the cluster's pod range: it claims no subnet.
+**The user's identity.** A consumer authenticates by SCRAM-SHA-512 over TLS. The password belongs to the consumer: it lives in Secret Manager, the provider's ESO materialises it in the Kafka namespace through an `ExternalSecret` (a third tenant resource), and the `KafkaUser` reads it with `password.valueFrom`. The value never passes through the pipeline, and neither the platform nor the `kafka` archetype knows it. The Kafka proposal (`proposals/kafka-qa/`) specifies it, together with the 2.1.0 version of the contract (`client_auth`, `ca_bundle_configmap`, `client_namespace_label`; `cluster_ca_secret` deprecated). The bus uses persistent volumes and the cluster's pod range: it claims no subnet.
 
 ### 10.2 Three rules that make it safe
 

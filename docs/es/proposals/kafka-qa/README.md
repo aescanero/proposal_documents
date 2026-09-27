@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 2 |
-| **Alcance** | El arquetipo de capa 4 `kafka` en `qa`: operador, topología KRaft, almacenamiento y zonas, autenticación mTLS con la CA interna, el contrato multi-tenant (topics, usuarios, ACLs y cuotas), capacidad, red, acceso desde fuera del cluster, observabilidad, stacks, políticas, ejecución y plan |
+| **Estado** | Propuesta · revisión 3 |
+| **Alcance** | El arquetipo de capa 4 `kafka` en `qa`: operador, topología KRaft, almacenamiento y zonas, autenticación SCRAM sobre TLS con la CA interna, el contrato multi-tenant (topics, usuarios, ACLs y cuotas), capacidad, red, acceso desde fuera del cluster, observabilidad, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | AM §10 define Kafka como el bus común con datos separados, pero solo como ejemplo en `demos`. `qa` no lo tiene enlazado. Con la CA interna (cert-manager DT10) y el patrón B de exposición L4 (Envoy Gateway §4.4) ya decididos, se puede fijar cómo se autentica un cliente y hasta dónde llega el bus: nunca fuera de la VPC |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
 | **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano. `diagrams/06-bloques-presentacion.svg` (1920×1080, para presentaciones) se genera con `06-bloques-presentacion.py`, no con Mermaid |
@@ -23,9 +23,9 @@ Fuente: [`diagrams/06-bloques-presentacion.py`](diagrams/06-bloques-presentacion
 |---|---|---|
 | Qué es | Arquetipo `kafka`, `kind: catalog`, **capa 4**, provee **`event-bus` 2.1.0** | El binding de `qa` gana `event-bus: { archetype: kafka, version: 2.1.0, stack_id: gcp-qa-kafka }` (§12) |
 | Entorno | `qa` (dedicado). El contrato es el mismo que en `demos`; §11 recoge lo que cambia allí | En `qa` también conviven varias aplicaciones: el contrato multi-tenant aplica igual |
-| Stacks | 4: `iam`, `operator`, `cluster`, `policy` en `stacks/archetypes/kafka/` | El operador y el cluster tienen ciclos de vida distintos (§8.2) |
+| Stacks | 5: `iam`, `operator`, `cluster`, `policy` y `vpc-access` (vacío sin clientes de la VPC) en `stacks/archetypes/kafka/` | El operador y el cluster tienen ciclos de vida distintos (§8.2) |
 | Componentes | Strimzi (Cluster Operator, Entity Operator con Topic y User Operator), Kafka en modo KRaft, Kafka Exporter, Cruise Control | Todo Apache-2.0 |
-| Clientes | Aplicaciones del cluster por **mTLS con la CA interna**; clientes de la VPC de `qa` fuera del cluster por un balanceador **interno** con SCRAM. **Nunca fuera de la VPC** | §3, §6 |
+| Clientes | Todos por **SCRAM-SHA-512 sobre TLS**, con el TLS de la CA interna: aplicaciones del cluster y clientes de la VPC de `qa` fuera del cluster (por un balanceador **interno**). **Nunca fuera de la VPC** | §3, §6 |
 | Qué **no** hace | Schema registry, Kafka Connect, MirrorMaker, Kafka Bridge como servicio de tenants | §7.1 |
 
 ![Contexto](diagrams/01-contexto.svg)
@@ -87,43 +87,44 @@ Fuente: [`diagrams/05-topologia.mmd`](diagrams/05-topologia.mmd)
 
 ---
 
-## 3. Autenticación: mTLS con la CA interna
+## 3. Autenticación: SCRAM sobre TLS
 
-![Autenticación mTLS](diagrams/03-autenticacion.svg)
+![Autenticación SCRAM](diagrams/03-autenticacion.svg)
 
 Fuente: [`diagrams/03-autenticacion.mmd`](diagrams/03-autenticacion.mmd)
 
-La plataforma usa una sola CA para todo el TLS y el mTLS dentro del cluster (cert-manager DT10). Kafka se alinea con ella.
+**Todos los clientes usan SCRAM-SHA-512 (DB3)**, del cluster y de la VPC. El TLS del listener sigue siendo de la CA interna, así que el cliente valida al broker con `internal-ca-bundle`, que ya está en todos los namespaces (E2 §5.1).
 
-| Tramo | CA | Motivo |
+| Tramo | Mecanismo | Motivo |
 |---|---|---|
-| Cliente → broker (listener `tls`) | **`internal-ca`**: certificado del listener emitido por cert-manager y montado con `brokerCertChainAndKey` | Los clientes ya confían en `internal-ca-bundle`, que está en todos los namespaces (E2 §5.1) |
-| Certificado del cliente | **`internal-ca`**: el consumidor lo pide en **su** namespace; la clave nunca sale de él | Sin contraseñas que repartir: nada que pase por Secret Manager ni por ESO |
-| Broker ↔ broker y controlador | CA de cluster de **Strimzi** | Tráfico que no sale del namespace `kafka`; Strimzi la gestiona y la renueva. Sustituirla no aporta nada y complica cada rotación |
+| Cliente → broker | TLS con certificado de `internal-ca` en los listeners `tls` y `vpc` (`brokerCertChainAndKey`), y SCRAM-SHA-512 dentro | Cifrado y autenticación del servidor con la CA única de la plataforma (cert-manager DT10); autenticación del cliente por contraseña |
+| Broker ↔ broker y controlador | CA de cluster de **Strimzi** | Tráfico que no sale del namespace `kafka`; Strimzi la gestiona y la renueva |
 
-### 3.1 Identidad del cliente
+**Por qué SCRAM y no mTLS.** El mTLS con `tls-external` obligaba a que Strimzi aceptara `internal-ca` como CA de clientes sin su clave privada, algo sin verificar. Además, los clientes de la VPC fuera del cluster necesitaban SCRAM de todos modos. Con un solo mecanismo, un usuario vale para cualquier listener, no hay dos formas de nombrar usuarios y Strimzi conserva su propia CA de clientes, que queda sin uso. La clave de `internal-ca` no sale de cert-manager.
 
-| Pieza | Valor | Por qué |
-|---|---|---|
-| `Certificate` del cliente | En el namespace del consumidor, `issuerRef: internal-ca`, `usages: [client auth]`, `dnsNames: [<instancia>-<propósito>.<namespace>.svc]`, `commonName` igual a ese nombre | approver-policy (`namespace-services`) solo emite nombres del propio namespace y exige `commonName` = primer `dnsName` (cert-manager §3): la identidad es veraz por construcción |
-| `KafkaUser` | Nombre = ese `commonName`; `authentication.type: tls-external` | Strimzi no emite el certificado; Kafka autentica por el `CN` **(verificar el formato del principal, VB2)** |
-| Prefijo de instancia | El nombre empieza por `<instancia>-` | Cumple la regla de AM §10.2 sin excepciones |
-| Namespace de origen | El sufijo `.<namespace>.svc` | Dice de qué namespace viene el cliente, y approver-policy impide falsificarlo |
+### 3.1 La contraseña es del consumidor
 
-Ejemplo en `qa` para una aplicación `orders`: `orders-events.orders.svc`. En `demos`, instancia `alpha`: `alpha-orders.demo-alpha.svc`.
+El mismo patrón que los clientes OIDC de Keycloak (§6.5 de su propuesta): la crea y la posee el consumidor, y el valor nunca pasa por el pipeline ni por outputs sharing (R8).
 
-**Confianza no es autorización** (cert-manager RT7). Cualquier namespace puede obtener un certificado de cliente de `internal-ca`. Kafka lo autentica, pero **no** le da permisos: sin un `KafkaUser` con su nombre exacto, el principal no tiene ACLs y `authorization: simple` lo deniega todo.
-
-### 3.2 La condición: CA de clientes sin clave privada
-
-Para `tls-external`, Strimzi debe confiar en `internal-ca` como CA de clientes (`clientsCa.generateCertificateAuthority: false`). La clave privada de `internal-ca` **no sale nunca** del namespace `cert-manager`, así que a Strimzi solo se le da el certificado.
-
-| Resultado de VB1 | Diseño |
+| Paso | Quién |
 |---|---|
-| Strimzi acepta una CA de clientes sin clave cuando ningún usuario es de tipo `tls` (solo `tls-external` y `scram-sha-512`) | **mTLS** como aquí se describe (DB3) |
-| Strimzi exige la clave | **SCRAM-SHA-512 sobre TLS**. La contraseña es del consumidor: secreto `qa-<instancia>-kafka` en Secret Manager, con `secretAccessor` para el KSA `eso-kafka` concedido por el consumidor (el mismo patrón que Keycloak §6.5). ESO la materializa en `kafka` para el `KafkaUser` (`password.valueFrom`) y en el namespace del consumidor para la aplicación. El arquetipo pasa a requerir `secrets` con el trait `eso` |
+| Secreto `qa-<instancia>-kafka-<propósito>` en Secret Manager, valor generado y **write-only** (`secret_data_wo`) | Stack `secrets` del consumidor |
+| `secretAccessor` sobre **ese** secreto para el KSA `eso-kafka` del namespace `kafka` y para la identidad del cliente (su KSA, o su cuenta de servicio si está fuera del cluster) | Stack `secrets` del consumidor |
+| `ExternalSecret` `<instancia>-<propósito>` en el namespace `kafka` (`SecretStore` `gsm` del arquetipo), que materializa el `Secret` del mismo nombre | Stack `messaging` del consumidor, como tenant resource |
+| `KafkaUser` `<instancia>-<propósito>` con `authentication.password.valueFrom.secretKeyRef` a ese `Secret` | Stack `messaging` del consumidor |
+| La aplicación lee la contraseña: con su propio `ExternalSecret` si está en el cluster; con su identidad de GCP si está en la VPC | Consumidor |
 
-Nunca se copia la clave de `internal-ca` a otro namespace para satisfacer a Strimzi: la CA firmaría cualquier cosa desde allí.
+**Una contraseña, un usuario.** Strimzi aplica la contraseña del `Secret` como credencial SCRAM del usuario. Ni el arquetipo `kafka` ni la plataforma conocen el valor.
+
+### 3.2 Rotación sin corte
+
+Kafka guarda una sola credencial SCRAM por usuario y mecanismo. Si se cambia la contraseña, el cliente que aún usa la vieja falla hasta que recarga (RB3). Por eso la rotación usa dos usuarios:
+
+1. Se crea `<instancia>-<propósito>-b` con una contraseña nueva, las mismas ACLs y la misma cuota. Durante la rotación cuenta contra `maxCount`.
+2. La aplicación pasa a usar `-b`.
+3. Cuando ninguna conexión usa el usuario antiguo (métrica de conexiones por principal), se borra.
+
+La siguiente rotación vuelve al nombre sin sufijo. Cada paso es una PR del consumidor.
 
 ---
 
@@ -133,7 +134,7 @@ Nunca se copia la clave de `internal-ca` a otro namespace para satisfacer a Stri
 
 Fuente: [`diagrams/02-tenencia.mmd`](diagrams/02-tenencia.mmd)
 
-El consumidor crea sus `KafkaTopic` y `KafkaUser` **en el namespace `kafka`**, desde su stack `messaging` (`creates_tenant_resources: [event-bus]`, AM §10.1). Lo que puede escribir está acotado.
+El consumidor crea sus `KafkaTopic`, `KafkaUser` y el `ExternalSecret` de cada contraseña **en el namespace `kafka`**, desde su stack `messaging` (`creates_tenant_resources: [event-bus]`, AM §10.1). Lo que puede escribir está acotado.
 
 ### 4.1 Topics
 
@@ -150,8 +151,8 @@ El consumidor crea sus `KafkaTopic` y `KafkaUser` **en el namespace `kafka`**, d
 
 | Campo | Regla | Motivo |
 |---|---|---|
-| `metadata.name` | `<instancia>-<propósito>.<namespace>.svc`, igual al `CN` del certificado; `<instancia>-<propósito>` para un cliente SCRAM de la VPC | §3.1, §6.3 |
-| `authentication` | `tls-external` para el cluster; `scram-sha-512` solo para clientes de la VPC (y para todos si VB1 falla) | §3.2, §6.3 |
+| `metadata.name` | `<instancia>-<propósito>`; `<instancia>-<propósito>-b` durante una rotación | §3.2 |
+| `authentication` | `scram-sha-512` con `password.valueFrom` al `Secret` que materializa el `ExternalSecret` de la instancia; nunca `tls` ni `tls-external` | §3 |
 | `authorization.acls` | **Generadas** por el generador `gen_messaging`, nunca escritas por el tenant | AM §10.2 |
 | `quotas` | Obligatorias | R29 |
 
@@ -218,7 +219,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 
 | Listener | Puerto | Tipo | Autenticación | Quién |
 |---|---|---|---|---|
-| `tls` | 9093 | `internal` | mTLS (`tls-external`) | Aplicaciones del cluster |
+| `tls` | 9093 | `internal` | SCRAM-SHA-512 sobre TLS | Aplicaciones del cluster |
 | `vpc` | 32100 (bootstrap), 32101–32103 (brokers) | `nodeport` detrás de un balanceador **interno** | SCRAM-SHA-512 sobre TLS | Clientes de la VPC de `qa` fuera del cluster. **Sin configurar** mientras no haya ninguno |
 | Replicación y controlador | 9090, 9091 | Internos de Strimzi | mTLS con la CA de Strimzi | Solo entre pods de `kafka` |
 
@@ -253,9 +254,9 @@ Fuente: [`diagrams/07-acceso-vpc.mmd`](diagrams/07-acceso-vpc.mmd)
 | Nombres | Zona privada de Cloud DNS `qa.internal`, enlazada solo a la VPC de `qa`: `bootstrap.kafka.qa.internal` y `broker-<n>.kafka.qa.internal` → IP del balanceador | El cliente valida el certificado por nombre. `.internal` está reservado para uso privado y no existe en internet |
 | Certificado del listener `vpc` | `internal-ca`, con esos nombres | Son nombres privados, así que es coherente con cert-manager DT10. Requiere que approver-policy admita `*.<namespace>.qa.internal` al namespace que los pide (§12) |
 | `advertisedHost` / `advertisedPort` | `broker-<n>.kafka.qa.internal` / `3210<n+1>` | Si se anunciara la IP del nodo, el cliente no pasaría por el balanceador |
-| Autenticación | **SCRAM-SHA-512** | Un cliente fuera de Kubernetes no puede pedir un certificado a cert-manager, pero sí tiene identidad de GCP |
-| Contraseña | La crea el consumidor: secreto `qa-<instancia>-kafka-<propósito>` en Secret Manager (write-only), con `secretAccessor` para el KSA `eso-kafka` y para la cuenta de servicio del propio cliente | El patrón de Keycloak §6.5: el valor nunca pasa por el pipeline. ESO lo materializa en `kafka` para el `KafkaUser` (`password.valueFrom`) y el cliente lo lee con su propia identidad |
-| `KafkaUser` | `<instancia>-<propósito>`, `authentication.type: scram-sha-512` | El prefijo de AM §10.2 se mantiene; un usuario SCRAM solo autentica por el listener `vpc`, y uno `tls-external` solo por `tls` |
+| Autenticación | SCRAM-SHA-512, la misma que dentro (§3) | Un usuario vale en `tls` y en `vpc`; a qué listener llega lo decide la red |
+| Contraseña | La del consumidor (§3.1); un cliente de la VPC la lee de Secret Manager con su cuenta de servicio | El valor nunca pasa por el pipeline |
+| `KafkaUser` | `<instancia>-<propósito>`, como cualquier otro | Sin tipo de usuario propio para la VPC |
 
 La pregunta Q-B1 de la revisión 1 (certificado público de un listener externo) ya no aplica a Kafka: pasa a Envoy Gateway §4.4, donde afecta a las excepciones de patrón B con TLS.
 
@@ -270,7 +271,7 @@ La pregunta Q-B1 de la revisión 1 (certificado público de un listener externo)
 | `bootstrap_servers` | `qa-kafka-kafka-bootstrap.kafka.svc:9093` | Configuración del cliente |
 | `namespace` | `kafka` | Tenant resources |
 | `cluster_name` | `qa-kafka` | Etiqueta `strimzi.io/cluster` de `KafkaTopic` y `KafkaUser` |
-| `client_auth` | `tls-external` | Forma del `KafkaUser` y del `Certificate` del cliente (§3.1) |
+| `client_auth` | `scram-sha-512` | Forma del `KafkaUser` y configuración SASL del cliente (§3) |
 | `ca_bundle_configmap` | `internal-ca-bundle` | Truststore del cliente: ya está en su namespace |
 | `client_namespace_label` | `kafka.disasterproject.com/client: "true"` | Para la `NetworkPolicy` del listener |
 | `cluster_ca_secret` | Obsoleta; se elimina en 3.0.0 | Los clientes ya no confían en la CA de Strimzi |
@@ -281,13 +282,13 @@ Las cinco últimas son nuevas o cambian de uso sin romper a quien consume `^2.0.
 | Trait | ¿Lo ofrece? | Motivo |
 |---|---|---|
 | `strimzi`, `kraft`, `acl-authz` | Sí | — |
-| `tls-mtls` | Sí | §3 |
+| `tls-mtls` | **No** | Los clientes se autentican por SCRAM (§3) |
 | `schema-registry` | **No** | No hay registry en esta versión. AM §10.1 lo lista en su ejemplo; un consumidor que lo exija falla en resolución, que es lo correcto (Q-B2) |
 | `tiered-storage` | No | §2.2 |
 
 ### 7.2 Lo que escribe un consumidor
 
-En su stack `messaging` (el generador rellena ACLs, cuotas y etiquetas):
+En su stack `secrets`, el secreto `qa-orders-kafka-events` (write-only) y sus dos `secretAccessor` (§3.1). En su stack `messaging` (el generador rellena ACLs, cuotas y etiquetas):
 
 ```yaml
 apiVersion: kafka.strimzi.io/v1beta2
@@ -301,35 +302,31 @@ spec:
   replicas: 3
   config: { retention.ms: 604800000, retention.bytes: 1073741824, cleanup.policy: delete }
 ---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata: { name: orders-events, namespace: kafka }   # tenant resource, prefijo de instancia
+spec:
+  secretStoreRef: { kind: SecretStore, name: gsm }
+  target: { name: orders-events }
+  data:
+    - secretKey: password
+      remoteRef: { key: qa-orders-kafka-events }
+---
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaUser
 metadata:
-  name: orders-events.orders.svc            # = CN del certificado
+  name: orders-events                       # <instancia>-<propósito>
   namespace: kafka
   labels: { strimzi.io/cluster: qa-kafka }
 spec:
-  authentication: { type: tls-external }
+  authentication:
+    type: scram-sha-512
+    password:
+      valueFrom: { secretKeyRef: { name: orders-events, key: password } }
   # authorization y quotas: las genera gen_messaging (§4.2)
 ```
 
-Y en su propio namespace:
-
-```yaml
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata: { name: kafka-client, namespace: orders }
-spec:
-  secretName: kafka-client
-  issuerRef: { kind: ClusterIssuer, name: internal-ca }
-  commonName: orders-events.orders.svc
-  dnsNames: [orders-events.orders.svc]
-  usages: [client auth]
-  duration: 2160h
-  renewBefore: 720h
-  privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
-```
-
-El cliente usa `ssl.keystore.type=PEM` con el `Secret` `kafka-client` y `ssl.truststore.type=PEM` con `internal-ca-bundle`. Un cliente que lee el keystore solo al arrancar necesita reiniciarse al renovar: hay un mes de margen (cert-manager §5.1).
+La aplicación, con `security.protocol=SASL_SSL`, `sasl.mechanism=SCRAM-SHA-512`, `ssl.truststore.type=PEM` sobre `internal-ca-bundle` y la contraseña de su propio `ExternalSecret`, en su namespace, al mismo secreto de Secret Manager.
 
 ---
 
@@ -347,7 +344,7 @@ metadata:
   version: 2.1.0
   layer: 4
   kind: catalog
-  description: Bus Kafka común con datos separados; Strimzi, KRaft, mTLS con la CA interna
+  description: Bus Kafka común con datos separados; Strimzi, KRaft, SCRAM sobre TLS con la CA interna
   owners: [team-platform]
 
 runtimes: [gke, eks, aks]
@@ -366,13 +363,12 @@ requires:
     traits: [prometheus-operator-crds]
   - capability: secrets
     version: "^2.0.0"
-    traits: [eso]
-    optional: true                                     # solo clientes SCRAM de la VPC (§6.3) o el plan B de §3.2
+    traits: [eso]                                      # contraseñas SCRAM de los consumidores (§3.1)
 
 provides:
   - capability: event-bus
     version: 2.1.0
-    traits: [strimzi, kraft, acl-authz, tls-mtls]
+    traits: [strimzi, kraft, acl-authz]
     outputs:
       - { name: bootstrap_servers,      from: cluster }
       - { name: namespace,              from: iam }
@@ -387,6 +383,9 @@ provides:
         namePrefix: "{{ instance }}-"
         maxCount: 20
       - kind: KafkaUser
+        namePrefix: "{{ instance }}-"
+        maxCount: 3
+      - kind: ExternalSecret
         namePrefix: "{{ instance }}-"
         maxCount: 3
 
@@ -405,22 +404,22 @@ capacity:
   cpu_millicores: 7200
   memory_mib: 27648
   pods: 8
-  workload_identities: 0
+  workload_identities: 1                             # eso-kafka
 ```
 
-`runtimes: [gke, eks, aks]`: nada es de GCP salvo la StorageClass (AM §14.2: `event-bus` es Strimzi en las tres nubes). **Sin `ingress`**: Kafka no habla HTTP. **`secrets` opcional**: solo lo usan los clientes SCRAM de la VPC (§6.3) y el plan B de §3.2; los clientes del cluster no tienen contraseña.
+`runtimes: [gke, eks, aks]`: nada es de GCP salvo la StorageClass (AM §14.2: `event-bus` es Strimzi en las tres nubes). **Sin `ingress`**: Kafka no habla HTTP. **Requiere `secrets`** con el trait `eso`: el `SecretStore` `gsm` del namespace `kafka` materializa las contraseñas de los consumidores (§3.1). El KSA `eso-kafka` es la única identidad de GCP del arquetipo, y solo lee los secretos que cada consumidor le concede.
 
-**Sin claim de subred.** El ejemplo de AM §10.1 reclama una `/26` en la zona `data` con propósito `kafka-storage-subnet`. Kafka en Kubernetes guarda sus datos en volúmenes persistentes, no en una subred, y sus pods usan el rango de pods del cluster. Se propone quitarlo de AM (§12).
+**Sin claim de subred.** El ejemplo de AM §10.1 reclama una `/26` en la zona `data` con propósito `kafka-storage-subnet`. Kafka en Kubernetes guarda sus datos en volúmenes persistentes, no en una subred, y sus pods usan el rango de pods del cluster. Ya está quitado de AM (§12).
 
 ### 8.2 Los stacks
 
 | Stack | Contenido | Entradas por sharing |
 |---|---|---|
-| `iam` | Namespace `kafka` (`gen_tenant_namespace`, PSS `restricted`) | `cluster_*` |
+| `iam` | Namespace `kafka` (`gen_tenant_namespace`, PSS `restricted`); KSA `eso-kafka` y `SecretStore` `gsm` | `cluster_*`, `workload_identity_pool` |
 | `operator` | `helm_release` de Strimzi con `watchNamespaces: [kafka]` y CRDs con `keep` | `cluster_*` |
 | `cluster` | `Kafka`, `KafkaNodePool`, `Certificate` del listener (`internal-ca`), Kafka Exporter, Cruise Control, `PodMonitor` y `PrometheusRule`; `prevent_destroy` sobre el `helm_release` | `cluster_*` |
 | `policy` | `ConstraintTemplate` y `Constraint` de los kinds de Strimzi (§9.2); los valores por defecto de cuotas y topics que usa `gen_messaging` | `cluster_*` |
-| `vpc-access` | Si hay clientes de la VPC: IP interna, balanceador passthrough interno, health check, reglas de firewall, registros en la zona privada `qa.internal`, `SecretStore` y `ExternalSecret` de las contraseñas SCRAM. Sin clientes, no crea nada | `cluster_*`, `workload_identity_pool` |
+| `vpc-access` | Si hay clientes de la VPC: IP interna, balanceador passthrough interno, health check, reglas de firewall y registros en la zona privada `qa.internal`. Sin clientes, no crea nada | `cluster_*` |
 
 **Por qué `operator` y `cluster` separados.** Un upgrade de Strimzi no debe planificar cambios sobre el cluster de Kafka, que tiene datos. Destruir el cluster exige un PR explícito que quite `prevent_destroy` (el mismo razonamiento que cert-manager §8.2 y Envoy Gateway §8.2).
 
@@ -428,9 +427,9 @@ capacity:
 
 | Pieza | Dónde |
 |---|---|
-| `requires: event-bus ^2.1.0` con `traits: [acl-authz, tls-mtls]` | Manifiesto del consumidor |
+| `requires: event-bus ^2.1.0` con `traits: [acl-authz]` | Manifiesto del consumidor |
 | Stack `messaging` con `creates_tenant_resources: [event-bus]` y `after` a `gcp-qa-kafka-cluster` | Generado por `gen_messaging` |
-| `Certificate` del cliente | Stack `messaging`, en el namespace del consumidor |
+| Secreto en Secret Manager y sus `secretAccessor`; `ExternalSecret` propio para la aplicación | Stack `secrets` del consumidor |
 | Etiqueta `kafka.disasterproject.com/client` | `gen_tenant_namespace` (§12) |
 
 ---
@@ -467,11 +466,11 @@ assert {
 | Regla | Dónde | Qué comprueba |
 |---|---|---|
 | **Nueva:** forma del `KafkaTopic` | Gatekeeper | §4.1: prefijo = etiqueta de instancia; `spec.topicName` ausente o igual al nombre; límites de particiones, réplicas y `config` |
-| **Nueva:** forma del `KafkaUser` | Gatekeeper | §4.2: `tls-external` con nombre `<instancia>-*.<namespace>.svc`, o `scram-sha-512` con nombre `<instancia>-*` y `password.valueFrom` al `Secret` de ESO; ACLs iguales a las derivadas del prefijo; cuotas presentes |
+| **Nueva:** forma del `KafkaUser` | Gatekeeper | §4.2: nombre con prefijo; `scram-sha-512` con `password.valueFrom` a un `Secret` del mismo nombre; nunca `tls` ni `tls-external`; ACLs iguales a las derivadas del prefijo; cuotas presentes |
 | **Nueva:** kinds reservados | Gatekeeper | §4.3 |
 | **Nueva:** tenant resources | G1 | El stack `messaging` declara `creates_tenant_resources: [event-bus]`; prefijo de su instancia; `maxCount` |
 | **Nueva:** capacidad | G1 | Particiones, almacenamiento y cuotas sumadas contra los budgets (§5) |
-| **Nueva:** certificado y usuario | G1 | El `commonName` del `Certificate` del cliente es igual al nombre de un `KafkaUser` de la misma instancia |
+| **Nueva:** secreto y usuario | G1 y Gatekeeper | El `ExternalSecret` en `kafka` lleva prefijo, usa `SecretStore` `gsm` y su `remoteRef` es un secreto `qa-<misma instancia>-kafka-*`; el consumidor concede `secretAccessor` a `eso-kafka` solo sobre ese secreto |
 | **Nueva:** `after` | G1 (existente, R2) | `messaging` tiene `after` a `gcp-qa-kafka-cluster` |
 
 Todos los stacks de `qa` se aplican con la misma identidad de pipeline, así que el control de fondo sobre qué instancia escribe qué es G1 contra el ledger; Gatekeeper comprueba la forma (el mismo reparto que Keycloak §6.4).
@@ -490,7 +489,7 @@ Kafka es capa 4 y requiere `monitoring`: declara sus propias reglas, a diferenci
 | Disco | `kubelet_volume_stats_used_bytes` del PVC | > 80 % |
 | Retraso de consumo | `kafka_consumergroup_lag` de Kafka Exporter, **por instancia** | Umbral declarado por el consumidor; la alerta va al equipo de la instancia (monitorización §5.2) |
 | Cuotas | Tiempo de throttling por usuario | Sostenido > 0: el tenant está en su límite |
-| Certificados | cert-manager §6 | Listener y clientes < 14 días |
+| Certificados | cert-manager §6 | Listeners < 14 días |
 | Budget | Particiones usadas / `kafka_partitions` | > 80 % |
 
 Nombres de métricas según la configuración del exportador JMX de Strimzi **(verificar, VB10)**.
@@ -517,10 +516,10 @@ Nombres de métricas según la configuración del exportador JMX de Strimzi **(v
 | Binding de `qa` (E1 §7) | `event-bus: { archetype: kafka, version: 2.1.0, stack_id: gcp-qa-kafka }`; budgets de §5 | **Aplicado** |
 | E1 §4.1 y §4.12 | Node pool `kafka`: 3 × `n2-standard-4`, uno por zona, taint `dedicated=kafka:NoSchedule` | **Aplicado** |
 | `gen_tenant_namespace` (E2 §5.1) | Etiqueta `kafka.disasterproject.com/client: "true"` si el manifiesto requiere `event-bus` | **Aplicado** |
-| AM §10.1 y `registry/zones.yaml` | Sin el claim `kafka-storage-subnet` (y sin ese propósito en la zona `data`); sin `schema-registry` en los traits del ejemplo; párrafo sobre la identidad del usuario y el contrato 2.1.0 | **Aplicado** |
-| cert-manager §3 | approver-policy admite `*.<namespace>.qa.internal` al namespace que los pide: nombres de la zona privada, nunca públicos (DT10) | Propuesto |
+| AM §10.1 y `registry/zones.yaml` | Sin el claim `kafka-storage-subnet` (y sin ese propósito en la zona `data`); sin `schema-registry` ni `tls-mtls` en los traits del ejemplo; párrafo sobre la autenticación SCRAM y el contrato 2.1.0 | **Aplicado** |
+| cert-manager §3 | Política `private-names`: approver-policy admite `*.<namespace>.qa.internal` al namespace que los pide; nombres de la zona privada, nunca públicos (DT10) | **Aplicado** |
 | Envoy Gateway §4.4 | Kafka sale de los casos admisibles: nunca fuera de la VPC. Q-B1 pasa allí como pregunta de las excepciones con TLS | **Aplicado** |
-| E1 §4.15 (red) | Zona privada de Cloud DNS `qa.internal`, enlazada solo a la VPC de `qa`, propiedad del stack de red | Propuesto |
+| E1 §4.15 (red) | Zona privada de Cloud DNS `qa.internal`, enlazada solo a la VPC de `qa`, propiedad del stack de red | **Aplicado** |
 
 ---
 
@@ -530,15 +529,15 @@ Nombres de métricas según la configuración del exportador JMX de Strimzi **(v
 |---|---|---|---|---|
 | DB1 | Operador | Consecuencia de AM §10 | Strimzi, limitado al namespace `kafka` | Kafka gestionado (otro proveedor) |
 | DB2 | Topología en `qa` | Propuesta | KRaft, 3 nodos duales, uno por zona, node pool `kafka` | Controladores y brokers separados (en `demos` y `prod`) |
-| DB3 | Autenticación | Propuesta, pendiente de VB1 | mTLS `tls-external` con `internal-ca`; certificado pedido por el consumidor en su namespace | SCRAM-SHA-512 con contraseña del consumidor vía Secret Manager y ESO |
-| DB4 | CAs | Propuesta | `internal-ca` para todo lo que ven los clientes; CA de Strimzi solo entre brokers y controladores | CA de Strimzi repartida a los clientes |
-| DB5 | Nombre del usuario | Propuesta | `<instancia>-<propósito>.<namespace>.svc` = `CN` | Nombre libre con prefijo |
+| DB3 | Autenticación | **Decidida** | SCRAM-SHA-512 sobre TLS para todos los clientes; contraseña del consumidor en Secret Manager (§3.1) | mTLS `tls-external` con `internal-ca` (descartado: dependía de una CA de clientes sin clave) |
+| DB4 | CAs | Propuesta | `internal-ca` para el TLS de los listeners; CA de Strimzi solo entre brokers y controladores | CA de Strimzi repartida a los clientes |
+| DB5 | Nombre del usuario | Propuesta | `<instancia>-<propósito>`, con `-b` durante una rotación | Nombre libre con prefijo |
 | DB6 | ACLs y cuotas | Consecuencia de AM §10.2 | Generadas; Gatekeeper exige que coincidan | Escritas por el tenant |
 | DB7 | Límites de topic | Propuesta | ≤ 12 particiones, réplica 3, `retention.bytes` obligatorio, ≤ 7 días | Sin límites por topic |
 | DB8 | Alcance del bus | **Decidida** | Bus interno: listener `tls` en el cluster y `vpc` por un balanceador interno para clientes de la VPC; **nunca fuera de la VPC**, ni por peering, VPN o Interconnect | Listener externo por patrón B |
 | DB9 | Budget inicial de particiones en `qa` | Propuesta | 1000, hasta que VB7 mida | 4000 como en `demos` |
 | DB10 | Servicios extra | Propuesta | Kafka Exporter y Cruise Control de plataforma; sin registry, Connect ni Bridge compartidos | Ofrecerlos como servicio |
-| DB11 | Autenticación de clientes de la VPC | Propuesta | SCRAM-SHA-512 con contraseña del consumidor en Secret Manager, leída por su identidad de GCP | mTLS con un certificado exportado fuera del cluster |
+| DB11 | Rotación de contraseñas | Propuesta | Dos usuarios alternos (§3.2) | Cambio en sitio, con corte para quien no recarga |
 
 ---
 
@@ -548,7 +547,7 @@ Nombres de métricas según la configuración del exportador JMX de Strimzi **(v
 |---|---|---|---|---|
 | RB1 | **`spec.topicName` apunta al topic de otro tenant** y lo gestiona o lo borra | Media sin regla | Alta — pérdida de datos de otro tenant | Gatekeeper (§9.2); VB4 |
 | RB2 | **Borrado de los CRDs de Strimzi** borra todos los topics | Baja | Alta — el bus entero | CRDs con `keep`, assert, VB9 |
-| RB3 | **CA de clientes**: Strimzi exige la clave de `internal-ca` | Media | Media — cambia el diseño a SCRAM | VB1 antes de la fase 1; plan B de §3.2 |
+| RB3 | **Rotación de la contraseña** que corta a los clientes que no recargan | Media | Media | Rotación con dos usuarios (§3.2); VB1 |
 | RB4 | **Tenant ruidoso** | Media | Alta en `demos` | Cuotas obligatorias (R29) |
 | RB5 | **Disco lleno** por un topic sin límite | Media sin `retention.bytes` | Alta — el broker se para y con él todos | `retention.bytes` obligatorio, budget de almacenamiento, alerta al 80 % |
 | RB6 | **Renovación del certificado del listener** reinicia los brokers | Media | Baja con RF 3 e ISR 2 | Rolling de Strimzi; VB3 |
@@ -562,8 +561,8 @@ Nombres de métricas según la configuración del exportador JMX de Strimzi **(v
 
 | # | Verificación | Resultado que la cierra |
 |---|---|---|
-| VB1 | Strimzi con `clientsCa.generateCertificateAuthority: false` y solo el certificado de `internal-ca` (sin clave), ningún usuario de tipo `tls` | El cluster reconcilia y un cliente con certificado de `internal-ca` se autentica. Si no, SCRAM (§3.2) |
-| VB2 | Principal de un usuario `tls-external` | Las ACLs de §4.2 se aplican al principal que Kafka deriva del `CN` |
+| VB1 | SCRAM con `password.valueFrom` desde el `Secret` de ESO | Un cliente se autentica con la contraseña del consumidor; un cambio en Secret Manager llega al usuario por ESO y Strimzi |
+| VB2 | Principal de un usuario SCRAM | Las ACLs de §4.2 se aplican a `User:<nombre>` |
 | VB3 | Listener con `brokerCertChainAndKey` desde el `Secret` de cert-manager | Renovación forzada: rolling de brokers sin errores de cliente con `acks=all` |
 | VB4 | `KafkaTopic` con `topicName` ajeno; `KafkaUser` con ACLs no derivadas | Ambos denegados en admisión |
 | VB5 | Cuotas | Un productor a 10 veces su cuota queda limitado; la latencia p99 de los demás no cambia |
@@ -590,10 +589,10 @@ Nombres de métricas según la configuración del exportador JMX de Strimzi **(v
 
 | Fase | Contenido | Criterio de salida | Estimación |
 |---|---|---|---|
-| **0 · Prerrequisitos** | Node pool `kafka`; binding de `qa`; **VB1**, VB10, VB12 | Autenticación decidida (mTLS o SCRAM) | 1 día |
+| **0 · Prerrequisitos** | Node pool `kafka`; binding de `qa`; VB10, VB12 | Versiones fijadas | 1 día |
 | **1 · Esqueleto** | Manifiesto, charts, asserts, reglas G1 y constraints, `gen_messaging` | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 y preview con mocks en verde | 2 días |
-| **2 · Operador y cluster** | `iam`, `operator`, `cluster`, `policy` | Cluster `Ready`; **VB2**, **VB3**, **VB4**, **VB9** | 2 días |
+| **2 · Operador y cluster** | `iam`, `operator`, `cluster`, `policy` | Cluster `Ready`; **VB1**, **VB2**, **VB3**, **VB4**, **VB9** | 2 días |
 | **3 · Pruebas de carga** | Aplicación de prueba con dos instancias | **VB5**, **VB6**, **VB7** | 2 días |
 | **4 · Acceso desde la VPC** | Solo cuando un cliente de fuera del cluster lo necesite: zona `qa.internal`, política de approver-policy, `vpc-access` | **VB8** | 1 día, con el primer cliente |
 
-Siete días para una persona. VB1 va primero: decide si el arquetipo necesita `secrets`.
+Siete días para una persona.

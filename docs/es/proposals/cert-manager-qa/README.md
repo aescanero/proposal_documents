@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 3 |
+| **Estado** | Propuesta · revisión 4 |
 | **Alcance** | El arquetipo de capa 3 `cert-manager` en `qa`: qué certificados emite y cuáles no, la CA interna, quién puede pedir qué nombre, cómo se reparte la confianza, renovación y rotación, red, contrato `certs`, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | ESO (§4.1), monitorización (§8.3), Keycloak (§4, §7, §8) y SonarQube (E1 §4.5) ya piden certificados al `ClusterIssuer` interno y confían en su CA, y cada uno lo daba por hecho |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -46,7 +46,7 @@ Fuente: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 | Webhook del propio cert-manager | cert-manager, autogestionado | No puede pedirse un certificado a sí mismo antes de existir |
 | Certificados de cara a internet emitidos por ACME | **Nadie** | Sin egress a internet; el borde ya tiene su certificado |
 
-**Reparto de responsabilidades (DT10).** La validación hacia fuera la hacen los **balanceadores**, que sí trabajan con SNI y comodines: el certificado público de Certificate Manager en la capa 1. cert-manager es solo para el tráfico **dentro** del cluster: TLS hacia los endpoints internos (Keycloak, MongoDB, webhooks…) y mTLS interno (§4.1), todo con la misma CA. La CA interna **nunca** firma un hostname público: `namespace-services` solo admite nombres `.svc` y ninguna otra política admite más (§3).
+**Reparto de responsabilidades (DT10).** La validación hacia fuera la hacen los **balanceadores**, que sí trabajan con SNI y comodines: el certificado público de Certificate Manager en la capa 1. cert-manager es solo para el tráfico **dentro** del cluster: TLS hacia los endpoints internos (Keycloak, MongoDB, webhooks…) y mTLS interno (§4.1), todo con la misma CA. La CA interna **nunca** firma un hostname público: `namespace-services` solo admite nombres `.svc`, `private-names` solo nombres de la zona privada `qa.internal`, y ninguna otra política admite más (§3).
 
 **Corrección a AM §14.2 (aplicada).** La tabla de proveedores por nube asignaba a `certs` "Certificate Manager / ACM / App Gateway certs". Eso describía la capability `cert` del borde, no `certs`: el propio AM enlaza `certs` a `cert-manager` en `demos` (AM §7). Las filas están ahora separadas: `cert` → Certificate Manager, ACM, App Gateway certs; `certs` → `cert-manager` en las tres nubes, como Kafka o Keycloak (§11).
 
@@ -97,6 +97,7 @@ Con un `ClusterIssuer` compartido y el aprobador por defecto de cert-manager, **
 | Política | Quién | Qué permite |
 |---|---|---|
 | `namespace-services` | Cualquier namespace | `dnsNames` en `*.<su namespace>.svc` y `*.<su namespace>.svc.cluster.local`; `commonName` vacío o igual al primer `dnsName`; `usages` `server auth` y `client auth` (mTLS, §4.1); sin IP SANs, sin URIs, sin `isCA`; ECDSA P-256; duración ≤ 90 días |
+| `private-names` | Cualquier namespace | `dnsNames` en `*.<su namespace>.qa.internal`, la zona privada de la VPC (E1 §4.15), para servicios que atienden a clientes de la VPC fuera del cluster (propuesta de Kafka §6.3); mismas restricciones que `namespace-services` |
 | `platform-webhooks` | Namespaces de ESO, monitorización y cert-manager | Los nombres de sus Services de webhook (ya cubiertos por `namespace-services`); se separa para poder endurecerla sin tocar al resto |
 | `internal-ca-root` | Solo `cert-manager` | `isCA: true`, para la raíz (§2.2) |
 
@@ -136,7 +137,7 @@ Envoy (→ Keycloak), Grafana (→ Keycloak), el reconciliador de Keycloak y el 
 | Keycloak | Sí (Keycloak §4) | No | Los clientes OIDC se autentican con client secret o JWT firmado |
 | MongoDB (componente) | `net.tls.mode: requireTLS` con el certificado de su Service | Miembros del replica set por x.509; clientes con `MONGODB-X509` si se quiere | El usuario x.509 es el subject completo: el `Certificate` fija `commonName` igual a su primer `dnsName`, y approver-policy no admite otro valor. El usuario de MongoDB es, por tanto, el nombre del Service cliente |
 | PostgreSQL (CNPG) | CNPG trae su propia CA por defecto | Clientes por certificado, opcional | Puede usar `internal-ca` con certificados de servidor y cliente propios **(verificar, VT9)** |
-| Kafka (Strimzi, `demos`) | Strimzi gestiona sus propias CAs (cluster y clients) | mTLS de clientes con la clients CA de Strimzi | Usar `internal-ca` exige el modo de CA propia de Strimzi con renovación manual: se decide en la propuesta de Kafka |
+| Kafka (Strimzi) | Listeners `tls` y `vpc` con certificado de `internal-ca` | No: clientes por SCRAM-SHA-512 | La CA de Strimzi queda solo entre brokers y controladores (propuesta de Kafka §3) |
 
 ---
 
@@ -348,6 +349,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | AM §14.2 (`docs/en/` y `docs/es/`) | Separar `cert` (Certificate Manager, ACM, App Gateway certs) de `certs` (`cert-manager` en las tres nubes) | **Aplicado** |
 | Consumidores | Etiqueta `trust.disasterproject.com/internal-ca` en todo namespace, puesta por `gen_tenant_namespace` (E2 §5.1); uso de `internal-ca-bundle` | **Aplicado** |
 | Esta propuesta, §3 | Política `gateway-backend` eliminada; `namespace-services` admite `client auth` y un `commonName` fijo para mTLS | **Aplicado** |
+| Esta propuesta, §3 | Política `private-names` para `*.<namespace>.qa.internal` | **Aplicado** |
 
 ---
 
@@ -364,7 +366,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | DT7 | Validación del backend en el GLB | Propuesta | No en `qa` | `TrustConfig` con la raíz interna (ata la raíz a la capa 1) |
 | DT8 | Gatekeeper | Consecuencia de AM §3 | Su propio rotador | — (capa 2b va antes) |
 | DT9 | Trait `cert-manager` | Propuesta, aplicada al registro | Sí | Sin trait |
-| DT10 | Alcance de la CA interna | Aceptada | Solo nombres internos (`.svc`); TLS y mTLS dentro del cluster. Lo externo, en los balanceadores con SNI y comodines | Firmar también hostnames públicos |
+| DT10 | Alcance de la CA interna | Aceptada | Solo nombres internos: `.svc` y la zona privada `qa.internal`; TLS y mTLS dentro de la VPC. Lo externo, en los balanceadores con SNI y comodines | Firmar también hostnames públicos |
 
 ---
 

@@ -2,7 +2,7 @@
 <defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9ca3af"/></marker><filter id="sh" x="-5%" y="-5%" width="110%" height="115%"><feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#111827" flood-opacity="0.08"/></filter></defs>
 <rect width="1920" height="1080" fill="#ffffff"/>
 <text x="60" y="72" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="40" font-weight="800" fill="#1f2937" text-anchor="start">Kafka — arquetipo de capa 4, proveedor de event-bus</text>
-<text x="60" y="108" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="400" fill="#4b5563" text-anchor="start">gcp-qa-kafka · entorno qa · 4 stacks (iam, operator, cluster, policy) · bus común, datos separados · mTLS con la CA interna</text>
+<text x="60" y="108" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="400" fill="#4b5563" text-anchor="start">gcp-qa-kafka · entorno qa · 5 stacks · bus común, datos separados · SCRAM sobre TLS · nunca fuera de la VPC</text>
 <rect x="60" y="124" width="120" height="5" rx="2" fill="#2563eb"/>
 <rect x="40" y="160" width="330" height="670" rx="18" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="64" y="204" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="22" font-weight="700" fill="#1f2937" text-anchor="start">Consume de la plataforma</text>
@@ -19,9 +19,9 @@
 <rect x="60" y="582" width="290" height="90" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="78" y="620" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">monitoring</text>
 <text x="78" y="648" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">PodMonitor · PrometheusRule</text>
-<rect x="60" y="692" width="290" height="90" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5" stroke-dasharray="5 4"/>
+<rect x="60" y="692" width="290" height="90" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="78" y="730" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">secrets</text>
-<text x="78" y="758" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">opcional: SCRAM de la VPC</text>
+<text x="78" y="758" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">ESO · contraseñas SCRAM</text>
 <g filter="url(#sh)">
 <rect x="420" y="160" width="1100" height="670" rx="22" fill="#fbfcff" stroke="#2563eb" stroke-width="3"/>
 </g>
@@ -29,7 +29,7 @@
 <text x="1490" y="204" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="17" font-weight="500" fill="#4b5563" text-anchor="end">kind: catalog · layer 4 · v2.1.0</text>
 <text x="450" y="250" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="17" font-weight="700" fill="#2563eb" text-anchor="start">1 · Operador y cluster</text>
 <line x1="450" y1="260" x2="695" y2="260" stroke="#2563eb" stroke-width="2" opacity="0.35"/>
-<text x="720" y="250" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="17" font-weight="700" fill="#c2410c" text-anchor="start">2 · Identidad</text>
+<text x="720" y="250" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="17" font-weight="700" fill="#c2410c" text-anchor="start">2 · SCRAM sobre TLS</text>
 <line x1="720" y1="260" x2="965" y2="260" stroke="#c2410c" stroke-width="2" opacity="0.35"/>
 <text x="990" y="250" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="17" font-weight="700" fill="#15803d" text-anchor="start">3 · Contrato de tenants</text>
 <line x1="990" y1="260" x2="1235" y2="260" stroke="#15803d" stroke-width="2" opacity="0.35"/>
@@ -97,14 +97,14 @@
 <line x1="720" y1="504" x2="965" y2="504" stroke="#c2410c" stroke-width="1"/>
 <circle cx="744" cy="481" r="14" fill="#c2410c"/>
 <text x="744" y="487" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
-<text x="768" y="489" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#c2410c" text-anchor="start">cliente</text>
-<text x="736" y="534" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">Certificate en su namespace</text>
+<text x="768" y="489" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#c2410c" text-anchor="start">contraseña</text>
+<text x="736" y="534" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">Del consumidor</text>
 <circle cx="742" cy="557" r="3" fill="#c2410c"/>
-<text x="752" y="562" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">CN &lt;inst&gt;-&lt;uso&gt;.&lt;ns&gt;.svc</text>
+<text x="752" y="562" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">Secret Manager, write-only</text>
 <circle cx="742" cy="581" r="3" fill="#c2410c"/>
-<text x="752" y="586" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">client auth</text>
+<text x="752" y="586" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">accessor para eso-kafka</text>
 <circle cx="742" cy="605" r="3" fill="#c2410c"/>
-<text x="752" y="610" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">la clave no sale</text>
+<text x="752" y="610" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">nunca en el pipeline</text>
 <rect x="720" y="642" width="245" height="170" rx="12" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>
 <rect x="720" y="642" width="245" height="46" rx="12" fill="#fff5e6"/>
 <rect x="720" y="676" width="245" height="12" fill="#fff5e6"/>
@@ -112,13 +112,13 @@
 <circle cx="744" cy="665" r="14" fill="#c2410c"/>
 <text x="744" y="671" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">6</text>
 <text x="768" y="673" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#c2410c" text-anchor="start">KafkaUser</text>
-<text x="736" y="718" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">tls-external</text>
+<text x="736" y="718" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">scram-sha-512</text>
 <circle cx="742" cy="741" r="3" fill="#c2410c"/>
-<text x="752" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">nombre = CN</text>
+<text x="752" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">ExternalSecret en kafka</text>
 <circle cx="742" cy="765" r="3" fill="#c2410c"/>
-<text x="752" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">CA de clientes sin clave</text>
+<text x="752" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">password.valueFrom</text>
 <circle cx="742" cy="789" r="3" fill="#c2410c"/>
-<text x="752" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">plan B: SCRAM (VB1)</text>
+<text x="752" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">rotación con dos usuarios</text>
 <rect x="990" y="274" width="245" height="170" rx="12" fill="#ffffff" stroke="#15803d" stroke-width="2"/>
 <rect x="990" y="274" width="245" height="46" rx="12" fill="#e9f7ee"/>
 <rect x="990" y="308" width="245" height="12" fill="#e9f7ee"/>
@@ -201,11 +201,11 @@
 <line x1="374" y1="495.0" x2="414" y2="495.0" stroke="#9ca3af" stroke-width="3" marker-end="url(#ah)"/>
 <rect x="1570" y="160" width="310" height="670" rx="18" fill="#ecfeff" stroke="#a5f3fc" stroke-width="1.5"/>
 <text x="1594" y="204" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="22" font-weight="700" fill="#1f2937" text-anchor="start">Provee event-bus 2.1.0</text>
-<text x="1594" y="230" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start" font-style="italic">strimzi · kraft · acl-authz · tls-mtls</text>
+<text x="1594" y="230" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start" font-style="italic">strimzi · kraft · acl-authz</text>
 <rect x="1590" y="252" width="270" height="128" rx="10" fill="#ffffff" stroke="#a5f3fc" stroke-width="1.5"/>
 <text x="1608" y="288" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="700" fill="#0e7490" text-anchor="start">bootstrap</text>
 <text x="1608" y="320" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">kafka-bootstrap.kafka.svc:9093</text>
-<text x="1608" y="348" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">mTLS, internal-ca-bundle</text>
+<text x="1608" y="348" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">SCRAM, internal-ca-bundle</text>
 <rect x="1590" y="394" width="270" height="128" rx="10" fill="#ffffff" stroke="#a5f3fc" stroke-width="1.5"/>
 <text x="1608" y="430" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="700" fill="#0e7490" text-anchor="start">tenant resources</text>
 <text x="1608" y="462" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">KafkaTopic · KafkaUser</text>
@@ -230,11 +230,11 @@
 <path d="M772,936 l8,7 l-8,7" fill="none" stroke="#9ca3af" stroke-width="2.5"/>
 <rect x="788" y="906" width="344" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="806" y="936" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="17" font-weight="700" fill="#374151" text-anchor="start">G1 conftest</text>
-<text x="806" y="962" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">ledger · budgets · CN</text>
+<text x="806" y="962" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">ledger · budgets · secretos</text>
 <path d="M1136,936 l8,7 l-8,7" fill="none" stroke="#9ca3af" stroke-width="2.5"/>
 <rect x="1152" y="906" width="344" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
-<text x="1170" y="936" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="17" font-weight="700" fill="#374151" text-anchor="start">approver-policy</text>
-<text x="1170" y="962" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">CN del propio namespace</text>
+<text x="1170" y="936" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="17" font-weight="700" fill="#374151" text-anchor="start">ESO</text>
+<text x="1170" y="962" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">secreto de la propia instancia</text>
 <path d="M1500,936 l8,7 l-8,7" fill="none" stroke="#9ca3af" stroke-width="2.5"/>
 <rect x="1516" y="906" width="344" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="1534" y="936" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="17" font-weight="700" fill="#374151" text-anchor="start">cuotas</text>

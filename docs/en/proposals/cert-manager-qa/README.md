@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 3 |
+| **Status** | Proposal · revision 4 |
 | **Scope** | The layer 3 `cert-manager` archetype on `qa`: which certificates it issues and which it does not, the internal CA, who may request which name, how trust is distributed, renewal and rotation, network, the `certs` contract, stacks, policies, execution and plan |
 | **Why now** | ESO (§4.1), monitoring (§8.3), Keycloak (§4, §7, §8) and SonarQube (S1 §4.5) already request certificates from the internal `ClusterIssuer` and trust its CA, and each one took it for granted |
 | **Reference specification** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -46,7 +46,7 @@ Source: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 | cert-manager's own webhook | cert-manager, self-managed | It cannot request a certificate from itself before it exists |
 | Internet-facing certificates issued by ACME | **Nobody** | No internet egress; the edge already has its certificate |
 
-**Division of responsibilities (DT10).** Validation towards the outside is done by the **load balancers**, which do work with SNI and wildcards: the public Certificate Manager certificate at layer 1. cert-manager is only for traffic **inside** the cluster: TLS to internal endpoints (Keycloak, MongoDB, webhooks…) and internal mTLS (§4.1), all with the same CA. The internal CA **never** signs a public hostname: `namespace-services` only admits `.svc` names and no other policy admits more (§3).
+**Division of responsibilities (DT10).** Validation towards the outside is done by the **load balancers**, which do work with SNI and wildcards: the public Certificate Manager certificate at layer 1. cert-manager is only for traffic **inside** the cluster: TLS to internal endpoints (Keycloak, MongoDB, webhooks…) and internal mTLS (§4.1), all with the same CA. The internal CA **never** signs a public hostname: `namespace-services` only admits `.svc` names, `private-names` only names in the private `qa.internal` zone, and no other policy admits more (§3).
 
 **Correction to AM §14.2 (applied).** The per-cloud provider table assigned "Certificate Manager / ACM / App Gateway certs" to `certs`. That described the edge `cert` capability, not `certs`: AM itself binds `certs` to `cert-manager` in `demos` (AM §7). The rows are now split: `cert` → Certificate Manager, ACM, App Gateway certs; `certs` → `cert-manager` on all three clouds, like Kafka or Keycloak (§11).
 
@@ -97,6 +97,7 @@ With a shared `ClusterIssuer` and cert-manager's default approver, **any namespa
 | Policy | Who | What it allows |
 |---|---|---|
 | `namespace-services` | Any namespace | `dnsNames` in `*.<its namespace>.svc` and `*.<its namespace>.svc.cluster.local`; `commonName` empty or equal to the first `dnsName`; `usages` `server auth` and `client auth` (mTLS, §4.1); no IP SANs, no URIs, no `isCA`; ECDSA P-256; duration ≤ 90 days |
+| `private-names` | Any namespace | `dnsNames` in `*.<its namespace>.qa.internal`, the VPC's private zone (S1 §4.15), for services that serve VPC clients outside the cluster (Kafka proposal §6.3); the same restrictions as `namespace-services` |
 | `platform-webhooks` | ESO, monitoring and cert-manager namespaces | The names of their webhook Services (already covered by `namespace-services`); kept separate so it can be tightened without touching the rest |
 | `internal-ca-root` | Only `cert-manager` | `isCA: true`, for the root (§2.2) |
 
@@ -136,7 +137,7 @@ Envoy (→ Keycloak), Grafana (→ Keycloak), the Keycloak reconciler and the bl
 | Keycloak | Yes (Keycloak §4) | No | OIDC clients authenticate with a client secret or a signed JWT |
 | MongoDB (component) | `net.tls.mode: requireTLS` with its Service's certificate | Replica-set members by x.509; clients with `MONGODB-X509` if wanted | The x.509 user is the full subject: the `Certificate` sets `commonName` equal to its first `dnsName`, and approver-policy admits no other value. The MongoDB user is therefore the client Service's name |
 | PostgreSQL (CNPG) | CNPG brings its own CA by default | Clients by certificate, optional | It can use `internal-ca` with its own server and client certificates **(verify, VT9)** |
-| Kafka (Strimzi, `demos`) | Strimzi manages its own CAs (cluster and clients) | Client mTLS with Strimzi's clients CA | Using `internal-ca` requires Strimzi's custom-CA mode with manual renewal: decided in the Kafka proposal |
+| Kafka (Strimzi) | `tls` and `vpc` listeners with an `internal-ca` certificate | No: clients by SCRAM-SHA-512 | Strimzi's CA stays only between brokers and controllers (Kafka proposal §3) |
 
 ---
 
@@ -348,6 +349,7 @@ Source: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | AM §14.2 (`docs/en/` and `docs/es/`) | Split `cert` (Certificate Manager, ACM, App Gateway certs) from `certs` (`cert-manager` on all three clouds) | **Applied** |
 | Consumers | `trust.disasterproject.com/internal-ca` label on every namespace, set by `gen_tenant_namespace` (S2 §5.1); use of `internal-ca-bundle` | **Applied** |
 | This proposal, §3 | `gateway-backend` policy removed; `namespace-services` admits `client auth` and a fixed `commonName` for mTLS | **Applied** |
+| This proposal, §3 | `private-names` policy for `*.<namespace>.qa.internal` | **Applied** |
 
 ---
 
@@ -364,7 +366,7 @@ Source: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | DT7 | Backend validation on the GLB | Proposed | Not on `qa` | `TrustConfig` with the internal root (ties the root to layer 1) |
 | DT8 | Gatekeeper | Consequence of AM §3 | Its own rotator | — (layer 2b comes first) |
 | DT9 | `cert-manager` trait | Proposed, applied to the registry | Yes | No trait |
-| DT10 | Scope of the internal CA | Accepted | Internal names only (`.svc`); TLS and mTLS inside the cluster. External traffic belongs to the load balancers, with SNI and wildcards | Also signing public hostnames |
+| DT10 | Scope of the internal CA | Accepted | Internal names only: `.svc` and the private `qa.internal` zone; TLS and mTLS inside the VPC. External traffic belongs to the load balancers, with SNI and wildcards | Also signing public hostnames |
 
 ---
 

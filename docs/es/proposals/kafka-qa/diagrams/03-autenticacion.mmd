@@ -1,18 +1,19 @@
 sequenceDiagram
     autonumber
-    participant CM as cert-manager (internal-ca)
-    participant AP as approver-policy
-    participant C as Cliente (ns orders)
-    participant K as Broker Kafka
+    participant SS as Stack secrets del consumidor
+    participant SM as Secret Manager
+    participant ESO as ESO (ns kafka, eso-kafka)
     participant UO as User Operator
+    participant C as Cliente (ns orders o VPC)
+    participant K as Broker Kafka
 
-    C->>CM: Certificate CN orders-events.orders.svc, client auth
-    CM->>AP: CertificateRequest
-    AP-->>CM: aprobado, nombre del propio namespace
-    CM-->>C: Secret kafka-client (la clave no sale del namespace)
-    UO->>K: ACLs y cuotas del KafkaUser orders-events.orders.svc
-    C->>K: TLS a 9093, presenta su certificado
-    Note over K: valida la cadena contra internal-ca (CA de clientes, sin clave)
-    Note over K: principal = CN, ACLs solo sobre orders-*
+    SS->>SM: qa-orders-kafka-events, valor generado write-only
+    SS->>SM: secretAccessor para eso-kafka y para la identidad del cliente
+    ESO->>SM: lee con Workload Identity
+    ESO-->>UO: Secret orders-events en ns kafka
+    UO->>K: credencial SCRAM, ACLs y cuotas del KafkaUser orders-events
+    C->>SM: lee la contraseña con su propia identidad (ESO propio o cuenta de servicio)
+    C->>K: TLS a 9093 o 3210x, valida el broker con internal-ca-bundle
+    C->>K: SASL SCRAM-SHA-512 como orders-events
+    Note over K: principal User:orders-events, ACLs solo sobre orders-*
     K-->>C: produce y consume en orders-*
-    Note over C,K: un certificado válido de otro namespace se autentica pero no tiene ACLs, se deniega
