@@ -4,12 +4,12 @@ flowchart TB
     Q2{"Is there an implicit option?<br/>HTTPS with a token, Kafka Bridge,<br/>MQTT over WebSocket, mTLS at the GLB"}
     Q3{"Administrative access,<br/>database, debugging<br/>or temporary?"}
     Q4{"Complete business justification<br/>and a future review_by?"}
-    Q5{"Does the application need<br/>the source IP without<br/>PROXY protocol?"}
+    Q5{"Does the counterparty<br/>come over the internet?"}
     GW["Through the Gateway<br/>HTTPRoute"]
     ALT["Use the implicit option"]
     NO["Rejected<br/>kubectl exec · IAP · ephemeral ·<br/>private connectivity"]
-    B["Pattern B<br/>fixed NodePort + passthrough NLB<br/>in gcp-qa-edge"]
-    C["Pattern C<br/>ClusterIP + NEG + proxy NLB<br/>in gcp-qa-edge"]
+    B["Pattern B<br/>fixed NodePort + passthrough NLB<br/>in gcp-qa-edge · direct communication"]
+    C["Pattern D<br/>internal passthrough NLB<br/>over peering or VPN"]
     CTL["exposures in the manifest<br/>G1 · CODEOWNERS platform and security<br/>Gatekeeper exemption per Service"]
 
     S --> Q1
@@ -22,7 +22,7 @@ flowchart TB
     Q4 -->|no| NO
     Q4 -->|yes| Q5
     Q5 -->|yes| B
-    Q5 -->|no| C
+    Q5 -->|no, private network| C
     B --> CTL
     C --> CTL
 
