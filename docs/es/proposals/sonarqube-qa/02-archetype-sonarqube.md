@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 2 · revisión 2 |
+| **Estado** | Propuesta · etapa 2 · revisión 3 |
 | **Parte de** | [`README.md`](README.md) (etapa 1: elementos y dependencias, cerrada) |
 | **Alcance** | El arquetipo de capa 5 `sonarqube`: estructura en el repositorio, manifiesto, los stacks que lo forman, la plantilla (generador) de cada stack, contratos, ejecución, configuración, políticas, lo que provee y el plan de implementación por fases |
 | **Fuera de alcance** | Las capas 0–4 de `qa` (son de la plataforma; aquí solo aparecen como productores y como requisitos) |
@@ -456,11 +456,11 @@ generate_hcl "_secrets.tf" {
 | **Generador** | `gen_data_tenant_cnpg.tm.hcl`: rama GCP para bucket e IAM, parte común para el `helm_release` |
 | **Recursos GCP** | `google_storage_bucket` `disasterproject-qa-sonarqube-main-pgbackup` (regional, `uniform_bucket_level_access`, `public_access_prevention = "enforced"`, **sin** versionado ni retention lock — E1 §4.9, soft delete 7 días); `google_storage_bucket_iam_member` `objectAdmin` al principal de `sonarqube-db` |
 | **Recursos K8s** | `helm_release` con `database.enabled=true`: `Cluster` CNPG `sonarqube-db` (2 instancias, anti-afinidad por nodo, `bootstrap.initdb` con `secret: sonarqube-db`), backups con el plugin barman-cloud (`ObjectStore` + `ScheduledBackup` diario) **(verificar: API del plugin en la versión de CNPG fijada)** |
-| **Tenant resource** | `Cluster`, `ScheduledBackup` en el propio namespace — requiere que `postgres-operator` los autorice (E1 §4.4) |
-| **Entradas** | `cluster_*`, `workload_identity_pool` (gke); `cnpg_version` (de `gcp-qa-postgres-operator`) |
+| **Tenant resource** | `Cluster`, `ObjectStore`, `ScheduledBackup` y `Backup` en el propio namespace, autorizados por `postgres-operator` (propuesta `postgres-operator-qa` §1) |
+| **Entradas** | `cluster_*`, `workload_identity_pool` (gke). `operator_version` e `image_catalog` llegan como globales del contrato `database-platform`, no por sharing; `after` sigue apuntando a `gcp-qa-postgres-operator` para que los CRDs existan |
 | **Salidas** | `db_rw_service` = `sonarqube-db-rw.sonarqube.svc` · `db_name` = `sonarqube` · `backup_bucket` |
 
-`cnpg_version` entra por sharing para que un `assert` compare la API que usa el chart con la del operador instalado: un chart del arquetipo escrito para una API más nueva que el operador falla en `generate`, no en el apply.
+Un `assert` compara la API que usa el chart con `operator_version`, la versión de CNPG que fija el arquetipo proveedor: un chart del arquetipo escrito para una API más nueva que el operador falla en `generate`, no en el apply. Es un global y no una entrada por sharing porque lo determina la versión del arquetipo enlazado, no el estado del stack (propuesta `postgres-operator-qa` §7.1, DO6).
 
 ```yaml
 # chart/templates/cnpg-cluster.yaml (extracto de valores efectivos)
@@ -469,7 +469,11 @@ kind: Cluster
 metadata: { name: sonarqube-db }
 spec:
   instances: 2
-  imageName: ghcr.io/cloudnative-pg/postgresql:<mayor soportada por SonarQube>   # verificar
+  imageCatalogRef:                       # catálogo de la plataforma, por digest (postgres-operator-qa §2)
+    apiGroup: postgresql.cnpg.io
+    kind: ClusterImageCatalog
+    name: postgresql                     # global image_catalog
+    major: <mayor soportada por SonarQube>   # verificar
   storage: { size: 100Gi, storageClass: hyperdisk-balanced }
   resources: { requests: { cpu: "2", memory: 8Gi }, limits: { memory: 8Gi } }
   postgresql:
@@ -602,11 +606,10 @@ Alta de un equipo = app role en Entra ID (equipo de identidad) + una entrada en 
 | todos los que usan Kubernetes | `cluster_endpoint` | `gcp-qa-gke` | `mock-endpoint.example.invalid` (sin esquema: GKE) |
 | todos los que usan Kubernetes | `cluster_ca` (sensitive) | `gcp-qa-gke` | `bW9jaw==` |
 | `secrets`, `data-tenant` | `workload_identity_pool` | `gcp-qa-gke` | `mock-project.svc.id.goog` |
-| `data-tenant` | `cnpg_version` | `gcp-qa-postgres-operator` | `"0.0.0"`, que el assert trata como desconocido en preview |
 | `app` | `saml_sso_url` | `gcp-qa-keycloak` | `https://mock-idp.example.invalid/realms/mock/protocol/saml` |
 | `app` | `saml_idp_certificate` | `gcp-qa-keycloak` | certificado PEM de prueba válido, CN `mock-idp` |
 
-El mock de `cnpg_version` rompe la regla del prefijo `mock-` a propósito: el valor debe ser un semver parseable. Queda anotado como excepción en el contrato.
+Todos los mocks llevan el prefijo `mock-` o son de tipo correcto sin excepciones: la antigua entrada `cnpg_version`, que obligaba a un mock semver fuera de la regla, pasó a ser el global `operator_version` (propuesta `postgres-operator-qa` §7.1).
 
 ---
 
@@ -812,7 +815,7 @@ Lo que este arquetipo necesita de otros y que todavía no está especificado:
 |---|---|---|
 | `gcp-qa-gke` | Node pool `sonar` con sysctl y taint (E1 §4.1); salida `workload_identity_pool` | `app`, `secrets`, `data-tenant` |
 | `keycloak` | Reconciliador de clientes por `ConfigMap`; salidas `saml_sso_url` y `saml_idp_certificate`; `oidc-idp` 4.2.0 | `sso`, `app` |
-| `postgres-operator` | Autorizar `Cluster` y `ScheduledBackup` como tenant resources; plugin barman-cloud instalado; salida `cnpg_version` | `data-tenant` |
+| `postgres-operator` | **Resuelto** en la propuesta `postgres-operator-qa`: `Cluster`, `ObjectStore`, `ScheduledBackup`, `Backup` y `Pooler` como tenant resources en el namespace del consumidor (§1); plugin barman-cloud (§5); `operator_version` como global (§7.1); `ClusterImageCatalog` (§2) | `data-tenant` |
 | `gateway-envoy-gke` | **Resuelto** en la propuesta de Envoy Gateway (`../envoy-gateway-qa/`): sin límite de cuerpo (§2.3); timeout por ruta con `timeouts.request` hasta 120 s y 60 s por defecto en el Gateway (§2.2); `BackendTrafficPolicy` de tenant permitida con límites y `SecurityPolicy` solo en namespaces etiquetados (§9.2) | `frontdoor` |
 | `gcp-qa-edge` | Timeout del backend service ≥ 120 s (R45); exclusiones de Cloud Armor en `/api/ce/submit` | Análisis grandes |
 | `monitoring-oss` | Selector de reglas `prometheus=qa`; sidecar de dashboards de Grafana; blackbox exporter | `observability` |

@@ -952,13 +952,15 @@ The same pattern covers any operator-backed shared service:
 | Provider | Capability | Tenant resources |
 |---|---|---|
 | `kafka` | `event-bus` | `KafkaTopic`, `KafkaUser` |
-| `postgres-operator` | `database-platform` | `Database`, `Role` |
+| `postgres-operator` | `database-platform` | `Cluster`, `ObjectStore`, `ScheduledBackup`, `Backup`, `Pooler` — one dedicated `Cluster` per consumer, never a logical database in a shared one |
 | `redis-operator` | `cache` | `RedisInstance` |
 | `keycloak` | `oidc-idp` | `ConfigMap` named `client-{{ instance }}-*`, reconciled into a client by keycloak-config-cli. The current Keycloak Operator has no client CRD; groups come from the upstream IdP, so no role resource is offered |
 
 An assertion closes the whole class of failure:
 
 > No stack may create resources in another archetype's namespace unless it declares `creates_tenant_resources` and the provider authorises that kind in `tenant_resources`.
+
+**Tenant resources in the consumer's own namespace.** Kafka and Keycloak reconcile only in their own namespace, so their tenant resources live there. An operator that reconciles in every namespace, such as CloudNativePG, is different: the consumer creates its `Cluster` in **its own** namespace, and the data stay there. The rule still applies — the kind belongs to the provider, so the consumer declares `creates_tenant_resources` and the provider authorises it in `tenant_resources` wherever it is created. The `postgres-operator-qa` proposal §1 has the detail.
 
 ### 10.5 The Keycloak bootstrap invariant
 

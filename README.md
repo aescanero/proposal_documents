@@ -35,6 +35,7 @@ Inside each language folder:
 | `proposals/kafka-qa/` | The layer-4 `kafka` archetype on `qa`: Strimzi in KRaft mode, mTLS with the internal CA, the multi-tenant contract (prefixed topics, derived ACLs, quotas), capacity budgets and the `event-bus` 2.1.0 contract |
 | `proposals/gatekeeper-qa/` | The layer-2b `policy-gatekeeper` archetype on `qa`: who owns each admission rule, the consolidated rule catalogue, PSA for Pod Security, exceptions by name derived from resolution, `gator` tests in CI and the `policy` 1.1.0 contract |
 | `proposals/postgres-cloudsql-qa/` | The layer-4 `postgres-cloudsql` archetype, default `database-platform` provider: a global provider per environment, managed first, the `database-platform` 2.0.0 contract shared with CloudNativePG, and the provider matrix in CI |
+| `proposals/postgres-operator-qa/` | The layer-4 `postgres-operator` archetype, the CloudNativePG alternative `database-platform` provider: one `Cluster` per consumer in its own namespace, a platform image catalog by digest, barman-cloud backups to a bucket per consumer, in-place operator upgrades; not bound in `qa` |
 
 The two halves meet at `binding.tm.hcl`: the resolver writes globals, the generators
 consume them.

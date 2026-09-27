@@ -129,6 +129,7 @@ One contract for both providers. It goes to **2.0.0** (MAJOR): what being bound 
 | `proxy_image` | Digest of the Auth Proxy image | — |
 | `psa_cidr` | CIDR of the PSA range, for the consumer's `NetworkPolicy` | — |
 | `operator_version` | — | The CNPG version (the former `cnpg_version`, S2 §5.3) |
+| `image_catalog` | — | Name of the `ClusterImageCatalog` (`postgres-operator-qa` proposal §2) |
 
 All are deterministic and arrive as globals.
 

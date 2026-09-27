@@ -1,0 +1,25 @@
+flowchart LR
+    subgraph NS["Namespace del consumidor"]
+        direction TB
+        CL["Cluster<br/>primaria + réplica<br/>KSA propio"]
+        OS["ObjectStore<br/>destino = su bucket<br/>gkeEnvironment: true"]
+        SB["ScheduledBackup<br/>base diaria"]
+        BK["Backup<br/>antes de un upgrade"]
+    end
+    PL["plugin barman-cloud<br/>cnpg-system · TLS de cert-manager"]
+    subgraph DT["Stack data-tenant del consumidor"]
+        direction TB
+        B[("gs://proyecto-instancia-pgbackup<br/>retención 14 días · soft delete 7<br/>sin versionado · prevent_destroy")]
+        IAM["objectAdmin sobre ese bucket<br/>Workload Identity directa"]
+    end
+    NEW["Cluster NUEVO<br/>bootstrap.recovery"]
+    SB --> CL
+    BK --> CL
+    CL -- "WAL continuo + base" --> PL
+    OS -. "configura" .-> PL
+    PL --> B
+    IAM -. "autoriza" .-> B
+    B -- "restauración · PITR" --> NEW
+
+    style B fill:#fff5e6
+    style NEW fill:#e6f4ea

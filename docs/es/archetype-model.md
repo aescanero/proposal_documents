@@ -953,13 +953,15 @@ El mismo patrón cubre cualquier servicio compartido respaldado por un operador:
 | Proveedor | Capability | Recursos de tenant |
 |---|---|---|
 | `kafka` | `event-bus` | `KafkaTopic`, `KafkaUser` |
-| `postgres-operator` | `database-platform` | `Database`, `Role` |
+| `postgres-operator` | `database-platform` | `Cluster`, `ObjectStore`, `ScheduledBackup`, `Backup`, `Pooler` — un `Cluster` dedicado por consumidor, nunca una base lógica en uno compartido |
 | `redis-operator` | `cache` | `RedisInstance` |
 | `keycloak` | `oidc-idp` | `ConfigMap` con nombre `client-{{ instance }}-*`, que keycloak-config-cli reconcilia como cliente. El Keycloak Operator actual no tiene CRD de cliente; los grupos vienen del IdP de origen, así que no se ofrece recurso de roles |
 
 Una aserción cierra toda la clase de fallo:
 
 > Ningún stack puede crear recursos en el namespace de otro arquetipo a menos que declare `creates_tenant_resources` y el proveedor autorice ese tipo en `tenant_resources`.
+
+**Recursos de tenant en el namespace del propio consumidor.** Kafka y Keycloak reconcilian solo en su namespace, así que sus recursos de tenant viven allí. Un operador que reconcilia en todos los namespaces, como CloudNativePG, es distinto: el consumidor crea su `Cluster` en **su** namespace, y los datos se quedan allí. La regla sigue aplicándose: el tipo es del proveedor, así que el consumidor declara `creates_tenant_resources` y el proveedor lo autoriza en `tenant_resources`, se cree donde se cree. El detalle está en la propuesta `postgres-operator-qa` §1.
 
 ### 10.5 El invariante de arranque de Keycloak
 

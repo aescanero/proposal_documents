@@ -129,6 +129,7 @@ Un solo contrato para los dos proveedores. Pasa a **2.0.0** (MAJOR): cambia el s
 | `proxy_image` | Digest de la imagen del Auth Proxy | — |
 | `psa_cidr` | CIDR del rango PSA, para la `NetworkPolicy` del consumidor | — |
 | `operator_version` | — | Versión de CNPG (la antigua `cnpg_version`, E2 §5.3) |
+| `image_catalog` | — | Nombre del `ClusterImageCatalog` (propuesta `postgres-operator-qa` §2) |
 
 Todas son deterministas y llegan como globals.
 

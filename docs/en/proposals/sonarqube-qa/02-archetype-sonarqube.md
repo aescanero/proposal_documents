@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · stage 2 · revision 2 |
+| **Status** | Proposal · stage 2 · revision 3 |
 | **Part of** | [`README.md`](README.md) (stage 1: elements and dependencies, closed) |
 | **Scope** | The layer-5 archetype `sonarqube`: repository structure, manifest, the stacks that make it up, each stack's template (generator), contracts, execution, configuration, policies, what it provides, and a phased implementation plan |
 | **Out of scope** | `qa`'s layers 0–4 (they belong to the platform; here they appear only as producers and requirements) |
@@ -456,11 +456,11 @@ generate_hcl "_secrets.tf" {
 | **Generator** | `gen_data_tenant_cnpg.tm.hcl`: GCP branch for the bucket and IAM, a shared part for the `helm_release` |
 | **GCP resources** | `google_storage_bucket` `disasterproject-qa-sonarqube-main-pgbackup` (regional, `uniform_bucket_level_access`, `public_access_prevention = "enforced"`, **no** versioning or retention lock — S1 §4.9, 7-day soft delete); `google_storage_bucket_iam_member` `objectAdmin` for the `sonarqube-db` principal |
 | **K8s resources** | `helm_release` with `database.enabled=true`: CNPG `Cluster` `sonarqube-db` (2 instances, per-node anti-affinity, `bootstrap.initdb` with `secret: sonarqube-db`), backups via the barman-cloud plugin (`ObjectStore` + daily `ScheduledBackup`) **(verify: plugin API in the pinned CNPG version)** |
-| **Tenant resource** | `Cluster`, `ScheduledBackup` in its own namespace — requires `postgres-operator` to authorise them (S1 §4.4) |
-| **Inputs** | `cluster_*`, `workload_identity_pool` (gke); `cnpg_version` (from `gcp-qa-postgres-operator`) |
+| **Tenant resource** | `Cluster`, `ObjectStore`, `ScheduledBackup` and `Backup` in its own namespace, authorised by `postgres-operator` (`postgres-operator-qa` proposal §1) |
+| **Inputs** | `cluster_*`, `workload_identity_pool` (gke). `operator_version` and `image_catalog` arrive as globals of the `database-platform` contract, not via sharing; `after` still points at `gcp-qa-postgres-operator` so the CRDs exist |
 | **Outputs** | `db_rw_service` = `sonarqube-db-rw.sonarqube.svc` · `db_name` = `sonarqube` · `backup_bucket` |
 
-`cnpg_version` arrives via sharing so that an `assert` can compare the API the chart uses against the installed operator's: a chart written for a newer API than the operator fails at `generate`, not at apply.
+An `assert` compares the API the chart uses against `operator_version`, the CNPG version pinned by the provider archetype: a chart written for a newer API than the operator fails at `generate`, not at apply. It is a global rather than a sharing input because the bound archetype's version determines it, not the stack's state (`postgres-operator-qa` proposal §7.1, DO6).
 
 ```yaml
 # chart/templates/cnpg-cluster.yaml (excerpt of effective values)
@@ -469,7 +469,11 @@ kind: Cluster
 metadata: { name: sonarqube-db }
 spec:
   instances: 2
-  imageName: ghcr.io/cloudnative-pg/postgresql:<major supported by SonarQube>   # verify
+  imageCatalogRef:                       # platform catalog, by digest (postgres-operator-qa §2)
+    apiGroup: postgresql.cnpg.io
+    kind: ClusterImageCatalog
+    name: postgresql                     # global image_catalog
+    major: <major supported by SonarQube>   # verify
   storage: { size: 100Gi, storageClass: hyperdisk-balanced }
   resources: { requests: { cpu: "2", memory: 8Gi }, limits: { memory: 8Gi } }
   postgresql:
@@ -602,11 +606,10 @@ Onboarding a team = an Entra ID app role (identity team) + an entry in `teams.ya
 | every stack using Kubernetes | `cluster_endpoint` | `gcp-qa-gke` | `mock-endpoint.example.invalid` (no scheme: GKE) |
 | every stack using Kubernetes | `cluster_ca` (sensitive) | `gcp-qa-gke` | `bW9jaw==` |
 | `secrets`, `data-tenant` | `workload_identity_pool` | `gcp-qa-gke` | `mock-project.svc.id.goog` |
-| `data-tenant` | `cnpg_version` | `gcp-qa-postgres-operator` | `"0.0.0"`, which the assert treats as unknown during preview |
 | `app` | `saml_sso_url` | `gcp-qa-keycloak` | `https://mock-idp.example.invalid/realms/mock/protocol/saml` |
 | `app` | `saml_idp_certificate` | `gcp-qa-keycloak` | a valid test PEM certificate, CN `mock-idp` |
 
-`cnpg_version`'s mock deliberately breaks the `mock-` prefix rule: the value must be a parseable semver. Noted as an exception in the contract.
+Every mock carries the `mock-` prefix or is type-correct, with no exceptions: the former `cnpg_version` input, which forced a semver mock outside the rule, became the `operator_version` global (`postgres-operator-qa` proposal §7.1).
 
 ---
 
@@ -812,7 +815,7 @@ What this archetype needs from others, and is not yet specified:
 |---|---|---|
 | `gcp-qa-gke` | Node pool `sonar` with sysctl and taint (S1 §4.1); output `workload_identity_pool` | `app`, `secrets`, `data-tenant` |
 | `keycloak` | `ConfigMap` client reconciler; outputs `saml_sso_url` and `saml_idp_certificate`; `oidc-idp` 4.2.0 | `sso`, `app` |
-| `postgres-operator` | Authorise `Cluster` and `ScheduledBackup` as tenant resources; barman-cloud plugin installed; output `cnpg_version` | `data-tenant` |
+| `postgres-operator` | **Resolved** in the `postgres-operator-qa` proposal: `Cluster`, `ObjectStore`, `ScheduledBackup`, `Backup` and `Pooler` as tenant resources in the consumer's namespace (§1); barman-cloud plugin (§5); `operator_version` as a global (§7.1); `ClusterImageCatalog` (§2) | `data-tenant` |
 | `gateway-envoy-gke` | **Resolved** in the Envoy Gateway proposal (`../envoy-gateway-qa/`): no body limit (§2.3); per-route timeout with `timeouts.request` up to 120 s and 60 s by default on the Gateway (§2.2); tenant `BackendTrafficPolicy` allowed within limits and `SecurityPolicy` only in labelled namespaces (§9.2) | `frontdoor` |
 | `gcp-qa-edge` | Backend-service timeout ≥ 120 s (R45); Cloud Armor exclusions on `/api/ce/submit` | Large analyses |
 | `monitoring-oss` | Rule selector `prometheus=qa`; Grafana dashboard sidecar; blackbox exporter | `observability` |

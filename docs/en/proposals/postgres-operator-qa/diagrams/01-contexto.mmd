@@ -1,0 +1,28 @@
+flowchart LR
+    subgraph DEP["Requires · an environment that binds CNPG"]
+        direction TB
+        GKE["cluster ^2.0.0<br/>GKE · EKS · AKS"]
+        GK["policy ^1.1.0<br/>gatekeeper"]
+        CM["certs ^1.1.0<br/>cert-manager"]
+        MON["monitoring ^1.5.0<br/>prometheus-operator-crds"]
+    end
+    subgraph PROV["postgres-operator · layer 4 · trait cnpg"]
+        direction TB
+        OPS["operator stack<br/>cnpg-system · 2 replicas<br/>barman-cloud plugin"]
+        CAT["catalog stack<br/>ClusterImageCatalog by digest<br/>rules and alerts"]
+    end
+    subgraph CONS["Each consumer's namespace"]
+        direction TB
+        SQ["SonarQube · data-tenant<br/>Cluster · ObjectStore · ScheduledBackup"]
+        KC["Keycloak · data-tenant<br/>Cluster · ObjectStore · ScheduledBackup"]
+    end
+    GCS[("one bucket per consumer<br/>gs://project-instance-pgbackup")]
+    DEP --> PROV
+    OPS --> CAT
+    OPS -. "reconciles in every namespace" .-> CONS
+    CAT -. "imageCatalogRef" .-> CONS
+    SQ -- "WAL + base · Workload Identity" --> GCS
+    KC -- "WAL + base · Workload Identity" --> GCS
+
+    style OPS fill:#e8f0fe
+    style CAT fill:#e8f0fe
