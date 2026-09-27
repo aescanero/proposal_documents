@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 1 |
+| **Status** | Proposal · revision 2 |
 | **Scope** | The managed `database-platform` provider: the global-provider-per-environment rule, the contract shared with CloudNativePG, what the provider supplies and what each consumer creates, the reference Cloud SQL instance, identity, network, backup, observability, the provider matrix in CI, stacks, policies, execution and plan |
 | **Why now** | The strategy is agnostic with managed services first (`CLAUDE.md`): in production PostgreSQL is Cloud SQL, and `qa` mirrors production. CloudNativePG stays as a supported alternative. Until now Cloud SQL was not a provider but the "`database-platform` unbound" case (AM §5.5), and SonarQube and Keycloak had taken different paths |
 | **Base** | SonarQube's Cloud SQL variant ([`../sonarqube-qa-cloudsql/`](../sonarqube-qa-cloudsql/README.md), DC §n) already settled the instance, the connection, the secrets and the backup. This document generalises them for any consumer and **does not repeat** what is there |
@@ -210,7 +210,7 @@ runtimes: [gke, eks, aks]
 
 requires:
   - capability: network
-    version: "^2.0.0"
+    version: "^3.0.0"
 
 provides:
   - capability: database-platform

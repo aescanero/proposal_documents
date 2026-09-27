@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 1 |
+| **Status** | Proposal · revision 2 |
 | **Scope** | The network part of the environment archetype on `qa`: project APIs, VPC, baseline firewall, Cloud NAT, private access to Google APIs, private services access (PSA), private DNS zones, the environment's address pool, the `network` contract, stacks, policies, execution and plan. The edge (`env-edge`, `gcp-qa-edge`) is the next proposal |
 | **Why now** | It is the first thing applied on `qa` after the landing zone, and six proposals have left it requirements (§0.1). The GKE proposal took the node subnet away from it (DN2), so its contract changes |
 | **Base** | S1 §4.14 (KMS), §4.15 (separate VPC); architecture §5.2 (network stack), §11.7 (org policies), §11.9 (network baseline); AM §8–§9 (claims and pools). What is there is not repeated |
@@ -311,12 +311,12 @@ assert {
 
 | Document | Change | Status |
 |---|---|---|
-| Architecture §5.2 | The network contract becomes 3.0.0: a major version because of the outputs DN2 removed | **Proposed** (DW5) |
-| GKE (§7.2) and `postgres-cloudsql` (§7) manifests | `network` `^3.0.0` | **Proposed** (DW5) |
-| `qa` bindings (S1 §7 and Cloud SQL variant) | `environment` 3.0.0 | **Proposed** (DW5) |
-| S1 §4.8 and proposals with egress to Google APIs | The rule to `199.36.153.8/30` depends on the §4 private zones; this proposal is cited | **Proposed** (DW2) |
-| GKE proposal §7.3 | The `subnet` stack applies the `flow_logs` global | **Proposed** (DW6) |
-| Landing zone | Org policies `compute.skipDefaultNetworkCreation` and `compute.restrictVpcPeering` with `servicenetworking` allowed | **Proposed** (requirement on the landing zone) |
+| Architecture §5.2 | The network contract becomes 3.0.0: a major version because of the outputs DN2 removed | **Applied** (DW5) |
+| GKE (§7.2) and `postgres-cloudsql` (§7) manifests | `network` `^3.0.0` | **Applied** (DW5) |
+| `qa` bindings (S1 §7 and Cloud SQL variant) | `environment` 3.0.0 | **Applied** (DW5) |
+| S1 §4.8 and proposals with egress to Google APIs | The rule to `199.36.153.8/30` depends on the §4 private zones; this proposal is cited | **Applied** (DW2) |
+| GKE proposal §7.3 | The `subnet` stack applies the `flow_logs` global | **Applied** (DW6) |
+| Landing zone | Org policies `compute.skipDefaultNetworkCreation` and `compute.restrictVpcPeering` with `servicenetworking` allowed | **Applied** (requirement on the landing zone) |
 
 ---
 
@@ -324,13 +324,13 @@ assert {
 
 | # | Decision | Status | Recommendation | Alternative |
 |---|---|---|---|---|
-| DW1 | Stacks and APIs | Proposed | `apis` and `network` separate; API list derived from the bound archetypes | One stack; a hand-kept list |
-| DW2 | Google APIs | Proposed | Private zones towards `private.googleapis.com` | Public VIP with `FQDNNetworkPolicy`; `restricted.googleapis.com` with VPC-SC |
-| DW3 | Cloud NAT | Proposed | `AUTO_ONLY`, dynamic allocation 256–8192, error logs | Fixed IPs; default static ports |
-| DW4 | PSA | Proposed | `/21` in `data` | `/24` |
-| DW5 | Contract version | Proposed | `network` 3.0.0 | 2.x without the outputs, breaking silently |
-| DW6 | Firewall and flow logs | Proposed | Deny-all with logs at priority 65534; egress open in the VPC and controlled in the cluster; flow logs via a global | Egress restricted by CIDR in the VPC |
-| DW7 | Records in `qa.internal` | Proposed | Each archetype under its namespace, checked in G1 | One zone per archetype |
+| DW1 | Stacks and APIs | **Approved** | `apis` and `network` separate; API list derived from the bound archetypes | One stack; a hand-kept list |
+| DW2 | Google APIs | **Approved** | Private zones towards `private.googleapis.com` | Public VIP with `FQDNNetworkPolicy`; `restricted.googleapis.com` with VPC-SC |
+| DW3 | Cloud NAT | **Approved** | `AUTO_ONLY`, dynamic allocation 256–8192, error logs | Fixed IPs; default static ports |
+| DW4 | PSA | **Approved** | `/21` in `data` | `/24` |
+| DW5 | Contract version | **Approved** | `network` 3.0.0 | 2.x without the outputs, breaking silently |
+| DW6 | Firewall and flow logs | **Approved** | Deny-all with logs at priority 65534; egress open in the VPC and controlled in the cluster; flow logs via a global | Egress restricted by CIDR in the VPC |
+| DW7 | Records in `qa.internal` | **Approved** | Each archetype under its namespace, checked in G1 | One zone per archetype |
 
 ---
 

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 16 (alineada con la etapa 2) |
+| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 17 (alineada con la etapa 2) |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
@@ -295,7 +295,7 @@ Las alertas que nacen de **logs de auditoría de GCP** no pasan por Prometheus: 
 | Todos | kube-dns | 53 |
 | SonarQube | Internet | **Denegado**; `sonar.updatecenter.activate=false` |
 
-GKE aplica `NetworkPolicy` con Dataplane V2; el egress a las APIs de Google se expresa por FQDN (`FQDNNetworkPolicy`) o por los rangos de Private Google Access — verificar cuál soporta la versión.
+GKE aplica `NetworkPolicy` con Dataplane V2; el egress a las APIs de Google se expresa con un `ipBlock` a `199.36.153.8/30` (`private.googleapis.com`). Solo funciona porque la red de `qa` tiene zonas DNS privadas que resuelven `*.googleapis.com` y `*.pkg.dev` a ese VIP: sin ellas, los nombres resuelven a IPs públicas y la regla los bloquea (propuesta `network-qa` §4, RW1). `FQDNNetworkPolicy` queda para destinos fuera de Google, como Entra ID.
 
 ### 4.9 Backup y recuperación
 
@@ -452,7 +452,7 @@ Direccionamiento: una `/17` del bloque permanente `10.4.0.0/14` por resolución 
 | Región | `europe-west1` | Contexto (§0) |
 | KMS | Key ring `qa` regional en el proyecto de landing zone, sin capability, protegido frente a destrucción | §4.14 |
 | Proyecto | `disasterproject-qa`, uno por entorno | §0, §4.15 |
-| Org policies | Sin claves de SA, región confinada, sin IPs públicas en nodos | §11.7 |
+| Org policies | Sin claves de SA, región confinada, sin IPs públicas en nodos, sin red `default` (`compute.skipDefaultNetworkCreation`), peerings solo hacia `servicenetworking` (`compute.restrictVpcPeering`) | §11.7; propuesta `network-qa` §2 y §5 |
 
 ---
 
@@ -580,7 +580,7 @@ platform:
   landing_zone: disasterproject-gcp-lz
   project_id: disasterproject-qa
 bindings:
-  network:             { archetype: environment, version: 2.1.0,          stack_id: gcp-qa-network }
+  network:             { archetype: environment, version: 3.0.0,          stack_id: gcp-qa-network }
   cluster:             { archetype: gke, version: 2.5.0,                  stack_id: gcp-qa-gke }
   cloud-observability: { archetype: cloud-monitoring-gcp, version: 1.2.0, stack_id: gcp-qa-cloudmon }
   policy:              { archetype: policy-gatekeeper, version: 1.0.0,    stack_id: gcp-qa-policy }

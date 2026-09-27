@@ -737,7 +737,7 @@ Cuatro niveles, aplicados en este orden; los stacks del mismo nivel se ejecutan 
 
 ### 5.2 Stack 1 — network (solo productor)
 
-GKE en modo VPC-native requiere que existan **rangos IP secundarios para pods y servicios** en la subred antes de crear el cluster. **No** son de la red: el runtime reclama la subred de nodos y el rango de pods (AM §9.5), porque cada runtime tiene una forma distinta, así que los crea el arquetipo `gke` en su primer stack (§5.3). El contrato de la red lleva solo lo que comparten todos los runtimes. Dueño del claim, creador y autor de las reglas de firewall del rango son el mismo.
+GKE en modo VPC-native requiere que existan **rangos IP secundarios para pods y servicios** en la subred antes de crear el cluster. **No** son de la red: el runtime reclama la subred de nodos y el rango de pods (AM §9.5), porque cada runtime tiene una forma distinta, así que los crea el arquetipo `gke` en su primer stack (§5.3). El contrato de la red lleva solo lo que comparten todos los runtimes. Dueño del claim, creador y autor de las reglas de firewall del rango son el mismo. Quitar esas salidas hizo del contrato de red la **3.0.0** —una versión mayor, porque rompe a quien las leía— y sus consumidores piden `^3.0.0` (propuesta `network-qa` §8.1).
 
 ```hcl
 # imports/contracts/contract_network_gcp.tm.hcl

@@ -726,7 +726,7 @@ Four levels, applied in this order; stacks at the same level run in parallel. Th
 
 ### 5.2 Stack 1 — network (producer only)
 
-GKE in VPC-native mode requires **secondary IP ranges for pods and services** to exist on the subnet before the cluster is created. They are **not** the network's: the runtime claims the node subnet and the pod range (AM §9.5), because each runtime has a different shape, so the `gke` archetype creates them in its own first stack (§5.3). The network contract carries only what every runtime shares. Claim owner, creator and writer of the range's firewall rules are one and the same.
+GKE in VPC-native mode requires **secondary IP ranges for pods and services** to exist on the subnet before the cluster is created. They are **not** the network's: the runtime claims the node subnet and the pod range (AM §9.5), because each runtime has a different shape, so the `gke` archetype creates them in its own first stack (§5.3). The network contract carries only what every runtime shares. Claim owner, creator and writer of the range's firewall rules are one and the same. Removing those outputs made the network contract **3.0.0** — a major version, since whoever read them breaks — and its consumers require `^3.0.0` (`network-qa` proposal §8.1).
 
 ```hcl
 # imports/contracts/contract_network_gcp.tm.hcl

@@ -499,7 +499,7 @@ Source: [`diagrams/15-datos-backup.mmd`](diagrams/15-datos-backup.mmd)
 | **Purpose** | Default-deny ingress and egress, plus S1 §4.8's exceptions |
 | **Generator** | `gen_helm_stack.tm.hcl` with `firewall.enabled=true` |
 | **Resources** | 7 × `NetworkPolicy`: default-deny; Envoy → 9000; Prometheus → 9000 and 9187; SonarQube → CNPG 5432; CNPG ↔ CNPG; CNPG operator → 8000; DNS; CNPG → Private Google Access 443 |
-| **Selectors** | By pod and namespace label, never by CIDR, except the egress to `199.36.153.8/30` (`private.googleapis.com`) **(verify)** |
+| **Selectors** | By pod and namespace label, never by CIDR, except the egress to `199.36.153.8/30` (`private.googleapis.com`), which depends on the network's private DNS zones (`network-qa` proposal §4) |
 | **Why after `data-tenant`** | CNPG's selectors (`cnpg.io/cluster=sonarqube-db`) exist once the `Cluster` exists; applying earlier does not fail, but the order makes clear what protects what |
 
 ### 5.5 `sso` — SAML client in Keycloak

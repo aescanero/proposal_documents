@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 2 |
+| **Estado** | Propuesta · revisión 3 |
 | **Alcance** | El cluster de `qa` como arquetipo: direcciones y subred, plano de control y acceso, seguridad de nodos, node pools y su asignación a consumidores, almacenamiento, red del cluster, upgrades, el contrato `cluster`, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | Todo lo desplegado en las propuestas anteriores corre en él, y cada una le dejó un requisito (§0.1). Es la dependencia de todas: el último eslabón antes de la red y el borde |
 | **Base** | E1 §4.1 (runtime), §4.13 (acceso del pipeline), §4.14 (KMS), §4.15 (VPC separada); arquitectura §5.2–§5.7 (guía GKE y línea base de seguridad); AM §9 (pools y rangos). Este documento **no repite** lo que ya está allí: lo concreta y cierra huecos |
@@ -265,7 +265,7 @@ runtimes: [gke]
 
 requires:
   - capability: network
-    version: "^2.0.0"
+    version: "^3.0.0"
 
 provides:
   - capability: cluster
@@ -311,7 +311,7 @@ stacks:
 
 | Stack | Contenido | Entradas por sharing |
 |---|---|---|
-| `subnet` | Subred de nodos con sus dos rangos secundarios y Private Google Access | `network_self_link` |
+| `subnet` | Subred de nodos con sus dos rangos secundarios, Private Google Access y flow logs con el global `flow_logs` del entorno (propuesta `network-qa` §2) | `network_self_link` |
 | `cluster` | `google_container_cluster` (§2–§4), SA de nodos y sus roles | `network_self_link`, `subnet_self_link` (del propio `subnet`) |
 | `nodepools` | Un `google_container_node_pool` por entrada de `cluster.node_pools` | — (globals) |
 | `access` | Servicio intermedio de E1 §4.13: Cloud Run function con un rol propio de solo `container.clusters.get` y `container.clusters.update`, con condición IAM sobre **este** cluster; Cloud Scheduler para el reconciliador de cada 15 min | — |

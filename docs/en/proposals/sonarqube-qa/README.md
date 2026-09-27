@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · stage 1 of N · **stage 1 closed** · revision 16 (aligned with stage 2) |
+| **Status** | Proposal · stage 1 of N · **stage 1 closed** · revision 17 (aligned with stage 2) |
 | **Scope** | What elements a complete `qa` environment needs to run SonarQube Community Build, what each one depends on, and which open source tool covers it |
 | **Out of scope** | Code (generators, contracts, charts), detailed per-pipeline integration, upgrade procedure. Later stages |
 | **Reference specification** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `developer-guide.md` (DG §n), `risk-register.md` |
@@ -295,7 +295,7 @@ Default-deny `NetworkPolicy` for ingress and egress in `sonarqube`:
 | All | kube-dns | 53 |
 | SonarQube | Internet | **Denied**; `sonar.updatecenter.activate=false` |
 
-GKE enforces `NetworkPolicy` via Dataplane V2; egress to Google's APIs is expressed either by FQDN (`FQDNNetworkPolicy`) or by the Private Google Access ranges — verify which one the pinned version supports.
+GKE enforces `NetworkPolicy` via Dataplane V2; egress to Google's APIs is expressed as an `ipBlock` to `199.36.153.8/30` (`private.googleapis.com`). It only works because the `qa` network has private DNS zones resolving `*.googleapis.com` and `*.pkg.dev` to that VIP: without them the names resolve to public IPs and the rule blocks them (`network-qa` proposal §4, RW1). `FQDNNetworkPolicy` is kept for destinations outside Google, such as Entra ID.
 
 ### 4.9 Backup and recovery
 
@@ -452,7 +452,7 @@ Addressing: a `/17` from the permanent block `10.4.0.0/14`, assigned by resoluti
 | Region | `europe-west1` | Context (§0) |
 | KMS | Regional `qa` key ring in the landing zone project, no capability, protected from destruction | §4.14 |
 | Project | `disasterproject-qa`, one per environment | §0, §4.15 |
-| Org policies | No SA keys, region confined, no public IPs on nodes | §11.7 |
+| Org policies | No SA keys, region confined, no public IPs on nodes, no `default` network (`compute.skipDefaultNetworkCreation`), peerings only towards `servicenetworking` (`compute.restrictVpcPeering`) | §11.7; `network-qa` proposal §2 and §5 |
 
 ---
 
@@ -580,7 +580,7 @@ platform:
   landing_zone: disasterproject-gcp-lz
   project_id: disasterproject-qa
 bindings:
-  network:             { archetype: environment, version: 2.1.0,          stack_id: gcp-qa-network }
+  network:             { archetype: environment, version: 3.0.0,          stack_id: gcp-qa-network }
   cluster:             { archetype: gke, version: 2.5.0,                  stack_id: gcp-qa-gke }
   cloud-observability: { archetype: cloud-monitoring-gcp, version: 1.2.0, stack_id: gcp-qa-cloudmon }
   policy:              { archetype: policy-gatekeeper, version: 1.0.0,    stack_id: gcp-qa-policy }

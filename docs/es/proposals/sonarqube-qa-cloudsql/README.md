@@ -375,7 +375,7 @@ platform:
   landing_zone: disasterproject-gcp-lz
   project_id: disasterproject-qa
 bindings:
-  network:             { archetype: environment, version: 2.1.0,          stack_id: gcp-qa-network }
+  network:             { archetype: environment, version: 3.0.0,          stack_id: gcp-qa-network }
   cluster:             { archetype: gke, version: 2.5.0,                  stack_id: gcp-qa-gke }
   cloud-observability: { archetype: cloud-monitoring-gcp, version: 1.2.0, stack_id: gcp-qa-cloudmon }
   policy:              { archetype: policy-gatekeeper, version: 1.0.0,    stack_id: gcp-qa-policy }
