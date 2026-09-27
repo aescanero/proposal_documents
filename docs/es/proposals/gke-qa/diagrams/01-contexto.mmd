@@ -1,0 +1,31 @@
+flowchart LR
+    subgraph LZ["Landing zone"]
+        direction TB
+        KMS["clave gke-secrets<br/>+ permiso al agente de GKE"]
+        AR["Artifact Registry<br/>lector: SA de nodos"]
+    end
+    NET["gcp-qa-network · capa 1<br/>VPC · PSA · Cloud NAT · qa.internal"]
+    subgraph GKE["gke · capa 2 · provee cluster 2.5.0"]
+        direction TB
+        SUB["subnet<br/>nodos /24 · pods /18 · servicios /22"]
+        CL["cluster<br/>Standard regional · nodos privados<br/>Dataplane V2 · Workload Identity"]
+        NP["nodepools<br/>general · sonar · kafka"]
+        ACC["access<br/>open / close de la IP del runner"]
+        BL["baseline<br/>PriorityClass platform-critical"]
+    end
+    subgraph CONS["Consumidores"]
+        direction TB
+        L2B["capa 2b · Gatekeeper"]
+        L3["capa 3 · cert-manager · ESO<br/>monitorización · Envoy Gateway"]
+        L45["capas 4-5 · Kafka · Keycloak · SonarQube"]
+    end
+    NET --> SUB --> CL
+    CL --> NP --> BL
+    CL --> ACC
+    KMS -. "cifrado de etcd" .-> CL
+    AR -. "imágenes" .-> NP
+    CL -- "endpoint + CA por sharing" --> CONS
+    NP -. "globals: pools, storage_class, WI pool" .-> CONS
+
+    style CL fill:#e8f0fe
+    style NP fill:#e8f0fe

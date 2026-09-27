@@ -475,7 +475,7 @@ New edges introduced by SonarQube (each with its `after`, R2):
 |---|---|---|---|
 | `…-iam` | `gcp-qa-gke` | `workload_identity_pool` | outputs sharing |
 | `…-secrets` | `gcp-qa-secrets` | ESO's namespace and CRD version | global |
-| `…-data-tenant` | `gcp-qa-postgres-operator` | Operator version | outputs sharing |
+| `…-data-tenant` | `gcp-qa-postgres-operator` | Operator version (`operator_version`, `postgres-operator-qa` proposal §7.1) | global |
 | `…-frontdoor` | `gcp-qa-gateway` | `Gateway` name and namespace | global |
 | `…-sso` | `gcp-qa-keycloak` | Realm, SAML metadata URL | outputs sharing |
 | `…-observability` | `gcp-qa-monitoring` | Rule selector | global |

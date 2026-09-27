@@ -475,7 +475,7 @@ Aristas nuevas que introduce SonarQube (cada una con su `after`, R2):
 |---|---|---|---|
 | `…-iam` | `gcp-qa-gke` | `workload_identity_pool` | outputs sharing |
 | `…-secrets` | `gcp-qa-secrets` | Namespace de ESO y versión de sus CRD | global |
-| `…-data-tenant` | `gcp-qa-postgres-operator` | Versión del operador | outputs sharing |
+| `…-data-tenant` | `gcp-qa-postgres-operator` | Versión del operador (`operator_version`, propuesta `postgres-operator-qa` §7.1) | global |
 | `…-frontdoor` | `gcp-qa-gateway` | Nombre y namespace del `Gateway` | global |
 | `…-sso` | `gcp-qa-keycloak` | Realm, URL de metadatos SAML | outputs sharing |
 | `…-observability` | `gcp-qa-monitoring` | Selector de reglas | global |
