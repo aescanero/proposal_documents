@@ -78,7 +78,7 @@ La arquitectura (§5.2) pone la subred y sus rangos secundarios en el stack de r
 
 Private Google Access se activa en la subred de nodos: la crea `gke`, así que lo activa `gke`.
 
-**Solo GKE.** Las guías de EKS y AKS (arquitectura §6, §9) siguen con las subredes en `network`. El mismo argumento se les aplica, pero el ciclo de etiquetado de subredes de EKS ya tiene su propia solución (`cluster_name` como global) y cambiarlas queda fuera de esta propuesta: se revisa cuando se diseñe el primer entorno en esas nubes.
+**También EKS y AKS.** La misma regla se aplica ya a las guías de EKS y AKS (arquitectura §6.2, §9.2): cada runtime crea sus subredes en su propio stack `*-subnets`, y en EKS el ciclo de etiquetado de subredes ya no puede aparecer.
 
 ---
 

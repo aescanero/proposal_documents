@@ -75,6 +75,7 @@ Reglas que se derivan de "mantenerse sincronizados", no solo "traducido una vez"
 | **Sin mutación de Gatekeeper** | El generador emite labels; Gatekeeper las valida. Un escritor, un validador. La mutación haría los cambios invisibles en los diffs de Terraform y dividiría la propiedad de la lista de labels |
 | **El tráfico este-oeste se resuelve por DNS** | Así las direcciones no necesitan ser reproducibles entre reconstrucciones. Lo que SÍ se requiere es **idempotencia**: la clave de asignación es `(pool, owner, purpose)` |
 | **Las reglas de firewall las escribe quien reclama el rango** | Preferir selectores de carga de trabajo (network tags, referencias a security groups) sobre CIDR para este-oeste |
+| **Un runtime crea sus propias subredes** | Las subredes de nodos, los rangos de pods y las subredes del plano de control son claims del runtime (AM §9.5), así que las crea su arquetipo en un primer stack `*-subnets`. `network` publica la VPC/VNet, la salida y el enrutamiento, y no conoce ningún runtime. Dueño del claim = creador = autor del firewall; reconstruir un cluster nunca toca la red; el ciclo de etiquetado de subredes de EKS no puede aparecer. Aplicado a las guías de GKE, EKS y AKS (arquitectura §5.2, §6.2, §9.2) |
 | **Kafka es un archetype, no un component** | Despliega un operador e impone un contrato multi-tenant. Bus común, datos separados |
 | **Neo4j, MongoDB son components** | Instancias dedicadas sin contrato con nadie más |
 
@@ -113,7 +114,7 @@ Estos son los modos de fallo que ya se han identificado. No los redescubras.
 
 **El endpoint de GKE no tiene esquema; el de EKS incluye `https://`.** Bug clásico de copiar y pegar entre guías.
 
-**El nombrado determinista rompe ciclos de dependencia.** El ciclo de etiquetado de subredes de EKS (la red necesita el nombre del cluster, el cluster necesita las subredes) se resuelve promoviendo `cluster_name` a un global. Cuando outputs sharing parece necesitar un ciclo, este es el remedio.
+**El nombrado determinista rompe ciclos de dependencia.** El ciclo de etiquetado de subredes de EKS (la red necesita el nombre del cluster, el cluster necesita las subredes) aparecía mientras la red era dueña de las subredes del cluster; con el runtime como dueño no puede aparecer, y `cluster_name` sigue siendo un global para que los stacks del runtime coincidan en él. Cuando outputs sharing parece necesitar un ciclo, un global determinista sigue siendo el remedio.
 
 **Outputs sharing modela 1-a-N, no N-a-1.** Los bloques `input` no se pueden generar a partir de una lista dinámica. Gateway API elimina el problema del fan-in por completo, por lo que es el diseño objetivo y el remedio de URL-map es solo un fallback.
 

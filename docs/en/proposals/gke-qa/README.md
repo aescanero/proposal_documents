@@ -78,7 +78,7 @@ The architecture (§5.2) puts the subnet and its secondary ranges in the network
 
 Private Google Access is enabled on the node subnet: `gke` creates it, so `gke` enables it.
 
-**GKE only.** The EKS and AKS guides (architecture §6, §9) keep their subnets in `network`. The same argument applies to them, but EKS's subnet-tagging cycle already has its own remedy (`cluster_name` as a global) and changing them is outside this proposal: it is reviewed when the first environment on those clouds is designed.
+**Also EKS and AKS.** The same rule now applies to the EKS and AKS guides (architecture §6.2, §9.2): each runtime creates its subnets in its own `*-subnets` stack, and on EKS the subnet-tagging cycle can no longer arise.
 
 ---
 

@@ -272,8 +272,9 @@ All five guides — GKE, EKS, Cloud Run, ECS Fargate, AKS — are this graph. Wh
 flowchart TD
     subgraph NET["network produces"]
         G1["GKE: network_self_link<br/>(subnet and ranges: the gke archetype's own)"]
-        A1["EKS/Fargate: vpc_id, private_subnet_ids (list)"]
-        Z1["AKS: vnet_id, node_subnet_id"]
+        A1["EKS: vpc_id, private route tables<br/>(node subnets: the eks archetype's own)"]
+        F1["Fargate: vpc_id, private_subnet_ids (list)"]
+        Z1["AKS: vnet_id<br/>(node subnet: the aks archetype's own)"]
     end
     subgraph CLU["runtime produces"]
         G2["GKE: cluster_endpoint (no scheme), cluster_ca,<br/><b>workload_identity_pool</b>"]

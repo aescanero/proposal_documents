@@ -75,6 +75,7 @@ Rules that follow from "kept in sync", not just "translated once":
 | **No Gatekeeper mutation** | The generator emits labels; Gatekeeper validates them. One writer, one validator. Mutation would make changes invisible in Terraform diffs and split ownership of the label list |
 | **East-west traffic resolves by DNS** | So addresses need not be reproducible across rebuilds. What IS required is **idempotency**: allocation key is `(pool, owner, purpose)` |
 | **Firewall rules are written by whoever claims the range** | Prefer workload selectors (network tags, security group references) over CIDR for east-west |
+| **A runtime creates its own subnets** | Node subnets, pod ranges and control-plane subnets are the runtime's claims (AM §9.5), so its archetype creates them in a first `*-subnets` stack. `network` publishes the VPC/VNet, egress and routing, and knows no runtime. Claim owner = creator = firewall writer; rebuilding a cluster never touches the network; the EKS subnet-tagging cycle cannot arise. Applied to the GKE, EKS and AKS guides (architecture §5.2, §6.2, §9.2) |
 | **Kafka is an archetype, not a component** | It deploys an operator and imposes a multi-tenant contract. Common bus, separated data |
 | **Neo4j, MongoDB are components** | Dedicated instances with no contract to anyone else |
 
@@ -113,7 +114,7 @@ These are the failure modes that have already been identified. Do not rediscover
 
 **GKE endpoint has no scheme; EKS endpoint includes `https://`.** Classic copy-paste bug between guides.
 
-**Deterministic naming breaks dependency cycles.** The EKS subnet-tagging cycle (network needs the cluster name, cluster needs the subnets) is solved by promoting `cluster_name` to a global. When outputs sharing appears to need a cycle, this is the remedy.
+**Deterministic naming breaks dependency cycles.** The EKS subnet-tagging cycle (network needs the cluster name, cluster needs the subnets) arose while the network owned the cluster's subnets; with the runtime owning them it cannot arise, and `cluster_name` stays a global so the runtime's stacks agree on it. When outputs sharing appears to need a cycle, a deterministic global is still the remedy.
 
 **Outputs sharing models 1-to-N, not N-to-1.** `input` blocks cannot be generated from a dynamic list. Gateway API removes the fan-in problem entirely, which is why it is the target design and the URL-map remedy is only a fallback.
 

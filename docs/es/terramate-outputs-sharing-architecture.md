@@ -1023,7 +1023,8 @@ Políticas de organización que respaldan esto (§11.7): `constraints/compute.re
 
 ```mermaid
 graph LR
-    NET["<b>network</b><br/>aws-ENV-network"] --> EKS["<b>eks</b><br/>aws-ENV-eks"]
+    NET["<b>network</b><br/>aws-ENV-network"] --> SUB["<b>eks-subnets</b><br/>aws-ENV-eks-subnets"] --> EKS["<b>eks</b><br/>aws-ENV-eks"]
+    NET --> EKS
     EKS --> SVC["<b>services</b><br/>aws-ENV-services"]
     NET --> DATA["<b>data</b><br/>aws-ENV-INST-data"]
     EKS --> IRSA["<b>app IAM</b><br/>aws-ENV-INST-app"]
@@ -1031,32 +1032,32 @@ graph LR
     DATA --> IRSA
 ```
 
-Estructuralmente idéntico a GKE. Las diferencias están enteramente en *qué hechos* cruzan las fronteras.
+Estructuralmente idéntico a GKE, también en quién es dueño de las subredes del runtime (§5.2): las crea el arquetipo `eks` en su primer stack. Las diferencias están enteramente en *qué hechos* cruzan las fronteras.
 
 | # | Stack | Produce | Consume |
 |---|---|---|---|
-| 1 | `aws-ENV-network` | VPC, subredes, NAT, tablas de rutas, tags de subred | — |
-| 2 | `aws-ENV-eks` | Cluster, node groups, **proveedor OIDC**, access entries | network |
+| 1 | `aws-ENV-network` | VPC, subredes públicas, NAT gateways, una tabla de rutas privada por AZ, la etiqueta `kubernetes.io/role/elb` en las subredes públicas | — |
+| 2a | `aws-ENV-eks-subnets` | Subredes de nodos y del plano de control por AZ — los claims del runtime (AM §9.5) — asociadas a las tablas de rutas privadas, con las etiquetas `kubernetes.io/cluster/<name>` y `kubernetes.io/role/internal-elb` | network |
+| 2b | `aws-ENV-eks` | Cluster, node groups, **proveedor OIDC**, access entries | network, eks-subnets |
 | 3 | `aws-ENV-services` | AWS Load Balancer Controller, external-dns, karpenter | eks |
 | 4a | `aws-ENV-INST-data` | RDS, ElastiCache, entradas de Secrets Manager | network |
 | 4b | `aws-ENV-INST-app` | Workload, **rol IRSA**, recursos de namespace | eks, services, data |
 
-### 6.2 Stack 1 — network, y la trampa de la dependencia circular
+### 6.2 Stack 1 — network, y la dependencia circular que ya no aparece
 
 ```hcl
 # imports/contracts/contract_network_aws.tm.hcl
-output "vpc_id"             { backend = "tofu"  value = module.vpc.vpc_id }
-output "vpc_cidr"           { backend = "tofu"  value = module.vpc.vpc_cidr_block }
-output "private_subnet_ids" { backend = "tofu"  value = module.vpc.private_subnets }
-output "public_subnet_ids"  { backend = "tofu"  value = module.vpc.public_subnets }
-output "intra_subnet_ids"   { backend = "tofu"  value = module.vpc.intra_subnets }
-output "azs"                { backend = "tofu"  value = module.vpc.azs }
-output "nat_gateway_ips"    { backend = "tofu"  value = module.vpc.nat_public_ips }
+output "vpc_id"                  { backend = "tofu"  value = module.vpc.vpc_id }
+output "vpc_cidr"                { backend = "tofu"  value = module.vpc.vpc_cidr_block }
+output "public_subnet_ids"       { backend = "tofu"  value = module.vpc.public_subnets }
+output "private_route_table_ids" { backend = "tofu"  value = module.vpc.private_route_table_ids }   # una por AZ, en orden de AZ
+output "azs"                     { backend = "tofu"  value = module.vpc.azs }
+output "nat_gateway_ips"         { backend = "tofu"  value = module.vpc.nat_public_ips }
 ```
 
-> **La trampa del etiquetado de subredes.** El AWS Load Balancer Controller requiere que las subredes lleven la etiqueta `kubernetes.io/cluster/<CLUSTER_NAME> = shared`, más `kubernetes.io/role/elb` y `kubernetes.io/role/internal-elb`. Esas etiquetas pertenecen a las subredes — propiedad del stack de **network** — pero referencian el nombre del **cluster**, producido por el stack **eks**. Cablear eso con outputs sharing crea un ciclo: network → eks → network.
+> **La trampa del etiquetado de subredes, y por qué ya no aparece.** El AWS Load Balancer Controller descubre las subredes por etiqueta: `kubernetes.io/role/elb` en las públicas, `kubernetes.io/role/internal-elb` en las privadas y `kubernetes.io/cluster/<CLUSTER_NAME> = shared` en las que usa el cluster. Cuando el stack de **network** era dueño de todas las subredes, esas etiquetas referenciaban el nombre del **cluster**, producido por el stack **eks**, y cablear eso con outputs sharing creaba un ciclo: network → eks → network.
 >
-> **Solución: derivar el nombre del cluster de forma determinista a partir de globals, no de un output.**
+> **Con el runtime como dueño de sus subredes, el ciclo desaparece.** Las etiquetas que nombran al cluster van en subredes que crea el propio arquetipo `eks` (`eks-subnets`). La única etiqueta que escribe la red es `kubernetes.io/role/elb` en las subredes públicas, que no nombra al cluster: el controlador ya no necesita la etiqueta del cluster para descubrir subredes **(verificar en la versión fijada del controlador)**. El nombre del cluster se sigue derivando de forma determinista a partir de globals, porque lo leen `eks-subnets` y `eks`, y un nombre determinista es el remedio general siempre que outputs sharing parece necesitar un ciclo.
 
 ```hcl
 # stacks/platforms/aws/config.tm.hcl
@@ -1074,7 +1075,7 @@ globals {
 }
 ```
 
-Tanto el generador de network (para las etiquetas) como el de cluster (para el recurso del cluster) leen `global.cluster_name`. No hace falta ninguna arista de tiempo de ejecución, y el ciclo desaparece. Este es el remedio general siempre que outputs sharing parece requerir un ciclo: **promociona el hecho compartido a un global**.
+Tanto el generador de `eks-subnets` (para las etiquetas) como el de cluster (para el recurso del cluster) leen `global.cluster_name`. No hace falta ninguna arista de tiempo de ejecución. Este es el remedio general siempre que outputs sharing parece requerir un ciclo: **promociona el hecho compartido a un global**. Aquí la regla de propiedad ya elimina el ciclo; el global mantiene de acuerdo en el nombre a los dos stacks de un mismo arquetipo.
 
 Añade una aserción para que los dos nunca puedan divergir:
 
@@ -1090,18 +1091,20 @@ assert {
 ```hcl
 # imports/contracts/contract_cluster_eks.tm.hcl
 
-## ---- consume ----
+## ---- consume del stack de network ----
 input "vpc_id" {
   backend = "tofu"  from_stack_id = global.platform.network_stack_id
   value = outputs.vpc_id.value  mock = "vpc-mock00000000000"
 }
+
+## ---- consume del stack de subred propio (aws-demos-eks-subnets) ----
 input "private_subnet_ids" {
-  backend = "tofu"  from_stack_id = global.platform.network_stack_id
+  backend = "tofu"  from_stack_id = global.platform.cluster_subnet_stack_id
   value = outputs.private_subnet_ids.value
   mock  = ["subnet-mock0000000000a", "subnet-mock0000000000b", "subnet-mock0000000000c"]
 }
 input "intra_subnet_ids" {
-  backend = "tofu"  from_stack_id = global.platform.network_stack_id
+  backend = "tofu"  from_stack_id = global.platform.cluster_subnet_stack_id
   value = outputs.intra_subnet_ids.value
   mock  = ["subnet-mock0000000000d", "subnet-mock0000000000e"]
 }
@@ -1128,11 +1131,14 @@ stack {
   id    = "aws-demos-eks"
   name  = "AWS demos — EKS"
   tags  = ["aws", "demos", "cluster", "eks", "platform", "producer", "consumer"]
-  after = ["/stacks/platforms/aws/demos/network"]
+  after = ["/stacks/platforms/aws/demos/network", "/stacks/platforms/aws/demos/eks-subnets"]
 }
 
 globals { capability = "cluster" }
-globals "platform" { network_stack_id = "aws-demos-network" }
+globals "platform" {
+  network_stack_id        = "aws-demos-network"
+  cluster_subnet_stack_id = "aws-demos-eks-subnets"
+}
 ```
 
 ### 6.4 Stack 3 — servicios de plataforma
@@ -1245,7 +1251,7 @@ La condición `sub` embebe `global.platform.namespace`. En un cluster compartido
 
 | Advertencia | Impacto | Mitigación |
 |---|---|---|
-| **Ciclo del etiquetado de subredes** | Dependencia circular network ↔ eks | `global.cluster_name` determinista (§6.2) |
+| **Ciclo del etiquetado de subredes** | Dependencia circular network ↔ eks, cuando la red era dueña de las subredes del cluster | No aparece: las subredes etiquetadas con el cluster son del arquetipo `eks` (§6.2); `global.cluster_name` sigue siendo determinista |
 | **El proveedor OIDC es por cluster** | Cada instancia de arquetipo en un cluster compartido consume los *mismos* dos outputs | Está bien — pero significa que reconstruir el cluster invalida cada rol IRSA en cada instancia. Trata el reemplazo del cluster como un evento a nivel de flota |
 | **`aws-auth` / access entries** | Escrituras concurrentes de múltiples stacks corrompen el ConfigMap | Posee el acceso al cluster **solo** en el stack eks. Usa EKS Access Entries (modo API) en lugar del ConfigMap `aws-auth`; las instancias de arquetipo nunca deben escribir en él |
 | **Lecturas de estado entre cuentas** | El job de eks ejecuta `tofu output -json` en el directorio del stack de network | El rol de CI para el job del cluster necesita `s3:GetObject` sobre la clave de estado de network y `kms:Decrypt` sobre su clave KMS. Añade estos explícitamente a la trust policy del rol OIDC |
@@ -1314,7 +1320,7 @@ SCPs de respaldo (§11.7): denegar `iam:CreateUser`, denegar `iam:DeleteRolePerm
 | Certificado CA | `cluster_ca` (base64) | `cluster_ca` (base64) | Misma forma |
 | Token de autenticación | *no se comparte* — `google_client_config` | *no se comparte* — `aws_eks_cluster_auth` | Nunca compartir |
 | Identidad de workload | `workload_identity_pool` | `oidc_provider_arn` + `oidc_provider_url` | AWS necesita dos hechos, GCP uno |
-| Handle de network | `network_self_link` (network); `subnet_self_link` (stack de subred propio del runtime) | `vpc_id`, `private_subnet_ids` (lista) | Los self-links de GCP son cadenas, las subredes de AWS son listas |
+| Handle de network | `network_self_link` (network); `subnet_self_link` (stack de subred propio del runtime) | `vpc_id` (network); `private_subnet_ids` (lista, stack de subred propio del runtime) | Los self-links de GCP son cadenas, las subredes de AWS son listas |
 | Networking de pods | `gke_pods_range_name`, `gke_services_range_name` (stack de subred propio del runtime) | — (VPC CNI usa los CIDR de subred) | GCP requiere rangos secundarios con nombre |
 | Clase de ingress | `"gce"` | `"alb"` | Ambos desde el stack de services |
 
@@ -2103,7 +2109,8 @@ AKS completa la paridad de tres clouds. Estructuralmente refleja la guía EKS; l
 
 ```mermaid
 graph LR
-    NET["<b>network</b><br/>azure-ENV-network"] --> AKS["<b>aks</b><br/>azure-ENV-aks"]
+    NET["<b>network</b><br/>azure-ENV-network"] --> SUB["<b>aks-subnets</b><br/>azure-ENV-aks-subnets"] --> AKS["<b>aks</b><br/>azure-ENV-aks"]
+    NET --> AKS
     NET --> DATA["<b>data</b><br/>azure-ENV-INST-data"]
     AKS --> SVC["<b>services</b><br/>azure-ENV-services"]
     SVC --> APP["<b>app</b><br/>azure-ENV-INST-app"]
@@ -2112,8 +2119,9 @@ graph LR
 
 | # | Stack | Produce | Consume |
 |---|---|---|---|
-| 1 | `azure-ENV-network` | VNet, subredes, NAT gateway, zonas DNS privadas, subred de endpoint privado | — |
-| 2 | `azure-ENV-aks` | Cluster, node pools, URL del emisor OIDC, identidad de kubelet | network |
+| 1 | `azure-ENV-network` | VNet **sin subredes inline**, NAT gateway, zonas DNS privadas, subred de endpoint privado | — |
+| 2a | `azure-ENV-aks-subnets` | Subred de nodos (y de pods con Azure CNI tradicional) — los claims del runtime (AM §9.5) — con su NSG y su asociación al NAT gateway | network |
+| 2b | `azure-ENV-aks` | Cluster, node pools, URL del emisor OIDC, identidad de kubelet | network, aks-subnets |
 | 3 | `azure-ENV-services` | AGFC o Envoy Gateway, integración de certificados, monitorización | aks |
 | 4a | `azure-ENV-INST-data` | Flexible Server, secretos de Key Vault, endpoint privado | network |
 | 4b | `azure-ENV-INST-app` | Workload, identidad gestionada asignada por el usuario, credencial federada | aks, services, data |
@@ -2126,6 +2134,8 @@ graph LR
 | Azure CNI (tradicional) | Cada pod recibe una IP de VNet | Solo cuando los pods deben ser directamente enrutables desde fuera del cluster |
 | Azure CNI potenciado por Cilium | Overlay más plano de datos eBPF | Cuando quieres NetworkPolicy con rendimiento eBPF |
 
+Sea cual sea el modo, las subredes del runtime son del stack `aks-subnets` del propio arquetipo `aks`, como en GKE (§5.2) y EKS (§6.2): la de nodos siempre, y la de pods solo con Azure CNI tradicional. El CIDR de pods de Overlay no es una subred de la VNet, así que no se crea nada para él.
+
 El modo overlay cambia significativamente el plan de direcciones: la mitad de pods de la `/17` pasa a ser reserva en lugar de consumida, porque las direcciones de pod provienen de un espacio overlay separado y no enrutable que puede reutilizarse entre entornos. Esa es una ventaja genuina sobre EKS con VPC CNI, y debería registrarse como un trait para que la planificación de capacidad la refleje.
 
 ### 9.3 Identidad — Workload Identity con Entra ID
@@ -2137,8 +2147,10 @@ input "vnet_id" {
   value = outputs.vnet_id.value
   mock  = "/subscriptions/mock/resourceGroups/mock/providers/Microsoft.Network/virtualNetworks/mock"
 }
+
+## ---- consume del stack de subred propio (azure-demos-aks-subnets) ----
 input "node_subnet_id" {
-  backend = "tofu"  from_stack_id = global.platform.network_stack_id
+  backend = "tofu"  from_stack_id = global.platform.cluster_subnet_stack_id
   value = outputs.node_subnet_id.value
   mock  = "/subscriptions/mock/.../subnets/mock-nodes"
 }
@@ -2205,6 +2217,7 @@ Las asignaciones de Azure Policy a nivel de grupo de gestión son el equivalente
 | Delegación de subred para AGFC | La subred de App Gateway for Containers necesita delegación a `Microsoft.ServiceNetworking/TrafficController` | Resérvala en el layout de direcciones del entorno |
 | Zonas DNS privadas para endpoints privados | Cada servicio PaaS necesita su propia zona enlazada a la VNet | Poséelas en el stack de network; se comparten entre instancias |
 | Overlay vs CNI es inmutable | Cambiar el modo de networking requiere recrear el cluster | Decídelo en globals antes del primer apply |
+| Bloques `subnet` inline en la VNet | Si el stack de red declara subredes inline en `azurerm_virtual_network`, cada apply de la red borra las subredes que crearon otros stacks, `aks-subnets` incluido | La VNet no tiene bloques `subnet` inline; cada subred es un `azurerm_subnet` aparte, del que la reclama. Un `assert` en el generador de red lo impone |
 | Funcionalidades preview | Varias capacidades de AKS se lanzan detrás de flags `--enable-preview` | Fija el provider y registra la dependencia preview en el manifiesto del arquetipo |
 
 ---
