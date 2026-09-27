@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 1 |
+| **Estado** | Propuesta · revisión 2 |
 | **Alcance** | El proveedor CloudNativePG de `database-platform`: el operador y su plugin de backups, lo que un consumidor puede crear, la forma de un `Cluster`, imágenes, TLS, backups, alta disponibilidad del operador, upgrades, observabilidad, red, contrato, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | Es el proveedor para los clientes que lo quieren todo en el cluster (`CLAUDE.md`: gestionado primero, CNPG como alternativa mantenida). SonarQube ya diseñó su camino CNPG (E2 §5.3) y le dejó requisitos (E2 §9). `qa` **no** lo enlaza: se prueba con la matriz de G1 y el efímero semanal (propuesta `postgres-cloudsql` §6) |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -94,8 +94,8 @@ Fuente: [`diagrams/03-backups.mmd`](diagrams/03-backups.mmd)
 
 | Pieza | Diseño | Referencia |
 |---|---|---|
-| Destino | Un bucket **por consumidor**, `gs://<proyecto>-<instancia>-pgbackup`, creado por el stack `data-tenant` del consumidor | E2 §5.3 |
-| Identidad | El KSA del `Cluster` (`serviceAccountTemplate`) por Workload Identity directa; `objectAdmin` sobre **ese** bucket | E1 §4.4 |
+| Destino | Un bucket **por consumidor**, `gs://disasterproject-<env>-<instancia>-pgbackup` (con el entorno: el proyecto non-prod es compartido), creado por el stack `data-tenant` del consumidor | E2 §5.3 |
+| Identidad | Un KSA con el prefijo del entorno (`qa-<instancia>-db`, R54), creado por el stack `iam` del consumidor y referenciado con `spec.serviceAccountName` (§5), por Workload Identity directa; `objectAdmin` sobre **ese** bucket | E1 §4.4 |
 | Plugin | barman-cloud: base diaria (`ScheduledBackup`) y WAL continuo, con PITR | — |
 | Retención | 14 días en el `ObjectStore`; soft delete de GCS 7 días; **sin** versionado ni retention lock, que rompen la purga de barman | E1 §4.9 |
 | Borrado del `Cluster` | El bucket es de otro stack y lleva `prevent_destroy`: los backups sobreviven al `Cluster` | RO1 |
@@ -108,6 +108,7 @@ Fuente: [`diagrams/03-backups.mmd`](diagrams/03-backups.mmd)
 | Ajuste | Valor | Motivo |
 |---|---|---|
 | Namespace | `cnpg-system`, PSS `restricted` | — |
+| Versión mínima | **1.29** | Es la primera con `spec.serviceAccountName` (comprobado en el código de las ramas `release-1.28` y `release-1.29`). Hasta 1.28 el operador crea y usa un KSA con el nombre del `Cluster`, e ignora el `name` de `serviceAccountTemplate`; en el proyecto non-prod compartido eso obligaría a llamar al `Cluster` `qa-<instancia>-db` para tener el prefijo del entorno (R54). Desde 1.29 el operador usa el KSA indicado, que debe existir (si no, el `Cluster` falla con `serviceAccount not found`), no crea otro, y enlaza a él su `RoleBinding`. El campo es inmutable y excluyente con `serviceAccountTemplate` |
 | Réplicas | **2**, elección de líder, `PodDisruptionBudget` | El failover de un `Cluster` lo decide el operador: sin operador, una primaria caída no se sustituye (RO2) |
 | Webhook | Puerto **10250** **(verificar la opción del chart, VO1)** | El mismo motivo que Gatekeeper, ESO y cert-manager: GKE con nodos privados |
 | Actualización del instance manager | En caliente (`ENABLE_INSTANCE_MANAGER_INPLACE_UPDATES`) **(verificar, VO2)** | Sin ella, **cada upgrade del operador reinicia todas las bases de todos los consumidores** (RO3) |
@@ -264,7 +265,7 @@ assert {
 
 | Regla | Dónde | Qué comprueba |
 |---|---|---|
-| **Nueva:** forma del `Cluster` | Gatekeeper | §1.2; `instances` ≥ 2 salvo en efímeros; `imageCatalogRef` obligatorio; anti-afinidad por zona en `prod` |
+| **Nueva:** forma del `Cluster` | Gatekeeper | §1.2; `instances` ≥ 2 salvo en efímeros; `imageCatalogRef` obligatorio; `serviceAccountName` obligatorio y con el prefijo del entorno, sin `serviceAccountTemplate`; anti-afinidad por zona en `prod` |
 | **Nueva:** forma del `ObjectStore` | Gatekeeper | Destino `gs://…-<instancia>-pgbackup`; solo Workload Identity |
 | **Nueva:** bucket propio | G1 | El destino del `ObjectStore` es el bucket del stack `data-tenant` de la misma instancia |
 | Existente | Gatekeeper | P2 (imágenes del catálogo por digest), P4 (límite de memoria del `Cluster`) |
@@ -303,6 +304,7 @@ assert {
 | VO4 | Certificado de servidor de `internal-ca` en `spec.certificates` | El cliente conecta con `sslmode=verify-full` contra `internal-ca-bundle` |
 | VO5 | Upgrade mayor declarativo en la versión fijada | Mayor nueva sin pérdida de datos en un efímero; si no se soporta, procedimiento de importación |
 | VO6 | Restauración a un `Cluster` nuevo | = V5 de E1 |
+| VO7 | `spec.serviceAccountName` con un KSA de Workload Identity en la versión fijada (≥ 1.29) | Backup en el bucket con el principal `…/sa/qa-<instancia>-db`; el operador no crea un KSA con el nombre del `Cluster`. **Comprobado en el código**; falta la prueba en un cluster |
 
 ---
 
@@ -336,6 +338,6 @@ assert {
 | **0 · Prerrequisitos** | GKE, Gatekeeper y cert-manager en un efímero; **VO1** | Webhook alcanzable | 1 día |
 | **1 · Operador** | Stack `operator`; **VO2**, **VO3** | Operador y plugin sanos; upgrade sin reinicios | 1 día |
 | **2 · Catálogo y reglas** | Stack `catalog`; reglas de §8.2 | `gator test` del chart de SonarQube en rama CNPG en verde | 1 día |
-| **3 · Consumidores** | SonarQube y Keycloak por `data-tenant` en el efímero; **VO4**, **VO6**; VO5 | Pruebas de humo en verde; efímero semanal programado | 2 días |
+| **3 · Consumidores** | SonarQube y Keycloak por `data-tenant` en el efímero; **VO4**, **VO6**, **VO7**; VO5 | Pruebas de humo en verde; efímero semanal programado | 2 días |
 
 Cinco días para una persona. Su uso continuo en esta plataforma es el efímero semanal.

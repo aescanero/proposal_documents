@@ -45,7 +45,7 @@ o.append(f'<rect width="{W}" height="{H}" fill="#ffffff"/>')
 
 # título
 text(60,72,"Monitorización — arquetipo de capa 3, proveedor de monitoring",40,800)
-text(60,108,"monitoring-oss · entorno qa · GCP disasterproject-qa · 9 stacks · Prometheus, Alertmanager, Loki, Fluent Bit, Grafana · capa 1b vigila a la capa 3",19,400,SUB)
+text(60,108,"monitoring-oss · entorno qa · GCP disasterproject-nonprod · 9 stacks · Prometheus, Alertmanager, Loki, Fluent Bit, Grafana · capa 1b vigila a la capa 3",19,400,SUB)
 o.append(f'<rect x="60" y="124" width="120" height="5" rx="2" fill="{pal["fund"][1]}"/>')
 
 LX,LY,LW,LH=40,160,330,670

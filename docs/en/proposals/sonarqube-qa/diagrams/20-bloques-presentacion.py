@@ -41,7 +41,7 @@ o.append(f'<rect width="{W}" height="{H}" fill="#ffffff"/>')
 
 # title
 text(60,72,"SonarQube Community — layer-5 archetype",40,800)
-text(60,108,"Instance sonarqube-main · environment qa · GCP disasterproject-qa · europe-west1 · 9 stacks, 1 chart, one helm_release per stack",19,400,SUB)
+text(60,108,"Instance sonarqube-main · environment qa · GCP disasterproject-nonprod · europe-west1 · 9 stacks, 1 chart, one helm_release per stack",19,400,SUB)
 o.append(f'<rect x="60" y="124" width="120" height="5" rx="2" fill="{pal["app"][1]}"/>')
 
 # left panel: consumes

@@ -112,7 +112,7 @@ Tres notas estructurales:
 
 - **La capa 1b es paralela a la capa 2.** La monitorización nativa de la cloud se adjunta al entorno, no a un cluster. Modelarla como una dependencia de capa 3 serializaría el pipeline para nada.
 - **La capa 2 reclama del pool del entorno**, que la capa 1 publicó. Los pools son jerárquicos (§9).
-- **Las capabilities de borde se mueven a la capa 1 cuando el entorno tiene su propio proyecto.** Una cuenta/proyecto/suscripción por entorno es la decisión de plataforma (`CLAUDE.md`). En GCP la IP de borde, la política de Cloud Armor y el certificado deben compartir proyecto con el load balancer, así que `edge-ip`, `waf` y `cert` los provee el arquetipo de entorno. La capa 0 conserva la zona DNS padre, el pool de direcciones, KMS, el registro de imágenes y la federación de CI.
+- **Las capabilities de borde se mueven a la capa 1 cuando los entornos viven fuera del proyecto de la landing zone.** `prod` tiene su propio proyecto y los entornos no productivos comparten uno (`CLAUDE.md`). En GCP la IP de borde, la política de Cloud Armor y el certificado deben compartir proyecto con el load balancer, así que `edge-ip`, `waf` y `cert` los provee el arquetipo de entorno. La capa 0 conserva la zona DNS padre, el pool de direcciones, KMS, el registro de imágenes y la federación de CI.
 - **La capa 2b existe porque el control de admisión debe preceder a todo lo que gobierna.** Si Gatekeeper aplica los Pod Security Standards, tiene que estar en su sitio antes de que se admitan las cargas de gateway y monitorización, así que no puede estar en la capa 3. También tiene alcance de cluster en lugar de ser un servicio consumido por nombre. El precedente es la capa 1b. No tiene contrapartida en Cloud Run, ECS Fargate o Container Apps — la capability `policy` solo existe donde existe `cluster`, y §14.4 registra esa brecha.
 - **La capacidad `gateway` de la capa 3 produce algo que consume una capa inferior** — el handle de adjunto de borde (nombre de NEG, ARN de target group, frontend de AGFC). Es la única arista ascendente del grafo y debe ser explícita para que el orden topológico no sorprenda a nadie.
 
@@ -536,7 +536,7 @@ metadata:
 
 platform:
   landing_zone: disasterproject-gcp-lz
-  project_id: disasterproject-demos
+  project_id: disasterproject-nonprod          # compartido por los entornos no productivos (CLAUDE.md)
 
 bindings:
   network:             { archetype: environment,          version: 2.1.0, stack_id: gcp-demos-network }

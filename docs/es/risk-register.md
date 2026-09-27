@@ -6,7 +6,7 @@
 |---|---|
 | **Alcance** | Todos los modos de fallo identificados en generación, resolución, identidad, borde, políticas y multi-tenancy |
 | **Referencias de sección** | `§n` se refiere al documento de arquitectura salvo que lleve el prefijo `AM §n` (modelo de arquetipos) |
-| **Identificadores** | R1–R53. R28 está **retirado** (duplicado de R26); su número no se reutiliza |
+| **Identificadores** | R1–R54. R28 está **retirado** (duplicado de R26); su número no se reutiliza |
 | **Cadencia de revisión** | En cada fase del roadmap, y siempre que cambie la versión fijada de una herramienta |
 
 Los riesgos se agrupan por dominio, no por orden numérico, porque así es como se revisan. Los números R son identificadores estables y no deben reutilizarse si un riesgo se retira.
@@ -52,6 +52,7 @@ Un riesgo cuya mitigación es una puerta de CI solo está mitigado cuando esa pu
 | R41 | **Destrucción de la clave de cifrado de estado del entorno** — GCP no tiene un equivalente escrito de la SCP de AWS en §11.3 | Baja | Crítico — el estado del entorno queda ilegible, de forma irrecuperable | Sin permiso de destrucción de KMS en identidades de pipeline; `prevent_destroy`; política de organización `constraints/cloudkms.minimumDestroyScheduledDuration`; key ring creado en la capa 0 (`proposals/sonarqube-qa`, sección 4.14) |
 | R42 | **Caduca la credencial de federación del IdP** (la credencial de Keycloak en el app registration del IdP superior) | Media | Alta — nadie puede iniciar sesión en nada tras el realm | Credencial de certificado en vez de client secret; alerta 30 días antes de la caducidad, dirigida al equipo dueño del app registration |
 | R43 | **Un usuario dado de baja conserva tokens de la aplicación** cuando la aplicación no tiene SCIM | Media | Media — el acceso continúa tras deshabilitar la cuenta superior | Job de reconciliación diario contra el directorio superior; sin tokens personales en CI |
+| R54 | **Identidad de Workload Identity compartida en el proyecto non-prod**: un pool por proyecto de GCP, así que el mismo namespace y KSA en dos clusters no productivos son una sola identidad de GCP | Alta si los KSA no llevan prefijo | Alta — un entorno no productivo lee los secretos, buckets y bases de datos de otro | Todo KSA con IAM de GCP se llama `<env>-<nombre>`; Gatekeeper P12 rechaza el prefijo de otro entorno; G1 comprueba cada `member` de IAM. Residual: un cluster-admin de un entorno no productivo puede saltarse la admisión — aceptado solo para no producción; `prod` nunca comparte proyecto (`CLAUDE.md`) |
 
 ## 3. Redes y planificación de direcciones
 

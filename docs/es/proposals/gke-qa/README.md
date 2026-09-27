@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 4 |
+| **Estado** | Propuesta · revisión 5 |
 | **Alcance** | El cluster de `qa` como arquetipo: direcciones y subred, plano de control y acceso, seguridad de nodos, node pools y su asignación a consumidores, almacenamiento, red del cluster, upgrades, el contrato `cluster`, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | Todo lo desplegado en las propuestas anteriores corre en él, y cada una le dejó un requisito (§0.1). Es la dependencia de todas: el último eslabón antes de la red y el borde |
 | **Base** | E1 §4.1 (runtime), §4.13 (acceso del pipeline), §4.14 (KMS), §4.15 (VPC separada); arquitectura §5.2–§5.7 (guía GKE y línea base de seguridad); AM §9 (pools y rangos). Este documento **no repite** lo que ya está allí: lo concreta y cierra huecos |
@@ -24,7 +24,7 @@ Fuente: [`diagrams/06-bloques-presentacion.py`](diagrams/06-bloques-presentacion
 |---|---|---|
 | Qué es | Arquetipo `gke`, `kind: catalog`, **capa 2**, provee **`cluster` 2.5.0** | Stack `gcp-qa-gke` y sus hermanos (§7.3) |
 | Modo | GKE **Standard**, **regional** en `europe-west1` (zonas `b`, `c`, `d`) | Autopilot no admite sysctl de nodo (E1 §4.1). La pregunta abierta nº 1 de `CLAUDE.md` no aplica a `qa` |
-| Proyecto y red | `disasterproject-qa`, VPC propia de `qa` (E1 §4.15) | Sin Shared VPC ni tránsito por el hub |
+| Proyecto y red | `disasterproject-nonprod`, VPC propia de `qa` (E1 §4.15) | Sin Shared VPC ni tránsito por el hub |
 | Quién lo consume | Todo lo de capa 2b en adelante: Gatekeeper, cert-manager, ESO, monitorización, Envoy Gateway, Kafka, Keycloak, SonarQube | Endpoint y CA por outputs sharing; el resto, globals (§7.1) |
 
 ![Contexto](diagrams/01-contexto.svg)
@@ -115,14 +115,14 @@ GKE crea la regla que deja al plano de control llegar a los nodos por **443 y 10
 
 | Control | Valor | Referencia |
 |---|---|---|
-| SA de nodos | `gke-nodes-qa@disasterproject-qa`, dedicada: `logging.logWriter`, `monitoring.metricWriter`, `stackdriver.resourceMetadata.writer`; `artifactregistry.reader` **sobre el repositorio** de la landing zone, no sobre el proyecto | §5.7 |
-| Workload Identity | `workload_pool = "disasterproject-qa.svc.id.goog"`; `workload_metadata_config.mode = "GKE_METADATA"` en cada pool | §5.7, R15 |
+| SA de nodos | `gke-nodes-qa@disasterproject-nonprod`, dedicada: `logging.logWriter`, `monitoring.metricWriter`, `stackdriver.resourceMetadata.writer`; `artifactregistry.reader` **sobre el repositorio** de la landing zone, no sobre el proyecto | §5.7 |
+| Workload Identity | `workload_pool = "disasterproject-nonprod.svc.id.goog"`; `workload_metadata_config.mode = "GKE_METADATA"` en cada pool. El pool es del **proyecto**, compartido con los demás clusters no productivos: todo KSA con IAM de GCP se llama `qa-<nombre>` (P12 en Gatekeeper) | §5.7, R15, R54 |
 | Metadatos | `disable-legacy-endpoints = true` | §5.7 |
 | Nodos | Shielded (secure boot, integridad), `COS_CONTAINERD`, sin IP externa | §5.7, org policies §11.7 |
 | Secretos en etcd | `database_encryption { state = "ENCRYPTED", key_name = <gke-secrets> }` | E1 §4.14 |
-| Permiso sobre `gke-secrets` | Lo concede la **landing zone** al agente de servicio de GKE de `disasterproject-qa` | La identidad de `qa` no puede escribir IAM sobre una clave de la landing zone; la landing zone crea el proyecto y conoce su número |
+| Permiso sobre `gke-secrets` | Lo concede la **landing zone** al agente de servicio de GKE de `disasterproject-nonprod` | La identidad de `qa` no puede escribir IAM sobre una clave de la landing zone; la landing zone crea el proyecto y conoce su número. El agente es **uno por proyecto** y lo comparten los clusters no productivos: la clave por entorno separa el cifrado por convención, no por IAM (aceptado en no producción) |
 | RBAC | Google Groups for RBAC (`authenticator_groups_config.security_group = gke-security-groups@<dominio>`); `cluster-admin` ligado a `gke-qa-admins@` | §5.7 **(verificar el grupo en el dominio, VN4)** |
-| Binary Authorization | `PROJECT_SINGLETON_POLICY_ENFORCE`: en `qa`, lista de admisión del Artifact Registry de la landing zone **y** exigencia de atestación en modo *dry-run* | §5.7 pide atestación, y nada la genera todavía: la firma de E1 §4.10 es de cosign. Enforce en `prod` cuando el pipeline cree atestaciones (DN10) |
+| Binary Authorization | `PROJECT_SINGLETON_POLICY_ENFORCE`, con una **regla por cluster**: la política es una por proyecto y la comparten los entornos no productivos. En `qa`, lista de admisión del Artifact Registry de la landing zone **y** exigencia de atestación en modo *dry-run* | §5.7 pide atestación, y nada la genera todavía: la firma de E1 §4.10 es de cosign. Enforce en `prod` cuando el pipeline cree atestaciones (DN10) |
 
 ---
 
@@ -239,8 +239,8 @@ cluster:
 | `cluster_endpoint` | Outputs sharing, de `cluster` | IP del endpoint, **sin esquema** (trampa de `CLAUDE.md`) | — |
 | `cluster_ca` | Outputs sharing, de `cluster`, `sensitive` | Base64 | — |
 | `cluster_name`, `cluster_location` | Global | `qa`, `europe-west1` | Siguen existiendo como salidas por compatibilidad |
-| `workload_identity_pool` | **Global** | `disasterproject-qa.svc.id.goog` | Era salida por sharing. Es determinista (proyecto), así que pasa a global: una arista menos en cada consumidor (DN7). La salida se mantiene, obsoleta, hasta 3.0.0 |
-| `node_service_account` | Global | `gke-nodes-qa@disasterproject-qa.iam.gserviceaccount.com` | Ídem |
+| `workload_identity_pool` | **Global** | `disasterproject-nonprod.svc.id.goog` | Era salida por sharing. Es determinista (proyecto), así que pasa a global: una arista menos en cada consumidor (DN7). La salida se mantiene, obsoleta, hasta 3.0.0 |
+| `node_service_account` | Global | `gke-nodes-qa@disasterproject-nonprod.iam.gserviceaccount.com` | Ídem |
 | `node_pool_instance_groups` | Outputs sharing, de `nodepools`, **nuevo** | URLs de los grupos de instancias por pool | Para las excepciones L4 del borde (propuesta `edge-qa` §5). No son deterministas: cambian si se recrea un pool |
 | `storage_class` | Global, **nuevo** | `standard-rwo` | §6 |
 | `node_pools` | Global, **nuevo**, del binding | Nombre, taint y dueños de cada pool | §5.3 |

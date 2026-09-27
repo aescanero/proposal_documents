@@ -16,7 +16,7 @@ flowchart LR
         SQ["SonarQube · data-tenant<br/>Cluster · ObjectStore · ScheduledBackup"]
         KC["Keycloak · data-tenant<br/>Cluster · ObjectStore · ScheduledBackup"]
     end
-    GCS[("one bucket per consumer<br/>gs://project-instance-pgbackup")]
+    GCS[("one bucket per consumer<br/>gs://disasterproject-env-instance-pgbackup")]
     DEP --> PROV
     OPS --> CAT
     OPS -. "reconciles in every namespace" .-> CONS

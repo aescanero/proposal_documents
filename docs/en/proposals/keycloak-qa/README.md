@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 6 |
+| **Status** | Proposal · revision 7 |
 | **Scope** | The layer 4 `keycloak` archetype on `qa`: installation, data, configuration, `qa` realm with Entra ID as upstream IdP, consumer clients as tenant resources, keys, publishing, network, availability, observability, stacks, policies, execution and plan |
 | **Data assumption** | The environment's global `database-platform` provider ([`../postgres-cloudsql-qa/`](../postgres-cloudsql-qa/README.md)). On `qa`, `postgres-cloudsql`: Keycloak creates its own Cloud SQL instance (`data` stack, §3). With `postgres-operator`, its own CNPG `Cluster` (`data-tenant` stack) |
 | **Known consumers** | SonarQube over SAML ([`../sonarqube-qa/`](../sonarqube-qa/README.md), S1/S2), Grafana over OIDC, future applications with an OIDC `SecurityPolicy` on the Gateway |
@@ -102,7 +102,7 @@ The `Keycloak` CR has no field for sidecars. The way in is `spec.unsupported.pod
 | **Auth Proxy as a native sidecar via `unsupported.podTemplate`** | **Yes**: the same pattern as SonarQube (IAM authorisation + TLS without CA management). Tested on every operator upgrade (VK1) |
 | Direct private IP with `sslmode=verify-ca` | Plan B if `podTemplate` does not merge `initContainers` with `restartPolicy: Always`: no sidecar, server CA in a `ConfigMap` |
 
-`db-url-host=127.0.0.1`, `db-url-port=5432`, `db-username` and `db-password` from the `keycloak-db` `Secret` (ESO). The proxy's IAM is that of Cloud SQL variant §4.2 with the `keycloak` KSA.
+`db-url-host=127.0.0.1`, `db-url-port=5432`, `db-username` and `db-password` from the `keycloak-db` `Secret` (ESO). The proxy's IAM is that of Cloud SQL variant §4.2 with the `qa-keycloak` KSA.
 
 ---
 
@@ -148,7 +148,7 @@ spec:
   unsupported:
     podTemplate:
       spec:
-        serviceAccountName: keycloak
+        serviceAccountName: qa-keycloak
         automountServiceAccountToken: false
         initContainers:
           - name: cloud-sql-proxy                    # native sidecar, same as SonarQube
@@ -156,7 +156,7 @@ spec:
             restartPolicy: Always
             args: [--private-ip, --port=5432, --structured-logs, --health-check,
                    --http-address=0.0.0.0, --prometheus, --max-sigterm-delay=30s,
-                   "disasterproject-qa:europe-west1:qa-keycloak-main-g1"]
+                   "disasterproject-nonprod:europe-west1:qa-keycloak-main-g1"]
 ```
 
 | Choice | Why |
@@ -269,7 +269,7 @@ Allow-list. Any other field is rejected:
 | Step 2 | keycloak-config-cli with `import.remote-state.enabled=true` and `import.managed.client=full`: manages **only what it created**. A hand-created client is left alone; a deleted `ConfigMap` deletes its client |
 | Why merge | keycloak-config-cli processes files one by one. With several partial files and `full` management, each file could delete the others' clients (RK1). A single document removes the problem at the root |
 | If nothing changed | Compares the hash of the merged document with that of the last successful run and exits without calling Keycloak |
-| Identity | KSA `keycloak-config`; credential `qa-keycloak-config-cli` via ESO; `get`/`list` on `ConfigMap` only in the `keycloak` namespace |
+| Identity | KSA `qa-keycloak-config`; credential `qa-keycloak-config-cli` via ESO; `get`/`list` on `ConfigMap` only in the `keycloak` namespace |
 | Delay | Up to 5 min between the apply of a consumer's `sso` and the client being available. SonarQube's first login may fail during that window; acceptable |
 
 ### 6.4 Controls on what a tenant declares
@@ -289,7 +289,7 @@ Envoy (`SecurityPolicy`) and Grafana need a client secret. It is **created and o
 | Step | Who |
 |---|---|
 | Secret `qa-<instance>-oidc`, write-only value | Consumer's `secrets` stack |
-| `secretAccessor` on **that** secret for the principal of the `keycloak-config` KSA | Consumer's `secrets` stack |
+| `secretAccessor` on **that** secret for the principal of the `qa-keycloak-config` KSA | Consumer's `secrets` stack |
 | `secretRef: qa-<instance>-oidc` in the client's `ConfigMap` | Consumer's `sso` stack |
 | Reading the value and creating the client with that secret | Reconciler, under its own identity, at run time |
 | Materialisation for Envoy or Grafana | ESO in the consumer's namespace |
@@ -518,7 +518,7 @@ Source: [`diagrams/02-stacks-arquetipo.mmd`](diagrams/02-stacks-arquetipo.mmd)
 
 | Stack | Generator | Contents | Inputs via sharing |
 |---|---|---|---|
-| `iam` | `gen_tenant_namespace.tm.hcl` | Namespace `keycloak` (PSS `restricted`; labels `trust.disasterproject.com/internal-ca: "true"` and `gateway.disasterproject.com/routes: "true"` and annotation `gateway.disasterproject.com/hostnames: sso.qa.disasterproject.com`, S2 §5.1); KSAs `keycloak`, `eso-keycloak`, `keycloak-config` | `cluster_*` (gke) |
+| `iam` | `gen_tenant_namespace.tm.hcl` | Namespace `keycloak` (PSS `restricted`; labels `trust.disasterproject.com/internal-ca: "true"` and `gateway.disasterproject.com/routes: "true"` and annotation `gateway.disasterproject.com/hostnames: sso.qa.disasterproject.com`, S2 §5.1); KSAs `keycloak`, `qa-eso-keycloak`, `keycloak-config` | `cluster_*` (gke) |
 | `secrets` | `gen_secrets.tm.hcl` | `qa-keycloak-db` (no version), `-admin`, `-config-cli` (generated write-only), `-realm-signing`, `-entra-cert` (version from the bootstrap script); `SecretStore` and `ExternalSecret` | `cluster_*`, `workload_identity_pool` |
 | `data` | `gen_data.tm.hcl` | §3.1 | `workload_identity_pool`, `notification_channel_id` |
 | `firewall` | `gen_helm_stack.tm.hcl` | §8.3 | `cluster_*` |

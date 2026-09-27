@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 4 |
+| **Status** | Proposal · revision 5 |
 | **Scope** | The `qa` cluster as an archetype: addresses and subnet, control plane and access, node security, node pools and how consumers are assigned to them, storage, cluster networking, upgrades, the `cluster` contract, stacks, policies, execution and plan |
 | **Why now** | Everything deployed in the earlier proposals runs on it, and each of them left it a requirement (§0.1). It is everyone's dependency: the last link before the network and the edge |
 | **Base** | S1 §4.1 (runtime), §4.13 (pipeline access), §4.14 (KMS), §4.15 (separate VPC); architecture §5.2–§5.7 (GKE guide and security baseline); AM §9 (pools and ranges). This document **does not repeat** what is there: it makes it concrete and closes the gaps |
@@ -24,7 +24,7 @@ Source: [`diagrams/06-bloques-presentacion.py`](diagrams/06-bloques-presentacion
 |---|---|---|
 | What it is | Archetype `gke`, `kind: catalog`, **layer 2**, provides **`cluster` 2.5.0** | Stack `gcp-qa-gke` and its siblings (§7.3) |
 | Mode | GKE **Standard**, **regional** in `europe-west1` (zones `b`, `c`, `d`) | Autopilot does not allow node sysctls (S1 §4.1). Open question no. 1 of `CLAUDE.md` does not apply to `qa` |
-| Project and network | `disasterproject-qa`, `qa`'s own VPC (S1 §4.15) | No Shared VPC and no transit through the hub |
+| Project and network | `disasterproject-nonprod`, `qa`'s own VPC (S1 §4.15) | No Shared VPC and no transit through the hub |
 | Who consumes it | Everything from layer 2b upwards: Gatekeeper, cert-manager, ESO, monitoring, Envoy Gateway, Kafka, Keycloak, SonarQube | Endpoint and CA via outputs sharing; the rest, globals (§7.1) |
 
 ![Context](diagrams/01-contexto.svg)
@@ -115,14 +115,14 @@ GKE creates the rule that lets the control plane reach the nodes on **443 and 10
 
 | Control | Value | Reference |
 |---|---|---|
-| Node SA | `gke-nodes-qa@disasterproject-qa`, dedicated: `logging.logWriter`, `monitoring.metricWriter`, `stackdriver.resourceMetadata.writer`; `artifactregistry.reader` **on the landing zone's repository**, not on the project | §5.7 |
-| Workload Identity | `workload_pool = "disasterproject-qa.svc.id.goog"`; `workload_metadata_config.mode = "GKE_METADATA"` on every pool | §5.7, R15 |
+| Node SA | `gke-nodes-qa@disasterproject-nonprod`, dedicated: `logging.logWriter`, `monitoring.metricWriter`, `stackdriver.resourceMetadata.writer`; `artifactregistry.reader` **on the landing zone's repository**, not on the project | §5.7 |
+| Workload Identity | `workload_pool = "disasterproject-nonprod.svc.id.goog"`; `workload_metadata_config.mode = "GKE_METADATA"` on every pool. The pool is the **project's**, shared with the other non-prod clusters: every KSA holding GCP IAM is named `qa-<name>` (Gatekeeper P12) | §5.7, R15, R54 |
 | Metadata | `disable-legacy-endpoints = true` | §5.7 |
 | Nodes | Shielded (secure boot, integrity), `COS_CONTAINERD`, no external IP | §5.7, org policies §11.7 |
 | Secrets in etcd | `database_encryption { state = "ENCRYPTED", key_name = <gke-secrets> }` | S1 §4.14 |
-| Grant on `gke-secrets` | Given by the **landing zone** to `disasterproject-qa`'s GKE service agent | `qa`'s identity cannot write IAM on a landing zone key; the landing zone creates the project and knows its number |
+| Grant on `gke-secrets` | Given by the **landing zone** to `disasterproject-nonprod`'s GKE service agent | `qa`'s identity cannot write IAM on a landing zone key; the landing zone creates the project and knows its number. The agent is **one per project** and the non-prod clusters share it: the per-environment key separates encryption by convention, not by IAM (accepted in non-production) |
 | RBAC | Google Groups for RBAC (`authenticator_groups_config.security_group = gke-security-groups@<domain>`); `cluster-admin` bound to `gke-qa-admins@` | §5.7 **(verify the group in the domain, VN4)** |
-| Binary Authorization | `PROJECT_SINGLETON_POLICY_ENFORCE`: on `qa`, an allow-list of the landing zone's Artifact Registry **and** an attestation requirement in *dry-run* mode | §5.7 asks for attestation, and nothing generates it yet: S1 §4.10's signature is cosign's. Enforce on `prod` once the pipeline creates attestations (DN10) |
+| Binary Authorization | `PROJECT_SINGLETON_POLICY_ENFORCE`, with a **cluster-specific rule**: the policy is one per project and the non-prod environments share it. On `qa`, an allow-list of the landing zone's Artifact Registry **and** an attestation requirement in *dry-run* mode | §5.7 asks for attestation, and nothing generates it yet: S1 §4.10's signature is cosign's. Enforce on `prod` once the pipeline creates attestations (DN10) |
 
 ---
 
@@ -239,8 +239,8 @@ cluster:
 | `cluster_endpoint` | Outputs sharing, from `cluster` | Endpoint IP, **no scheme** (`CLAUDE.md` trap) | — |
 | `cluster_ca` | Outputs sharing, from `cluster`, `sensitive` | Base64 | — |
 | `cluster_name`, `cluster_location` | Global | `qa`, `europe-west1` | Still outputs too, for compatibility |
-| `workload_identity_pool` | **Global** | `disasterproject-qa.svc.id.goog` | Was a sharing output. It is deterministic (the project), so it becomes a global: one edge fewer in every consumer (DN7). The output stays, deprecated, until 3.0.0 |
-| `node_service_account` | Global | `gke-nodes-qa@disasterproject-qa.iam.gserviceaccount.com` | Same |
+| `workload_identity_pool` | **Global** | `disasterproject-nonprod.svc.id.goog` | Was a sharing output. It is deterministic (the project), so it becomes a global: one edge fewer in every consumer (DN7). The output stays, deprecated, until 3.0.0 |
+| `node_service_account` | Global | `gke-nodes-qa@disasterproject-nonprod.iam.gserviceaccount.com` | Same |
 | `node_pool_instance_groups` | Outputs sharing, from `nodepools`, **new** | Instance group URLs per pool | For the edge's L4 exceptions (`edge-qa` proposal §5). Not deterministic: they change if a pool is recreated |
 | `storage_class` | Global, **new** | `standard-rwo` | §6 |
 | `node_pools` | Global, **new**, from the binding | Name, taint and owners of each pool | §5.3 |

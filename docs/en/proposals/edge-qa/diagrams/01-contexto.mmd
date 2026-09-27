@@ -2,7 +2,7 @@ flowchart LR
     subgraph LZ["Landing zone · layer 0"]
         direction TB
         PZ["zona disasterproject.com<br/>NS + DS for qa"]
-        QZ["creates the qa.disasterproject.com zone<br/>in disasterproject-qa · DNSSEC"]
+        QZ["creates the qa.disasterproject.com zone<br/>in disasterproject-nonprod · DNSSEC"]
     end
     subgraph ENV["environment 3.1.0 · layer 1"]
         direction TB

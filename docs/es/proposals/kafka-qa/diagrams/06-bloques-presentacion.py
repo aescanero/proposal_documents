@@ -53,7 +53,7 @@ T=dict(
    ("KRaft","3 nodos duales",["uno por zona","RF 3 · min.insync 2","sin auto.create"]),
    ("storage","PVC por nodo",["200 GiB · deleteClaim: false","heap 4 GiB · límite 12 GiB","node pool kafka"])],
   [("listener tls","9093, certificado internal-ca",["brokerCertChainAndKey","sin listener en claro","sin loadbalancer"]),
-   ("contraseña","Del consumidor",["Secret Manager, write-only","accessor para eso-kafka","nunca en el pipeline"]),
+   ("contraseña","Del consumidor",["Secret Manager, write-only","accessor para qa-eso-kafka","nunca en el pipeline"]),
    ("KafkaUser","scram-sha-512",["ExternalSecret en kafka","password.valueFrom","rotación con dos usuarios"])],
   [("KafkaTopic","Prefijo de instancia",["topicName = nombre","≤ 12 particiones · RF 3","retention.bytes obligatorio"]),
    ("ACLs y cuotas","Generadas, no escritas",["topic y group con prefijo","1 MiB/s · 2 MiB/s","subir = PR con revisión"]),

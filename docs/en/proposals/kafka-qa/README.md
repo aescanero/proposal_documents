@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 3 |
+| **Status** | Proposal · revision 4 |
 | **Scope** | The layer 4 `kafka` archetype on `qa`: operator, KRaft topology, storage and zones, SCRAM authentication over TLS with the internal CA, the multi-tenant contract (topics, users, ACLs and quotas), capacity, network, access from outside the cluster, observability, stacks, policies, execution and plan |
 | **Why now** | AM §10 defines Kafka as the common bus with separated data, but only as an example in `demos`. `qa` does not bind it. With the internal CA (cert-manager DT10) and the L4 exposure pattern B (Envoy Gateway §4.4) now decided, how a client authenticates and how far the bus reaches can be fixed: never outside the VPC |
 | **Reference specification** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -109,7 +109,7 @@ The same pattern as Keycloak's OIDC clients (§6.5 of its proposal): the consume
 | Step | Who |
 |---|---|
 | Secret `qa-<instance>-kafka-<purpose>` in Secret Manager, value generated and **write-only** (`secret_data_wo`) | The consumer's `secrets` stack |
-| `secretAccessor` on **that** secret for the `eso-kafka` KSA of the `kafka` namespace and for the client's identity (its KSA, or its service account if it is outside the cluster) | The consumer's `secrets` stack |
+| `secretAccessor` on **that** secret for the `qa-eso-kafka` KSA of the `kafka` namespace and for the client's identity (its KSA, or its service account if it is outside the cluster) | The consumer's `secrets` stack |
 | `ExternalSecret` `<instance>-<purpose>` in the `kafka` namespace (the archetype's `gsm` `SecretStore`), which materialises the `Secret` of the same name | The consumer's `messaging` stack, as a tenant resource |
 | `KafkaUser` `<instance>-<purpose>` with `authentication.password.valueFrom.secretKeyRef` to that `Secret` | The consumer's `messaging` stack |
 | The application reads the password: with its own `ExternalSecret` if it is in the cluster; under its GCP identity if it is in the VPC | Consumer |
@@ -404,10 +404,10 @@ capacity:
   cpu_millicores: 7200
   memory_mib: 27648
   pods: 8
-  workload_identities: 1                             # eso-kafka
+  workload_identities: 1                             # qa-eso-kafka
 ```
 
-`runtimes: [gke, eks, aks]`: nothing is GCP-specific except the StorageClass (AM §14.2: `event-bus` is Strimzi on all three clouds). **No `ingress`**: Kafka does not speak HTTP. **It requires `secrets`** with the `eso` trait: the `kafka` namespace's `gsm` `SecretStore` materialises the consumers' passwords (§3.1). The `eso-kafka` KSA is the archetype's only GCP identity, and it reads only the secrets each consumer grants it.
+`runtimes: [gke, eks, aks]`: nothing is GCP-specific except the StorageClass (AM §14.2: `event-bus` is Strimzi on all three clouds). **No `ingress`**: Kafka does not speak HTTP. **It requires `secrets`** with the `eso` trait: the `kafka` namespace's `gsm` `SecretStore` materialises the consumers' passwords (§3.1). The `qa-eso-kafka` KSA is the archetype's only GCP identity, and it reads only the secrets each consumer grants it.
 
 **No subnet claim.** AM §10.1's example claims a `/26` in the `data` zone with purpose `kafka-storage-subnet`. Kafka on Kubernetes keeps its data on persistent volumes, not in a subnet, and its pods use the cluster's pod range. It has already been removed from AM (§12).
 
@@ -415,7 +415,7 @@ capacity:
 
 | Stack | Contents | Inputs via sharing |
 |---|---|---|
-| `iam` | Namespace `kafka` (`gen_tenant_namespace`, PSS `restricted`); the `eso-kafka` KSA and the `gsm` `SecretStore` | `cluster_*`, `workload_identity_pool` |
+| `iam` | Namespace `kafka` (`gen_tenant_namespace`, PSS `restricted`); the `qa-eso-kafka` KSA and the `gsm` `SecretStore` | `cluster_*`, `workload_identity_pool` |
 | `operator` | `helm_release` of Strimzi with `watchNamespaces: [kafka]` and CRDs with `keep` | `cluster_*` |
 | `cluster` | `Kafka`, `KafkaNodePool`, the listener `Certificate` (`internal-ca`), Kafka Exporter, Cruise Control, `PodMonitor` and `PrometheusRule`; `prevent_destroy` on the `helm_release` | `cluster_*` |
 | `policy` | `ConstraintTemplate`s and `Constraint`s for the Strimzi kinds (§9.2); the quota and topic defaults `gen_messaging` uses | `cluster_*` |
@@ -470,7 +470,7 @@ assert {
 | **New:** reserved kinds | Gatekeeper | §4.3 |
 | **New:** tenant resources | G1 | The `messaging` stack declares `creates_tenant_resources: [event-bus]`; its instance's prefix; `maxCount` |
 | **New:** capacity | G1 | Partitions, storage and quotas summed against the budgets (§5) |
-| **New:** secret and user | G1 and Gatekeeper | The `ExternalSecret` in `kafka` is prefixed, uses the `gsm` `SecretStore`, and its `remoteRef` is a `qa-<same instance>-kafka-*` secret; the consumer grants `secretAccessor` to `eso-kafka` on that secret only |
+| **New:** secret and user | G1 and Gatekeeper | The `ExternalSecret` in `kafka` is prefixed, uses the `gsm` `SecretStore`, and its `remoteRef` is a `qa-<same instance>-kafka-*` secret; the consumer grants `secretAccessor` to `qa-eso-kafka` on that secret only |
 | **New:** `after` | G1 (existing, R2) | `messaging` has `after` to `gcp-qa-kafka-cluster` |
 
 All `qa` stacks are applied with the same pipeline identity, so the underlying control over which instance writes what is G1 against the ledger; Gatekeeper checks shape (the same split as Keycloak §6.4).
@@ -519,7 +519,7 @@ Metric names depend on Strimzi's JMX exporter configuration **(verify, VB10)**.
 | AM §10.1 and `registry/zones.yaml` | No `kafka-storage-subnet` claim (and no such purpose in the `data` zone); neither `schema-registry` nor `tls-mtls` in the example traits; a paragraph on SCRAM authentication and the 2.1.0 contract | **Applied** |
 | cert-manager §3 | `private-names` policy: approver-policy admits `*.<namespace>.qa.internal` for the namespace requesting them; names from the private zone, never public ones (DT10) | **Applied** |
 | Envoy Gateway §4.4 | Kafka leaves the admissible cases: never outside the VPC. Q-B1 moves there as a question for exceptions with TLS | **Applied** |
-| ESO §9.2 and §11.3 | `eso-kafka` and the service accounts of VPC clients on the explicit readers list, scoped to `qa-<instance>-kafka-*` | **Applied** |
+| ESO §9.2 and §11.3 | `qa-eso-kafka` and the service accounts of VPC clients on the explicit readers list, scoped to `qa-<instance>-kafka-*` | **Applied** |
 | S1 §4.15 (network) | A private Cloud DNS zone `qa.internal`, bound only to `qa`'s VPC, owned by the network stack | **Applied** |
 
 ---

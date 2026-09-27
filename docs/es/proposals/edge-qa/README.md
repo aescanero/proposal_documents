@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 2 |
+| **Estado** | Propuesta · revisión 3 |
 | **Alcance** | El borde público de `qa`: IP, zona DNS pública y registros, certificado, Cloud Armor, el Global external Application LB hacia el NEG de Envoy, TLS, las excepciones L4 (patrón B), observabilidad, el contrato `env-edge`, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | Es la última pieza para que SonarQube, Keycloak y Grafana sean alcanzables. La propuesta de Envoy Gateway le dejó requisitos (health check, drenaje, `after`, NEG como `data`) y la de SonarQube, dos más (timeout de 120 s y exclusiones de Cloud Armor) |
 | **Base** | E1 §4.5 (publicación), §4.15 (VPC separada y borde propio); propuesta de Envoy Gateway §1, §2, §4.4, §5.2, §7.1; propuesta `network-qa`; arquitectura §10.2 y §10.8; AM §3 (capabilities de borde en la capa 1). No se repite lo que ya está allí |
@@ -10,7 +10,7 @@
 | **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano. `diagrams/06-bloques-presentacion.svg` (1920×1080, para presentaciones) se genera con `06-bloques-presentacion.py`, no con Mermaid |
 | **Identificadores propios** | Decisiones `DL1…`, riesgos candidatos `RL1…`, verificaciones `VL1…`. Los riesgos reciben número `R54+` en `risk-register.md` si se adopta, detrás de los de las propuestas anteriores |
 
-No reabre ninguna decisión de `CLAUDE.md`. Aplica la de un proyecto por entorno: la IP, Cloud Armor y el certificado viven con el balanceador en `disasterproject-qa`. Añade al arquetipo `environment` lo que la propuesta de red dejó para después, en una versión menor.
+No reabre ninguna decisión de `CLAUDE.md`. Aplica la de entornos fuera del proyecto de la landing zone: la IP, Cloud Armor y el certificado viven con el balanceador en el proyecto non-prod compartido (`disasterproject-nonprod`), con el prefijo `qa` en cada nombre. Añade al arquetipo `environment` lo que la propuesta de red dejó para después, en una versión menor.
 
 ![Arquetipo environment, borde, en bloques](diagrams/06-bloques-presentacion.svg)
 
@@ -22,7 +22,7 @@ Fuente: [`diagrams/06-bloques-presentacion.py`](diagrams/06-bloques-presentacion
 
 | Pregunta | Respuesta | Consecuencia |
 |---|---|---|
-| Qué es | El borde del arquetipo `environment` (capa 1), versión **3.1.0**. Provee **`env-edge` 1.0.0**, y `cert`, `waf` y `edge-ip`, que pasan a la capa 1 con un proyecto por entorno (AM §3) | Stacks `gcp-qa-edge-base` y `gcp-qa-edge`; `gcp-qa-edge-l4` solo si hay excepciones |
+| Qué es | El borde del arquetipo `environment` (capa 1), versión **3.1.0**. Provee **`env-edge` 1.0.0**, y `cert`, `waf` y `edge-ip`, que pasan a la capa 1 con los entornos fuera del proyecto de la landing zone (AM §3) | Stacks `gcp-qa-edge-base` y `gcp-qa-edge`; `gcp-qa-edge-l4` solo si hay excepciones |
 | Qué publica | `sonar.qa.disasterproject.com`, `sso.qa.disasterproject.com`, `grafana.qa.disasterproject.com`: los hostnames reclamados | Un certificado wildcard, una IP, un Gateway |
 | Qué **no** hace | Enrutar por host (lo hace Envoy), autenticar (cada aplicación, o `SecurityPolicy`), exponer Kafka (nunca sale de la VPC) | El URL map tiene un solo backend |
 | Trait `iac-owned-edge` | **No** en GCP: el NEG lo crea el controlador de GKE (R20) | Se declara la ausencia en vez de ocultarla (AM §4.3) |
@@ -48,7 +48,7 @@ Fuente: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 
 | Pieza | Diseño | Motivo |
 |---|---|---|
-| Zona `qa.disasterproject.com` | Zona pública de Cloud DNS en `disasterproject-qa`, **creada por la landing zone**, igual que el proyecto; DNSSEC activado | La delegación necesita los name servers de la zona hija, que Cloud DNS asigna al crearla. Si la creara el entorno, la landing zone (capa 0) tendría que leer una salida de la capa 1 para escribir el `NS` en la zona padre. Creándola ella, zona, delegación y registro `DS` de DNSSEC están en un solo stack (DL2) |
+| Zona `qa.disasterproject.com` | Zona pública de Cloud DNS en `disasterproject-nonprod`, **creada por la landing zone**, igual que el proyecto; DNSSEC activado | La delegación necesita los name servers de la zona hija, que Cloud DNS asigna al crearla. Si la creara el entorno, la landing zone (capa 0) tendría que leer una salida de la capa 1 para escribir el `NS` en la zona padre. Creándola ella, zona, delegación y registro `DS` de DNSSEC están en un solo stack (DL2) |
 | Quién escribe registros | El entorno (`gcp-qa-edge-base`), con `roles/dns.admin` **sobre esa zona** | La landing zone crea el contenedor; el contenido es del entorno |
 | `*.qa.disasterproject.com` | `A` → IP global de §2, TTL 300 | Un registro para todos los hostnames (E1 §4.5). Los hostnames siguen siendo claims: el wildcard resuelve, el ledger garantiza la unicidad |
 | `CAA` | `0 issue "pki.goog"` y `0 issue "letsencrypt.org"` en `qa.disasterproject.com` | Solo las dos CA que usa Certificate Manager para certificados gestionados pueden emitir para el dominio **(verificar, VL3)**. Sin `CAA`, cualquier CA pública puede |
@@ -191,7 +191,7 @@ metadata:
   version: 3.1.0
   layer: 1
   kind: catalog
-  description: Entorno en su propio proyecto — red, borde público y DNS
+  description: Entorno con su propia VPC (proyecto propio en prod, compartido en no producción) — red, borde público y DNS
   owners: [team-platform]
 
 requires:
@@ -228,11 +228,8 @@ claims:
     purpose: edge
 
 stacks:
-  - name: apis
   - name: network
-    after: [apis]
   - name: edge-base
-    after: [apis]
   - name: edge
     after: [edge-base]                                    # y el stack proxy de ingress: lo añade el resolver (§4)
   - name: edge-l4

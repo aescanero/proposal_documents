@@ -45,7 +45,7 @@ o.append(f'<rect width="{W}" height="{H}" fill="#ffffff"/>')
 
 # title
 text(60,72,"Keycloak — layer-4 archetype, oidc-idp provider",40,800)
-text(60,108,"Instance keycloak-main · environment qa · GCP disasterproject-qa · europe-west1 · 9 stacks · realm qa · Entra ID upstream",19,400,SUB)
+text(60,108,"Instance keycloak-main · environment qa · GCP disasterproject-nonprod · europe-west1 · 9 stacks · realm qa · Entra ID upstream",19,400,SUB)
 o.append(f'<rect x="60" y="124" width="120" height="5" rx="2" fill="{pal["fund"][1]}"/>')
 
 # left panel: consumes

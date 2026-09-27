@@ -16,7 +16,7 @@ flowchart LR
         CTRL["controller × 2<br/>leader election<br/><b>no GCP identity of its own</b>"]
     end
 
-    subgraph GCP["disasterproject-qa"]
+    subgraph GCP["disasterproject-nonprod"]
         direction TB
         STS["STS · Workload Identity"]
         SM[("Secret Manager<br/>qa-&lt;arquetipo&gt;-*<br/>per-secret IAM")]
@@ -28,7 +28,7 @@ flowchart LR
     PIPE -->|"SecretStore + ExternalSecret"| TEN
     TEN -. "admission" .-> WH
     ES -->|"reconcile"| CTRL
-    CTRL -->|"eso-* KSA token"| STS
+    CTRL -->|"env-eso-* KSA token"| STS
     CTRL -->|"AccessSecretVersion<br/>as the tenant"| SM
     CTRL -->|"writes"| S
 

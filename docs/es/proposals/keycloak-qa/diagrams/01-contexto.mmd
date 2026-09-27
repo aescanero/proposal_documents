@@ -6,7 +6,7 @@ flowchart LR
         APP["app registration keycloak-qa<br/>app roles · MFA · acceso condicional"]
     end
 
-    subgraph EDGE["disasterproject-qa · borde"]
+    subgraph EDGE["disasterproject-nonprod · borde"]
         GLB["GLB + Cloud Armor<br/>*.qa.disasterproject.com"]
         GW["Envoy Gateway · Gateway qa"]
     end

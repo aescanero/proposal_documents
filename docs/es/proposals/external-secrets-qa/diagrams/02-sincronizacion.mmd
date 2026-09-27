@@ -9,10 +9,10 @@ sequenceDiagram
 
     Note over ES,C: cada 15 min, o al instante con force-sync
     ES->>C: reconciliar
-    C->>K: TokenRequest para KSA eso-sonarqube<br/>(audiencia: pool de Workload Identity)
+    C->>K: TokenRequest para KSA qa-eso-sonarqube<br/>(audiencia: pool de Workload Identity)
     K-->>C: token de KSA de vida corta
     C->>STS: intercambio de token
-    STS-->>C: token federado<br/>principal …/ns/sonarqube/sa/eso-sonarqube
+    STS-->>C: token federado<br/>principal …/ns/sonarqube/sa/qa-eso-sonarqube
     C->>SM: AccessSecretVersion qa-sonarqube-db/latest
     Note over SM: IAM: secretAccessor sobre ESTE secreto<br/>para ESTE principal
     SM-->>C: valor

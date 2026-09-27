@@ -2,14 +2,14 @@
 <defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9ca3af"/></marker><filter id="sh" x="-5%" y="-5%" width="110%" height="115%"><feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#111827" flood-opacity="0.08"/></filter></defs>
 <rect width="1920" height="1080" fill="#ffffff"/>
 <text x="60" y="72" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="40" font-weight="800" fill="#1f2937" text-anchor="start">qa network — network provider</text>
-<text x="60" y="108" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="400" fill="#4b5563" text-anchor="start">its own VPC · no hub · NAT with dynamic ports · Google APIs via the private VIP · PSA · private DNS · the edge comes next</text>
+<text x="60" y="108" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="400" fill="#4b5563" text-anchor="start">its own VPC in the non-prod project · no hub · NAT with dynamic ports · Google APIs via the private VIP · PSA · private DNS · the edge comes next</text>
 <rect x="60" y="124" width="120" height="5" rx="2" fill="#2563eb"/>
 <rect x="40" y="160" width="330" height="670" rx="18" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="64" y="204" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="22" font-weight="700" fill="#1f2937" text-anchor="start">Consumes from the platform</text>
 <text x="64" y="230" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start" font-style="italic">layer 0: landing zone</text>
 <rect x="60" y="252" width="290" height="90" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="78" y="290" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">project</text>
-<text x="78" y="318" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">created by the landing zone</text>
+<text x="78" y="318" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">shared · landing zone</text>
 <rect x="60" y="362" width="290" height="90" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="78" y="400" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">cidr-pool</text>
 <text x="78" y="428" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">10.4.128.0/17 from the global pool</text>
@@ -42,13 +42,13 @@
 <circle cx="474" cy="297" r="14" fill="#2563eb"/>
 <text x="474" y="303" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
 <text x="498" y="305" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#2563eb" text-anchor="start">apis</text>
-<text x="466" y="350" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">Project APIs</text>
+<text x="466" y="350" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">In the landing zone</text>
 <circle cx="472" cy="373" r="3" fill="#2563eb"/>
-<text x="482" y="378" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">its own stack</text>
+<text x="482" y="378" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">shared project</text>
 <circle cx="472" cy="397" r="3" fill="#2563eb"/>
-<text x="482" y="402" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">disable_on_destroy = false</text>
+<text x="482" y="402" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">none belongs to one env</text>
 <circle cx="472" cy="421" r="3" fill="#2563eb"/>
-<text x="482" y="426" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">derivable from the binding</text>
+<text x="482" y="426" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">disable_on_destroy = false</text>
 <rect x="450" y="458" width="245" height="170" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>
 <rect x="450" y="458" width="245" height="46" rx="12" fill="#eaf1ff"/>
 <rect x="450" y="492" width="245" height="12" fill="#eaf1ff"/>

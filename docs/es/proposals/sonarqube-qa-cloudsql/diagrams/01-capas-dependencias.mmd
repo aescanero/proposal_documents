@@ -5,7 +5,7 @@ flowchart BT
         KMS["Cloud KMS"]
         AR["Artifact Registry<br/>+ imagen de Cloud SQL Auth Proxy"]
     end
-    subgraph L1["Capa 1 · environment qa · proyecto disasterproject-qa"]
+    subgraph L1["Capa 1 · environment qa · proyecto disasterproject-nonprod"]
         NET["network<br/>/17 · Private Google Access<br/><b>PSA: rango qa-psa en zona data</b>"]
         EE["env-edge · cert · waf · edge-ip<br/>sin cambios"]
     end

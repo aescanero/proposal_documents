@@ -9,9 +9,10 @@
 
 capabilities:
   # --- landing zone (layer 0) ---
-  # cert, waf and edge-ip move to layer 1 when each environment has its
-  # own project/account/subscription (the platform default): on GCP they
-  # must share a project with the environment's load balancer.
+  # cert, waf and edge-ip move to layer 1 when environments live outside the
+  # landing zone's project (the platform default: prod in its own project,
+  # non-prod environments sharing one): on GCP they must share a project
+  # with the environment's load balancer.
   - hub
   - cidr-pool
   - dns-zone

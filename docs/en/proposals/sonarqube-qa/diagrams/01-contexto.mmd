@@ -7,12 +7,12 @@ flowchart LR
 
     ENTRA["Microsoft Entra ID<br/>users · MFA · app roles"]
 
-    subgraph GCP0["Project disasterproject-qa · edge (layer 1)"]
+    subgraph GCP0["Project disasterproject-nonprod · edge (layer 1)"]
         DNS["Cloud DNS<br/>*.qa.disasterproject.com"]
         LB["Global external Application LB<br/>Certificate Manager (wildcard)<br/>Cloud Armor"]
     end
 
-    subgraph K8S["Project disasterproject-qa · GKE Standard (layer 2)"]
+    subgraph K8S["Project disasterproject-nonprod · GKE Standard (layer 2)"]
         GW["Envoy Gateway<br/>standalone NEG<br/>internal TLS from cert-manager"]
         SQ["SonarQube Community Build<br/>ns sonarqube"]
         PG[("PostgreSQL<br/>CloudNativePG Cluster")]
@@ -22,7 +22,7 @@ flowchart LR
         GK["Gatekeeper"]
     end
 
-    subgraph GCPS["GCP services · disasterproject-qa and landing zone"]
+    subgraph GCPS["GCP services · disasterproject-nonprod and landing zone"]
         GCS[("GCS<br/>CNPG backups · Loki chunks")]
         GSM[("Secret Manager<br/>qa-sonarqube-*")]
         KMS["Cloud KMS<br/>state · etcd"]
