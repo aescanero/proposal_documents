@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · stage 2 · revision 4 |
+| **Status** | Proposal · stage 2 · revision 5 |
 | **Part of** | [`README.md`](README.md) (stage 1: elements and dependencies, closed) |
 | **Scope** | The layer-5 archetype `sonarqube`: repository structure, manifest, the stacks that make it up, each stack's template (generator), contracts, execution, configuration, policies, what it provides, and a phased implementation plan |
 | **Out of scope** | `qa`'s layers 0–4 (they belong to the platform; here they appear only as producers and requirements) |
@@ -22,7 +22,7 @@ Source: [`diagrams/20-bloques-presentacion.py`](diagrams/20-bloques-presentacion
 | Aspect | Decision |
 |---|---|
 | Archetype | `sonarqube`, `kind: catalog`, **layer 5**, initial version `0.1.0` |
-| Instance | `sonarqube-main` in `qa` (GCP, `disasterproject-qa`, `europe-west1`, dedicated model) |
+| Instance | `sonarqube-main` in `qa` (GCP, `disasterproject-nonprod`, `europe-west1`, dedicated model) |
 | Stacks | **9**: `iam`, `secrets`, `data-tenant`, `firewall`, `sso`, `app`, `config`, `frontdoor`, `observability` |
 | Provides | **No capability**. Publishes outputs for the CMDB (URL, version, digest). Its consumers are pipelines over HTTP, not stacks |
 | Consumes | `cluster`, `policy`, `ingress`, `secrets`, `oidc-idp`, `database-platform`, `monitoring` |
@@ -226,7 +226,7 @@ globals "platform" {
   cloud      = "gcp"
   env        = "qa"
   model      = "dedicated"
-  project_id = "disasterproject-qa"
+  project_id = "disasterproject-nonprod"
   region     = "europe-west1"
   namespace  = "sonarqube"
 
@@ -347,7 +347,7 @@ import { source = "/imports/generators/v1/gen_app.tm.hcl" }
 |---|---|
 | **Purpose** | The instance's namespace and Kubernetes service accounts. It is the first stack: everything else lives inside it |
 | **Generator** | `gen_tenant_namespace.tm.hcl` (generic, cloud-agnostic except for the identity annotation) |
-| **Resources** | `kubernetes_namespace` `sonarqube` (labels `archetype`, `instance`, `pod-security.kubernetes.io/enforce: restricted`, `trust.disasterproject.com/internal-ca: "true"` and `gateway.disasterproject.com/routes: "true"`; annotation `gateway.disasterproject.com/hostnames: sonar.qa.disasterproject.com`); KSAs `sonarqube`, `eso-sonarqube`, `sonarqube-db`; a default `LimitRange` |
+| **Resources** | `kubernetes_namespace` `sonarqube` (labels `archetype`, `instance`, `pod-security.kubernetes.io/enforce: restricted`, `trust.disasterproject.com/internal-ca: "true"` and `gateway.disasterproject.com/routes: "true"`; annotation `gateway.disasterproject.com/hostnames: sonar.qa.disasterproject.com`); KSAs `sonarqube`, `qa-eso-sonarqube`, `sonarqube-db`; a default `LimitRange` |
 | **Does not create** | GCP service accounts. With direct Workload Identity, IAM is granted to the KSA's principal on the resource that needs it, in the stack that creates that resource |
 | **Inputs** | `cluster_endpoint`, `cluster_ca` (from `gcp-qa-gke`) |
 | **Outputs (CMDB)** | `namespace` |
@@ -371,13 +371,13 @@ generate_hcl "_namespace.tf" {
       }
     }
     resource "kubernetes_service_account_v1" "ksa" {
-      for_each = toset(global.tenant.service_accounts)   # ["sonarqube", "eso-sonarqube", "sonarqube-db"]
+      for_each = toset([for n in global.tenant.service_accounts : "${global.env}-${n}"])   # qa-sonarqube, qa-eso-sonarqube, qa-sonarqube-db: environment prefix (CLAUDE.md, R54)
       metadata {
         name      = each.key
         namespace = kubernetes_namespace_v1.this.metadata[0].name
         labels    = global.labels.workload_base
       }
-      automount_service_account_token = each.key == "eso-sonarqube"
+      automount_service_account_token = each.key == "${global.env}-eso-${global.archetype}"
     }
   }
 }
@@ -397,7 +397,7 @@ generate_hcl "_namespace.tf" {
 |---|---|
 | **Purpose** | Secret containers in Secret Manager, their IAM, and their materialisation in the namespace (S1 §4.3) |
 | **Generator** | `gen_secrets.tm.hcl`, GCP branch |
-| **GCP resources** | 5 × `google_secret_manager_secret` (`qa-sonarqube-db`, `-passcode`, `-admin`, `-secret-key`, `-saml-sp`), user-managed replication in `europe-west1`, `version_destroy_ttl = 2592000s`; initial versions via `ephemeral "random_password"` + `secret_data_wo` (V9); `google_secret_manager_secret_iam_member` `secretAccessor` **per secret** for the `eso-sonarqube` principal |
+| **GCP resources** | 5 × `google_secret_manager_secret` (`qa-sonarqube-db`, `-passcode`, `-admin`, `-secret-key`, `-saml-sp`), user-managed replication in `europe-west1`, `version_destroy_ttl = 2592000s`; initial versions via `ephemeral "random_password"` + `secret_data_wo` (V9); `google_secret_manager_secret_iam_member` `secretAccessor` **per secret** for the `qa-eso-sonarqube` principal |
 | **K8s resources** | The archetype chart's `helm_release` with `secrets.enabled=true`: `SecretStore` (namespaced, Workload Identity auth) and 5 `ExternalSecret`s |
 | **Protection** | `lifecycle { prevent_destroy = true }` on `qa-sonarqube-secret-key` |
 | **Inputs** | `cluster_*`, `workload_identity_pool` (from `gcp-qa-gke`) |
@@ -409,7 +409,7 @@ generate_hcl "_secrets.tf" {
   condition = global.capability == "secrets" && global.platform.cloud == "gcp"
   content {
     locals {
-      eso_principal = "principal://iam.googleapis.com/projects/${data.google_project.this.number}/locations/global/workloadIdentityPools/${var.workload_identity_pool}/subject/ns/${global.platform.namespace}/sa/eso-${global.archetype}"
+      eso_principal = "principal://iam.googleapis.com/projects/${data.google_project.this.number}/locations/global/workloadIdentityPools/${var.workload_identity_pool}/subject/ns/${global.platform.namespace}/sa/${global.env}-eso-${global.archetype}"
     }
 
     resource "google_secret_manager_secret" "this" {
@@ -454,7 +454,7 @@ generate_hcl "_secrets.tf" {
 |---|---|
 | **Purpose** | Its own PostgreSQL instance, its backups and its bucket |
 | **Generator** | `gen_data_tenant_cnpg.tm.hcl`: GCP branch for the bucket and IAM, a shared part for the `helm_release` |
-| **GCP resources** | `google_storage_bucket` `disasterproject-qa-sonarqube-main-pgbackup` (regional, `uniform_bucket_level_access`, `public_access_prevention = "enforced"`, **no** versioning or retention lock — S1 §4.9, 7-day soft delete); `google_storage_bucket_iam_member` `objectAdmin` for the `sonarqube-db` principal |
+| **GCP resources** | `google_storage_bucket` `disasterproject-qa-sonarqube-main-pgbackup` (regional, `uniform_bucket_level_access`, `public_access_prevention = "enforced"`, **no** versioning or retention lock — S1 §4.9, 7-day soft delete); `google_storage_bucket_iam_member` `objectAdmin` for the `qa-sonarqube-db` principal |
 | **K8s resources** | `helm_release` with `database.enabled=true`: CNPG `Cluster` `sonarqube-db` (2 instances, per-node anti-affinity, `bootstrap.initdb` with `secret: sonarqube-db`), backups via the barman-cloud plugin (`ObjectStore` + daily `ScheduledBackup`) **(verify: plugin API in the pinned CNPG version)** |
 | **Tenant resource** | `Cluster`, `ObjectStore`, `ScheduledBackup` and `Backup` in its own namespace, authorised by `postgres-operator` (`postgres-operator-qa` proposal §1) |
 | **Inputs** | `cluster_*`, `workload_identity_pool` (gke). `operator_version` and `image_catalog` arrive as globals of the `database-platform` contract, not via sharing; `after` still points at `gcp-qa-postgres-operator` so the CRDs exist |
@@ -483,7 +483,7 @@ spec:
   bootstrap:
     initdb: { database: sonarqube, owner: sonarqube, secret: { name: sonarqube-db } }
   serviceAccountTemplate:
-    metadata: { name: sonarqube-db }
+    metadata: { name: qa-sonarqube-db }   # environment prefix: the Workload Identity pool is the project's (R54); verify CNPG accepts a KSA named differently from the Cluster
   affinity: { enablePodAntiAffinity: true, topologyKey: kubernetes.io/hostname }
   monitoring: { enablePodMonitor: true }
 ```
@@ -747,7 +747,7 @@ assert {
 
 ### 7.4 Gatekeeper (admission, layer 2b)
 
-The complete catalogue, with each rule's owner, is in the Gatekeeper proposal (§4); the core rules are P1–P11. This table only records their effect on SonarQube.
+The complete catalogue, with each rule's owner, is in the Gatekeeper proposal (§4); the core rules are P1–P12. This table only records their effect on SonarQube.
 
 | Constraint | Effect on `sonarqube` |
 |---|---|

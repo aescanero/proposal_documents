@@ -102,7 +102,7 @@
 <circle cx="742" cy="557" r="3" fill="#c2410c"/>
 <text x="752" y="562" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">Secret Manager, write-only</text>
 <circle cx="742" cy="581" r="3" fill="#c2410c"/>
-<text x="752" y="586" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">accessor para eso-kafka</text>
+<text x="752" y="586" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">accessor para qa-eso-kafka</text>
 <circle cx="742" cy="605" r="3" fill="#c2410c"/>
 <text x="752" y="610" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">nunca en el pipeline</text>
 <rect x="720" y="642" width="245" height="170" rx="12" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>

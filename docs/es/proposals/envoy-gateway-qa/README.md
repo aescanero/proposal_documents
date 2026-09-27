@@ -2,14 +2,14 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 5 |
+| **Estado** | Propuesta · revisión 6 |
 | **Alcance** | El arquetipo de capa 3 `gateway-envoy-gke` en `qa`: el camino de una petición desde el GLB hasta el pod, el Gateway único del entorno, quién puede enganchar qué ruta y con qué política, los CRDs de Gateway API, la flota de proxies y su relación con el NEG, tiempos de espera, observabilidad, red, contrato `ingress`, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | SonarQube (E1 §4.5, E2 §5.8), Keycloak (§8), monitorización (Grafana) y cert-manager (§1, §3) ya publican rutas en el Gateway `qa` o le emiten certificados, y cada uno lo daba por hecho. E2 §9 le dejó tres requisitos pendientes |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
 | **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano. `diagrams/06-bloques-presentacion.svg` (1920×1080, para presentaciones) se genera con `06-bloques-presentacion.py`, no con Mermaid |
 | **Identificadores propios** | Decisiones `DG1…`, riesgos candidatos `RG1…`, verificaciones `VG1…`. Los riesgos reciben número `R54+` en `risk-register.md` si se adopta, detrás de los de las propuestas anteriores |
 
-Nada de este documento reabre decisiones de `CLAUDE.md` (Envoy Gateway para ingress; un Gateway por entorno; recursos de Gateway API en el chart con `helm_release`, nunca `kubernetes_manifest`) ni de E1 (borde propio de `qa` en `disasterproject-qa`, NEG standalone, VPC separada).
+Nada de este documento reabre decisiones de `CLAUDE.md` (Envoy Gateway para ingress; un Gateway por entorno; recursos de Gateway API en el chart con `helm_release`, nunca `kubernetes_manifest`) ni de E1 (borde propio de `qa` en `disasterproject-nonprod`, NEG standalone, VPC separada).
 
 ![Arquetipo gateway-envoy-gke en bloques](diagrams/06-bloques-presentacion.svg)
 

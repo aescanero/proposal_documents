@@ -3,7 +3,7 @@ flowchart LR
         GEN["generates RSA 3072 key pair<br/>+ self-signed certificate"]
     end
 
-    subgraph SM["Secret Manager · disasterproject-qa"]
+    subgraph SM["Secret Manager · disasterproject-nonprod"]
         S1[("qa-keycloak-realm-signing<br/>private key + certificate")]
         S2[("qa-keycloak-entra-cert<br/>private key + certificate")]
     end

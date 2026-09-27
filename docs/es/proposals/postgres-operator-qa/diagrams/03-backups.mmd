@@ -9,7 +9,7 @@ flowchart LR
     PL["plugin barman-cloud<br/>cnpg-system · TLS de cert-manager"]
     subgraph DT["Stack data-tenant del consumidor"]
         direction TB
-        B[("gs://proyecto-instancia-pgbackup<br/>retención 14 días · soft delete 7<br/>sin versionado · prevent_destroy")]
+        B[("gs://disasterproject-entorno-instancia-pgbackup<br/>retención 14 días · soft delete 7<br/>sin versionado · prevent_destroy")]
         IAM["objectAdmin sobre ese bucket<br/>Workload Identity directa"]
     end
     NEW["Cluster NUEVO<br/>bootstrap.recovery"]

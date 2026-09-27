@@ -7,7 +7,7 @@ flowchart LR
         KSA["KSA sonarqube-db"]
         SB["ScheduledBackup<br/>diario"]
     end
-    subgraph GCP["disasterproject-qa"]
+    subgraph GCP["disasterproject-nonprod"]
         BK[("gs://disasterproject-qa-<br/>sonarqube-main-pgbackup<br/>soft delete 7 d · sin versionado")]
         SM[("Secret Manager<br/>qa-sonarqube-db")]
     end

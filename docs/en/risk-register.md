@@ -6,7 +6,7 @@
 |---|---|
 | **Scope** | Every identified failure mode across generation, resolution, identity, edge, policy and multi-tenancy |
 | **Section references** | `§n` refers to the architecture document unless prefixed `AM §n` (archetype model) |
-| **Identifiers** | R1–R53. R28 is **retired** (duplicate of R26); its number is not reused |
+| **Identifiers** | R1–R54. R28 is **retired** (duplicate of R26); its number is not reused |
 | **Review cadence** | At each roadmap phase gate, and whenever a pinned tool version changes |
 
 Risks are grouped by domain rather than numbered order, because that is how they are reviewed. The original R-numbers are stable identifiers and must not be reused if a risk is retired.
@@ -52,6 +52,7 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R41 | **Environment state-encryption key destroyed** — GCP has no written equivalent of the AWS SCP in §11.3 | Low | Critical — the environment's state is unreadable, irrecoverably | No KMS destroy permission on pipeline identities; `prevent_destroy`; org policy `constraints/cloudkms.minimumDestroyScheduledDuration`; key ring created at layer 0 (`proposals/sonarqube-qa`, section 4.14) |
 | R42 | **IdP federation credential expires** (Keycloak's credential in the upstream IdP app registration) | Medium | High — nobody can log in to anything behind the realm | Certificate credential instead of client secret; alert 30 days before expiry routed to the team that owns the app registration |
 | R43 | **Offboarded user keeps application tokens** where the application has no SCIM | Medium | Medium — access continues after the upstream account is disabled | Daily reconciliation job against the upstream directory; no personal tokens in CI |
+| R54 | **Workload Identity sameness in the shared non-prod project**: one pool per GCP project, so the same namespace and KSA in two non-prod clusters are one GCP identity | High unless KSAs are prefixed | High — one non-prod environment reads another's secrets, buckets and databases | Every KSA with GCP IAM named `<env>-<name>`; Gatekeeper P12 rejects another environment's prefix; G1 checks every IAM `member`. Residual: a cluster-admin of one non-prod environment can bypass admission — accepted for non-prod only; `prod` never shares a project (`CLAUDE.md`) |
 
 ## 3. Networking and address planning
 

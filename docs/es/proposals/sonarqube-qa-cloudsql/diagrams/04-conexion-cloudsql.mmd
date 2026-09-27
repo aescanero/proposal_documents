@@ -15,7 +15,7 @@ flowchart LR
         CSQL[("Cloud SQL for PostgreSQL<br/>qa-sonarqube-main-g1<br/>IP privada del rango qa-psa<br/>ipv4_enabled = false")]
     end
 
-    IAMC{{"roles/cloudsql.client<br/>condición: resource.name ==<br/>projects/disasterproject-qa/<br/>instances/qa-sonarqube-main-g1"}}
+    IAMC{{"roles/cloudsql.client<br/>condición: resource.name ==<br/>projects/disasterproject-nonprod/<br/>instances/qa-sonarqube-main-g1"}}
 
     SQ -->|"TCP 5432 · localhost · sin TLS"| PX
     PX -->|"token federado"| MDS

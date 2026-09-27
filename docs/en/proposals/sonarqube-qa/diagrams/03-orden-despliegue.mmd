@@ -1,7 +1,7 @@
 flowchart TD
     subgraph Z["Phase A · landing zone and environment (all new)"]
         direction TB
-        LZ["gcp-lz-* · landing zone project<br/>parent dns-zone · KMS · Artifact Registry<br/>GitHub WIF · project disasterproject-qa"] --> N["gcp-qa-network"]
+        LZ["gcp-lz-* · landing zone project<br/>parent dns-zone · KMS · Artifact Registry<br/>GitHub WIF · project disasterproject-nonprod"] --> N["gcp-qa-network"]
         N --> CM["gcp-qa-cloudmon"]
         N --> C["gcp-qa-gke<br/>node pools: general + sonar"]
     end

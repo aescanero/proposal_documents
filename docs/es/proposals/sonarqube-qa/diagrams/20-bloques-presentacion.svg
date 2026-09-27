@@ -2,7 +2,7 @@
 <defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9ca3af"/></marker><filter id="sh" x="-5%" y="-5%" width="110%" height="115%"><feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#111827" flood-opacity="0.08"/></filter></defs>
 <rect width="1920" height="1080" fill="#ffffff"/>
 <text x="60" y="72" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="40" font-weight="800" fill="#1f2937" text-anchor="start">SonarQube Community — arquetipo de capa 5</text>
-<text x="60" y="108" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="400" fill="#4b5563" text-anchor="start">Instancia sonarqube-main · entorno qa · GCP disasterproject-qa · europe-west1 · 9 stacks, 1 chart, un helm_release por stack</text>
+<text x="60" y="108" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="400" fill="#4b5563" text-anchor="start">Instancia sonarqube-main · entorno qa · GCP disasterproject-nonprod · europe-west1 · 9 stacks, 1 chart, un helm_release por stack</text>
 <rect x="60" y="124" width="120" height="5" rx="2" fill="#15803d"/>
 <rect x="40" y="160" width="330" height="670" rx="18" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="64" y="204" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="22" font-weight="700" fill="#1f2937" text-anchor="start">Consume de la plataforma</text>

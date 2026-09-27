@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 3 |
+| **Estado** | Propuesta · revisión 4 |
 | **Alcance** | El arquetipo de capa 3 `secrets-eso-gsm` en `qa`: modelo de seguridad, instalación, el contrato `secrets` 2.0.0 que usan los consumidores, rotación, red, disponibilidad, observabilidad, políticas, ejecución y plan |
 | **Por qué ahora** | SonarQube (E1 §4.3, E2 §5.2), la variante Cloud SQL (§5) y Keycloak (§6.5, §7) ya dependen de ESO y han fijado, cada uno por su lado, partes de su contrato. Aquí se reúnen en un solo sitio y se completan |
 | **Especificación de referencia** | `archetype-model.md` (AM §n; AM §14.2 asigna Secret Manager a `secrets` en GCP), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -23,7 +23,7 @@ Fuente: [`diagrams/06-bloques-presentacion.py`](diagrams/06-bloques-presentacion
 |---|---|---|
 | Qué es | Arquetipo `secrets-eso-gsm`, `kind: catalog`, **capa 3**, provee **`secrets` 2.0.0** con el trait nuevo **`eso`** | El binding de `qa` ya lo enlaza: `secrets: { archetype: secrets-eso-gsm, version: 0.1.0, stack_id: gcp-qa-secrets }` |
 | Stack | **Uno**: `gcp-qa-secrets` en `stacks/platforms/gcp/qa/secrets/` | Capa 3 vive en `stacks/platforms/` (`CLAUDE.md`, estructura) |
-| Backend | **Secret Manager** de `disasterproject-qa`, replicación user-managed en `europe-west1` | AM §14.2; E1 D1 |
+| Backend | **Secret Manager** de `disasterproject-nonprod`, replicación user-managed en `europe-west1` | AM §14.2; E1 D1 |
 | Interfaz en el cluster | ESO: `SecretStore` y `ExternalSecret` en el namespace de cada consumidor; `Secret` de Kubernetes como resultado | Los charts leen `Secret` normales; nada en ellos conoce Secret Manager |
 | Consumidores en `qa` | SonarQube (5 secretos), Keycloak (5), monitorización (credenciales de receptores de Alertmanager, admin de Grafana), los secretos de clientes OIDC de Keycloak (§6.5 de su propuesta) | Una docena de `ExternalSecret` al empezar; nada que exija dimensionar |
 | Modelo | `qa` dedicado | Sin budgets de `capacity` aplicados (E1 §0) |
@@ -75,22 +75,24 @@ Fuente: [`diagrams/02-sincronizacion.mmd`](diagrams/02-sincronizacion.mmd)
 
 | Actor | Permiso | Sobre qué |
 |---|---|---|
-| Pipeline (`tf-apply-qa@`) | Administrar **contenedores** de secreto y su IAM; añadir versiones (`secret_data_wo`) | Proyecto `disasterproject-qa`. **Sin** `secretAccessor`: nunca lee un valor (E1 §4.3) |
-| KSA `eso-<arquetipo>` de cada tenant | `roles/secretmanager.secretAccessor` | **Cada secreto** de su arquetipo, uno a uno. Nunca a nivel de proyecto (§11) |
+| Pipeline (`tf-apply-qa@`) | Administrar **contenedores** de secreto y su IAM; añadir versiones (`secret_data_wo`) | Proyecto `disasterproject-nonprod`. **Sin** `secretAccessor`: nunca lee un valor (E1 §4.3) |
+| KSA `<env>-eso-<arquetipo>` de cada tenant | `roles/secretmanager.secretAccessor` | **Cada secreto** de su arquetipo, uno a uno. Nunca a nivel de proyecto (§11) |
 | Controlador ESO (su propio KSA) | Ninguno en GCP | — |
 | Controlador ESO en Kubernetes | Leer sus CRDs; crear y actualizar `Secret`; **`create` de `serviceaccounts/token`** | Todo el cluster: así lo exige el diseño de ESO |
 | SRE | `secretAccessor` just-in-time por PAM | Un secreto, máximo 1 h (E1 §4.3) |
 
+**Por qué el prefijo del entorno en el KSA.** `qa` vive en el proyecto non-prod compartido, y el pool de Workload Identity es uno por proyecto: `sonarqube/eso-sonarqube` en el cluster de `dev` y en el de `qa` serían el mismo principal, y cada uno leería los secretos del otro. Por eso el KSA es `qa-eso-sonarqube`. Poner el prefijo al namespace del controlador no serviría: el controlador no tiene identidad de GCP y lee siempre con el KSA del consumidor (`CLAUDE.md`, R54).
+
 ### 3.2 Lo que el controlador podría hacer si se compromete
 
-Hay que decirlo sin rodeos: el controlador **puede leer y escribir cualquier `Secret` del cluster y pedir un token de cualquier KSA**. Con el token de un `eso-*` obtiene lo que ese KSA puede leer en Secret Manager. Es decir, comprometer el controlador equivale a acceder a todos los secretos de `qa`. Es inherente a cualquier sincronizador de secretos con alcance de cluster, y lo que se hace es reducir la probabilidad y hacerlo visible:
+Hay que decirlo sin rodeos: el controlador **puede leer y escribir cualquier `Secret` del cluster y pedir un token de cualquier KSA**. Con el token de un `<env>-eso-*` obtiene lo que ese KSA puede leer en Secret Manager. Es decir, comprometer el controlador equivale a acceder a todos los secretos de `qa`. Es inherente a cualquier sincronizador de secretos con alcance de cluster, y lo que se hace es reducir la probabilidad y hacerlo visible:
 
 | Medida | Efecto |
 |---|---|
 | Namespace `external-secrets` solo de la plataforma; PSS `restricted`; imagen por digest desde Artifact Registry | Superficie mínima |
 | Sin `exec`/`attach`/`port-forward` en ese namespace para nadie salvo break-glass | Nadie entra al pod por la API |
 | Controlador **sin identidad de GCP**: todo acceso sale con el principal de un tenant | El audit log de Secret Manager dice qué tenant se leyó, no "ESO" en general (§9.2) |
-| Alerta de auditoría: acceso a un secreto por un principal fuera de la lista (`eso-*` y lectores explícitos) | Un uso anómalo de un token aparece en el log con su principal |
+| Alerta de auditoría: acceso a un secreto por un principal fuera de la lista (`<env>-eso-*` y lectores explícitos) | Un uso anómalo de un token aparece en el log con su principal |
 
 ### 3.3 Lo que se desactiva
 
@@ -98,7 +100,7 @@ Hay que decirlo sin rodeos: el controlador **puede leer y escribir cualquier `Se
 |---|---|
 | `ClusterSecretStore` | Un almacén de cluster usa una identidad compartida por todos los namespaces: rompe el aislamiento por principal (R15) |
 | `ClusterExternalSecret` | Replica un secreto en muchos namespaces: justo lo que el IAM por secreto evita |
-| `PushSecret` | Escribe desde el cluster **hacia** Secret Manager. Nadie lo necesita, y un KSA `eso-*` solo tiene lectura; mejor que el controlador ni lo intente |
+| `PushSecret` | Escribe desde el cluster **hacia** Secret Manager. Nadie lo necesita, y un KSA `<env>-eso-*` solo tiene lectura; mejor que el controlador ni lo intente |
 | Generadores de ESO (contraseñas, tokens de registro) | Las contraseñas las genera OpenTofu con recursos `ephemeral` y atributos write-only (R40) |
 
 Dos capas: los reconciliadores apagados en el controlador (§4.1) **y** Gatekeeper denegando esos kinds (§11). La segunda protege de que alguien vuelva a encender la primera.
@@ -188,13 +190,13 @@ metadata: { name: gcpsm, namespace: sonarqube }
 spec:
   provider:
     gcpsm:
-      projectID: disasterproject-qa
+      projectID: disasterproject-nonprod
       auth:
         workloadIdentity:
           clusterLocation: europe-west1
           clusterName: qa                        # global.platform.cluster_name
-          clusterProjectID: disasterproject-qa
-          serviceAccountRef: { name: eso-sonarqube }
+          clusterProjectID: disasterproject-nonprod
+          serviceAccountRef: { name: qa-eso-sonarqube }
 ---
 # un ExternalSecret por secreto de Secret Manager
 apiVersion: external-secrets.io/v1
@@ -213,7 +215,7 @@ spec:
 
 | Regla | Por qué |
 |---|---|
-| Un `SecretStore` por namespace, `serviceAccountRef` a `eso-<arquetipo>` | Principal exacto (R15); el nombre `eso-` es lo que reconoce la alerta de auditoría |
+| Un `SecretStore` por namespace, `serviceAccountRef` a `<env>-eso-<arquetipo>` | Principal exacto (R15); el nombre `<env>-eso-` es lo que reconoce la alerta de auditoría |
 | `remoteRef.key` / `extract.key` con el prefijo `qa-<arquetipo>-` | El IAM ya deniega el resto; la regla hace que el error salte en admisión y no como `SecretSyncedError` |
 | `refreshInterval: 15m` | Un secreto rotado llega en ≤ 15 min sin intervención; la alerta de E1 §4.7 salta a los 15 min |
 | `creationPolicy: Owner` | El `Secret` desaparece con su `ExternalSecret` al desmontar el consumidor |
@@ -298,14 +300,14 @@ La regla general queda escrita: **entre capabilities de la misma capa, la observ
 | `SecretStore` no listo | Condición `Ready=False` | > 5 min — casi siempre IAM o Workload Identity del tenant | — |
 | Errores de sincronización | Tasa de errores de llamadas al proveedor | > 10 % en 15 min | — |
 | Controlador o webhook sin réplicas | kube-state-metrics | < 1 lista durante 5 min | — |
-| **Lectura de un secreto por un principal no autorizado** | *Data Access audit log* de Secret Manager, alerta basada en logs de la capa 1b | Cualquier `AccessSecretVersion` cuyo principal no sea `…/sa/eso-*` ni esté en la lista de lectores explícitos | E1 §4.3, ampliada con la lista |
+| **Lectura de un secreto por un principal no autorizado** | *Data Access audit log* de Secret Manager, alerta basada en logs de la capa 1b | Cualquier `AccessSecretVersion` cuyo principal no sea `…/sa/<env>-eso-*` **con el mismo `<env>` que el prefijo del secreto** ni esté en la lista de lectores explícitos. En el proyecto non-prod compartido, `dev-eso-sonarqube` leyendo `qa-sonarqube-db` salta | E1 §4.3, ampliada con la lista |
 
 **Lista de lectores explícitos.** Principales que leen secretos que no son de su propio arquetipo, o fuera de ESO. Cada entrada lleva su **alcance**: el prefijo de los secretos que puede leer. La alerta filtra por principal **y** prefijo, y G1 comprueba el mismo alcance en cada `secretAccessor` (§11.3). Un lector nuevo es un PR a esta lista, revisado.
 
 | Principal | Alcance | Por qué |
 |---|---|---|
-| `…/ns/keycloak/sa/keycloak-config` | `qa-<instancia>-oidc` que cada consumidor le concede | El reconciliador de Keycloak lee secretos de clientes OIDC con su propia identidad, no por ESO (propuesta de Keycloak §6.5). Sin la entrada, la alerta de E1 §4.3 saltaría en cada pasada |
-| `…/ns/kafka/sa/eso-kafka` | `qa-<instancia>-kafka-*` que cada consumidor le concede | El ESO del proveedor materializa en `kafka` las contraseñas SCRAM de los consumidores (propuesta de Kafka §3.1). El comodín `eso-*` ya lo silencia en la alerta, pero lee secretos de **otros** arquetipos: sin la entrada, G1 rechazaría el `secretAccessor` del consumidor |
+| `…/ns/keycloak/sa/qa-keycloak-config` | `qa-<instancia>-oidc` que cada consumidor le concede | El reconciliador de Keycloak lee secretos de clientes OIDC con su propia identidad, no por ESO (propuesta de Keycloak §6.5). Sin la entrada, la alerta de E1 §4.3 saltaría en cada pasada |
+| `…/ns/kafka/sa/qa-eso-kafka` | `qa-<instancia>-kafka-*` que cada consumidor le concede | El ESO del proveedor materializa en `kafka` las contraseñas SCRAM de los consumidores (propuesta de Kafka §3.1). El comodín `<env>-eso-*` ya lo silencia en la alerta, pero lee secretos de **otros** arquetipos: sin la entrada, G1 rechazaría el `secretAccessor` del consumidor |
 | Cuenta de servicio de un cliente de Kafka de la VPC | Solo `qa-<su instancia>-kafka-*` | Lee su contraseña sin ESO, con su identidad de GCP (propuesta de Kafka §6.3). Se declara por instancia, en su manifiesto |
 
 ---
@@ -355,7 +357,7 @@ capacity:
   cpu_millicores: 200
   memory_mib: 768
   pods: 4
-  workload_identities: 0                             # el controlador no tiene identidad de GCP; los eso-* los cuenta cada tenant
+  workload_identities: 0                             # el controlador no tiene identidad de GCP; los <env>-eso-* los cuenta cada tenant
 ```
 
 `runtimes: [gke]`: la rama `gcpsm` es solo GCP. Las variantes para AWS (Secrets Manager) y Azure (Key Vault) serían arquetipos hermanos con el mismo contrato y el mismo trait, cambiando `provider`. **Sin `monitoring`** en `requires`, por el ciclo de §9.1.
@@ -400,7 +402,7 @@ assert {
 | Constraint | Qué deniega |
 |---|---|
 | Kinds prohibidos | Cualquier `ClusterSecretStore`, `ClusterExternalSecret` o `PushSecret` |
-| Forma del `SecretStore` | Proveedor distinto de `gcpsm`; autenticación distinta de `workloadIdentity` (nada de `secretRef` a una clave JSON); `serviceAccountRef` sin el prefijo `eso-`; `projectID` distinto del proyecto del entorno |
+| Forma del `SecretStore` | Proveedor distinto de `gcpsm`; autenticación distinta de `workloadIdentity` (nada de `secretRef` a una clave JSON); `serviceAccountRef` sin el prefijo `<env>-eso-`; `projectID` distinto del proyecto del entorno |
 | Forma del `ExternalSecret` | `secretStoreRef.kind` distinto de `SecretStore`; claves remotas sin el prefijo `qa-<etiqueta archetype del namespace>-`; `refreshInterval` fuera de 5 min – 1 h |
 | Namespace `external-secrets` | Pods que no sean los del chart (por etiqueta), para que nadie use el KSA del controlador |
 
@@ -409,7 +411,7 @@ assert {
 | Regla | Qué comprueba |
 |---|---|
 | **Nueva:** IAM de Secret Manager por recurso | En stacks de arquetipo, `secretmanager.*` solo como `google_secret_manager_secret_iam_member`; nunca `google_project_iam_*` (E2 §7.2, generalizada) |
-| **Nueva:** miembro del IAM | El `member` de cada `secretAccessor` es `…/sa/eso-<el mismo arquetipo>`, o un principal de la lista de lectores explícitos (§9.2) **sobre un secreto dentro de su alcance** |
+| **Nueva:** miembro del IAM | El `member` de cada `secretAccessor` es `…/sa/<env>-eso-<el mismo arquetipo>`, con el `<env>` del propio secreto, o un principal de la lista de lectores explícitos (§9.2) **sobre un secreto dentro de su alcance** |
 | **Nueva:** trait | Un arquetipo cuyo chart contiene `SecretStore` o `ExternalSecret` exige `secrets` con el trait `eso` |
 | Existente (R8, R40) | Ninguna salida exporta valores; ningún `secret_data` en claro en `plan.json` |
 
@@ -419,7 +421,7 @@ assert {
 
 ### 12.1 Primer despliegue
 
-Fase B de E1 §6: después de `gcp-qa-policy` y `gcp-qa-certs`, antes de monitorización, Keycloak y cualquier arquetipo de capa 4–5. Criterio de salida: un `ExternalSecret` de prueba en un namespace de prueba llega a `Ready` con su `eso-*` y queda registrado en el audit log con ese principal.
+Fase B de E1 §6: después de `gcp-qa-policy` y `gcp-qa-certs`, antes de monitorización, Keycloak y cualquier arquetipo de capa 4–5. Criterio de salida: un `ExternalSecret` de prueba en un namespace de prueba llega a `Ready` con su `<env>-eso-*` y queda registrado en el audit log con ese principal.
 
 ### 12.2 Upgrades
 
@@ -442,7 +444,7 @@ Se detiene en `prevent_destroy`. Desmontar ESO sin desmontar a sus consumidores 
 | `registry/traits.yaml` y el `enum` de `schemas/archetype-manifest.schema.json` | Trait `eso`, en el mismo commit y de forma mecánica (R34) | **Aplicado** |
 | E2 §3 (SonarQube), variante Cloud SQL §9.1, propuesta de Keycloak §11.1 | `secrets` pasa a exigir `traits: [eso]` | **Aplicado** |
 | E1 §4.3 y §4.7 | La alerta de auditoría admite la lista de lectores explícitos (§9.2) | **Aplicado** |
-| Esta propuesta, §9.2 y §11.3 | Lista de lectores con alcance por prefijo; entradas `eso-kafka` y clientes de Kafka de la VPC (propuesta de Kafka) | **Aplicado** |
+| Esta propuesta, §9.2 y §11.3 | Lista de lectores con alcance por prefijo; entradas `qa-eso-kafka` y clientes de Kafka de la VPC (propuesta de Kafka) | **Aplicado** |
 | E1 §4.7 y E2 §5.9 | La alerta "`ExternalSecret` sin sincronizar" pasa a ser de plataforma (§9.2) y sale de SonarQube, el único arquetipo que la declaraba | **Aplicado** |
 | E2 §9, fila `secrets-eso-gsm` | Requisito cumplido: ESO con Workload Identity en `SecretStore` namespaced | — |
 
@@ -454,7 +456,7 @@ Se detiene en `prevent_destroy`. Desmontar ESO sin desmontar a sus consumidores 
 |---|---|---|---|---|
 | DE1 | Interfaz de secretos en el cluster | Heredada de D1 | ESO + Secret Manager | Driver CSI; OpenBao |
 | DE2 | Tipo de almacén | Propuesta | Solo `SecretStore` namespaced | `ClusterSecretStore` con identidad compartida |
-| DE3 | Identidad hacia GCP | Propuesta | KSA `eso-<arquetipo>` por tenant, principal federado directo; controlador sin identidad | Cuenta de servicio de GCP por tenant, con anotación en el KSA (si VE1 falla) |
+| DE3 | Identidad hacia GCP | Propuesta | KSA `<env>-eso-<arquetipo>` por tenant, principal federado directo; controlador sin identidad | Cuenta de servicio de GCP por tenant, con anotación en el KSA (si VE1 falla) |
 | DE4 | Certificado del webhook | Propuesta | cert-manager, `ClusterIssuer` interno | cert-controller de ESO |
 | DE5 | Refresco | Propuesta | 15 min + `force-sync` en rotaciones | 1 h (por defecto) |
 | DE6 | Recarga de consumidores | Propuesta | Reinicio explícito en el procedimiento | Reloader |
@@ -482,13 +484,13 @@ Se detiene en `prevent_destroy`. Desmontar ESO sin desmontar a sus consumidores 
 
 | # | Verificación | Resultado que la cierra |
 |---|---|---|
-| VE1 | `gcpsm` con Workload Identity y principal federado directo, sin anotación de cuenta de servicio de GCP, en la versión fijada de ESO | `ExternalSecret` en `Ready`; el audit log muestra el principal `…/sa/eso-<arquetipo>`. Si no, DE3 alternativa |
+| VE1 | `gcpsm` con Workload Identity y principal federado directo, sin anotación de cuenta de servicio de GCP, en la versión fijada de ESO | `ExternalSecret` en `Ready`; el audit log muestra el principal `…/sa/<env>-eso-<arquetipo>`. Si no, DE3 alternativa |
 | VE2 | Reconciliadores de `ClusterSecretStore`, `ClusterExternalSecret` y `PushSecret` apagados por los valores del chart | Un objeto de esos kinds creado con Gatekeeper en `dryrun` no se reconcilia |
 | VE3 | Desinstalar el chart en un entorno efímero | CRDs, `ExternalSecret` y `Secret` siguen existiendo |
 | VE4 | Webhook en 10250 alcanzable desde el plano de control con nodos privados | `apply` de un `ExternalSecret` sin timeout |
 | VE5 | Anotación `force-sync` | Refresco inmediato visible en `status.refreshTime` |
 | VE6 | ESO bajo PSS `restricted` con los valores por defecto del chart | Pods admitidos sin exenciones |
-| VE7 | Filtro de la alerta de auditoría con la lista de lectores | Salta con un lector no listado y con un lector listado fuera de su alcance; calla con `eso-*`, `keycloak-config` y `eso-kafka` dentro del suyo |
+| VE7 | Filtro de la alerta de auditoría con la lista de lectores | Salta con un lector no listado y con un lector listado fuera de su alcance; calla con `<env>-eso-*` del propio entorno del secreto, `qa-keycloak-config` y `qa-eso-kafka` dentro del suyo; salta con `dev-eso-*` sobre un secreto `qa-*` |
 | VE8 | Certificado del webhook emitido por cert-manager e inyectado en la `ValidatingWebhookConfiguration` | Webhook sano tras renovar el certificado |
 
 ---

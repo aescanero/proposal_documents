@@ -45,7 +45,7 @@ o.append(f'<rect width="{W}" height="{H}" fill="#ffffff"/>')
 
 # title
 text(60,72,"External Secrets Operator — layer-3 archetype, secrets provider",40,800)
-text(60,108,"Stack gcp-qa-secrets · environment qa · GCP disasterproject-qa · europe-west1 · Secret Manager backend · one SecretStore per namespace",19,400,SUB)
+text(60,108,"Stack gcp-qa-secrets · environment qa · GCP disasterproject-nonprod · europe-west1 · Secret Manager backend · one SecretStore per namespace",19,400,SUB)
 o.append(f'<rect x="60" y="124" width="120" height="5" rx="2" fill="{pal["fund"][1]}"/>')
 
 # left panel
@@ -75,9 +75,9 @@ for (k,t),x in zip(cols,xs):
     o.append(f'<line x1="{x}" y1="{ytop+28}" x2="{x+colw}" y2="{ytop+28}" stroke="{pal[k][1]}" stroke-width="2" opacity="0.35"/>')
 by=ytop+42; bh=170; bg=14
 stack(xs[0],by,colw,bh,'fund',1,"CRDs","API external-secrets.io/v1",["in the chart's templates/","resource-policy: keep","deleting them deletes Secrets"])
-stack(xs[0],by+bh+bg,colw,bh,'fund',2,"controller","Controller × 2",["leader election · PDB","no GCP identity","TokenRequest for eso-*"])
+stack(xs[0],by+bh+bg,colw,bh,'fund',2,"controller","Controller × 2",["leader election · PDB","no GCP identity","TokenRequest for env-eso-*"])
 stack(xs[0],by+2*(bh+bg),colw,bh,'fund',3,"webhook","Webhook × 2",["port 10250 (GKE)","cert-manager certificate","ESO kinds only"])
-stack(xs[1],by,colw,bh,'prot',4,"SecretStore","Namespaced only",["gcpsm · workloadIdentity","serviceAccountRef eso-*","no JSON keys"])
+stack(xs[1],by,colw,bh,'prot',4,"SecretStore","Namespaced only",["gcpsm · workloadIdentity","serviceAccountRef env-eso-*","no JSON keys"])
 stack(xs[1],by+bh+bg,colw,bh,'prot',5,"disabled","Off in the controller",["ClusterSecretStore","ClusterExternalSecret","PushSecret · generators"])
 nx,ny=xs[1],by+2*(bh+bg)
 rect(nx,ny,colw,bh,'#fffaf3',pal['prot'][1],rx=12,sw=1.5,dash="6 5")
@@ -86,7 +86,7 @@ for i,l in enumerate(["it can read any Secret:","closed namespace, no","exec, an
     text(nx+16,ny+64+i*24,l,14,400,SUB)
 stack(xs[2],by,colw,bh,'app',6,"secrets 2.0.0","Contract outputs",["namespace · api_version","store_kind · provider","trait eso"])
 stack(xs[2],by+bh+bg,colw,bh,'app',7,"ExternalSecret","What the tenant writes",["refreshInterval 15m","keys qa-<archetype>-*","creationPolicy Owner"])
-stack(xs[2],by+2*(bh+bg),colw,bh,'app',8,"IAM","Per secret, by the tenant",["secretAccessor to eso-*","never on the project","pipeline cannot read"])
+stack(xs[2],by+2*(bh+bg),colw,bh,'app',8,"IAM","Per secret, by the tenant",["secretAccessor to env-eso-*","never on the project","pipeline cannot read"])
 stack(xs[3],by,colw,bh,'ops',9,"rotation","New version, no outage",["write-only version","force-sync + restart","old version disabled last"])
 stack(xs[3],by+bh+bg,colw,bh,'ops',10,"alerts","Declared in monitoring",["ExternalSecret not Ready","SecretStore not Ready","sync errors"])
 stack(xs[3],by+2*(bh+bg),colw,bh,'ops',11,"audit","Secret Manager audit log",["one principal per tenant","explicit reader allow-list","alert in layer 1b"])
@@ -100,8 +100,8 @@ RX,RY,RW,RH=1570,160,310,670
 rect(RX,RY,RW,RH,pal['out'][0],'#a5f3fc',rx=18,sw=1.5)
 text(RX+24,RY+44,"Provides secrets 2.0.0",22,700)
 text(RX+24,RY+70,"trait eso · SecretStore per namespace",15,400,SUB,italic=True)
-items=[("SonarQube","5 secrets","KSA eso-sonarqube"),("Keycloak","5 secrets + OIDC clients","KSA eso-keycloak"),
-       ("Monitoring","Alertmanager · Grafana","KSA eso-monitoring-oss"),("Stack data (Cloud SQL)","writes the -db version","never reads: writes only")]
+items=[("SonarQube","5 secrets","KSA qa-eso-sonarqube"),("Keycloak","5 secrets + OIDC clients","KSA qa-eso-keycloak"),
+       ("Monitoring","Alertmanager · Grafana","KSA qa-eso-monitoring-oss"),("Stack data (Cloud SQL)","writes the -db version","never reads: writes only")]
 y=RY+92
 for t,a,b in items:
     rect(RX+20,y,RW-40,128,'#ffffff','#a5f3fc',rx=10,sw=1.5)

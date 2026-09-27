@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 18 (alineada con la etapa 2) |
+| **Estado** | Propuesta · etapa 1 de N · **etapa 1 cerrada** · revisión 19 (alineada con la etapa 2) |
 | **Alcance** | Qué elementos necesita SonarQube Community Build en un entorno `qa` completo, de qué depende cada uno y con qué herramienta open source se cubre |
 | **Fuera de alcance** | Código (generadores, contratos, charts), integración detallada de cada pipeline, procedimiento de upgrade. Son etapas posteriores |
 | **Especificación de referencia** | `docs/archetype-model.md` (AM §n), `docs/terramate-outputs-sharing-architecture.md` (§n), `docs/developer-guide.md` (DG §n), `docs/risk-register.md` |
@@ -24,7 +24,7 @@ Nada de este documento reabre decisiones de `CLAUDE.md`. Donde SonarQube choca c
 | Volumen | **200 proyectos**, ≈ 10 M líneas, ≈ 4 merges/día por proyecto | Sizing en §4.12. El cuello de botella no es la memoria sino la **cola del compute engine, de un solo worker** en Community |
 | Identidad de personas | **Entra ID** | Keycloak como broker OIDC hacia Entra ID; grupos por *app roles* (§4.6) |
 | Región | **`europe-west1`** (Bélgica) | Todo lo regional en la misma región: cluster, discos, buckets, key ring de KMS, Artifact Registry. GCP no tiene región en Irlanda |
-| Proyecto GCP | **Propio**: `disasterproject-qa`. Un proyecto por entorno; el hub y la landing zone en el suyo | El borde (IP, Cloud Armor, certificado, LB) vive en `disasterproject-qa`; KMS, Artifact Registry y WIF de GitHub quedan en el proyecto de landing zone con permisos entre proyectos (§4.15) |
+| Proyecto GCP | **Compartido**: `disasterproject-nonprod`, el proyecto de todos los entornos no productivos; `prod` en el suyo; el hub y la landing zone en el suyo (`CLAUDE.md`). Todo recurso de `qa` lleva el prefijo `qa` y la facturación se reparte por etiquetas | El borde (IP, Cloud Armor, certificado, LB) vive en `disasterproject-nonprod`; KMS, Artifact Registry y WIF de GitHub quedan en el proyecto de landing zone con permisos entre proyectos (§4.15) |
 | Red | **VPC separada** para `qa`, no Shared VPC | El borde de `qa` vive en su propia VPC; no hay tránsito por el hub (§4.15). Cierra la pregunta abierta nº 2 de `CLAUDE.md` **para `qa`** |
 | Modelo | **Dedicado**, no shared | Una plataforma, una instancia (§12.1). No se generan las salvaguardas multi-tenant de §12.3 (ResourceQuota por tenant, budgets de `capacity`); el aislamiento es la VPC y el cluster |
 | Secretos | **GCP Secret Manager**; **OpenBao no se usa en `qa`** | ESO como interfaz en el cluster, Secret Manager como backend (lo que AM §14.2 ya asigna a GCP). Sin unseal, sin Raft, sin recovery keys (§4.3) |
@@ -85,13 +85,13 @@ Todo se construye de cero. **Registro** indica si la capability existe en `regis
 
 | Capa | Capability | Implementación en GCP | Licencia | Por qué la necesita SonarQube | Registro |
 |---|---|---|---|---|---|
-| 0 | `dns-zone` | Cloud DNS, zona `disasterproject.com` en el proyecto de landing zone, que **delega** `qa.disasterproject.com` a una zona en `disasterproject-qa` | cloud | Registro wildcard `*.qa.disasterproject.com` | ✓ |
+| 0 | `dns-zone` | Cloud DNS, zona `disasterproject.com` en el proyecto de landing zone, que **delega** `qa.disasterproject.com` a una zona en `disasterproject-nonprod` | cloud | Registro wildcard `*.qa.disasterproject.com` | ✓ |
 | 0 | `cidr-pool` | Ledger del modelo (AM §9) | — | Una `/17` del bloque permanente `10.4.0.0/14` (ejemplo de AM §9.2: `10.4.128.0/17`) | ✓ |
-| 1 | `cert` | Certificate Manager en `disasterproject-qa`, certificado **wildcard** `*.qa.disasterproject.com` con DNS authorization | cloud | TLS público en el borde | ✓ |
-| 1 | `waf` | Cloud Armor en `disasterproject-qa` | cloud | Única protección de red posible con runners alojados por GitHub (D3) | ✓ |
-| 1 | `edge-ip` | IP global reservada en `disasterproject-qa` | cloud | Destino del wildcard | ✓ |
+| 1 | `cert` | Certificate Manager en `disasterproject-nonprod`, certificado **wildcard** `*.qa.disasterproject.com` con DNS authorization | cloud | TLS público en el borde | ✓ |
+| 1 | `waf` | Cloud Armor en `disasterproject-nonprod` | cloud | Única protección de red posible con runners alojados por GitHub (D3) | ✓ |
+| 1 | `edge-ip` | IP global reservada en `disasterproject-nonprod` | cloud | Destino del wildcard | ✓ |
 | 0 | *(KMS)* | Cloud KMS en el proyecto de landing zone, key ring `qa` en `europe-west1` | cloud | Estado de OpenTofu, secretos de etcd, firma de imágenes (§4.14) | ✗ — deliberado, §4.14 |
-| 0 | *(registro)* | Artifact Registry en el proyecto de landing zone: repo remoto de Docker Hub + repo estándar; `artifactregistry.reader` para la SA de nodos de `disasterproject-qa` | cloud | Imagen propia con plugins, pull por digest | ✗ — mismo criterio que KMS |
+| 0 | *(registro)* | Artifact Registry en el proyecto de landing zone: repo remoto de Docker Hub + repo estándar; `artifactregistry.reader` para la SA de nodos de `disasterproject-nonprod` | cloud | Imagen propia con plugins, pull por digest | ✗ — mismo criterio que KMS |
 | 0 | *(identidad CI)* | Workload Identity Federation para GitHub Actions (§11.2) | cloud | Despliegue de la plataforma sin claves | — |
 | 1 | `network` | **VPC propia** de `qa`, subredes, Cloud NAT, **Private Google Access** | cloud | Nodos, pods, acceso a APIs de Google sin internet | ✓ |
 | 1 | `env-edge` | Backend service + URL map + proxy + forwarding rule **del propio entorno**, con el NEG en la VPC de `qa` | cloud | Entrada hacia el NEG del Gateway | ✓ |
@@ -176,15 +176,15 @@ Tres piezas, cada una con una sola responsabilidad:
 |---|---|---|
 | **Stack `sonarqube-main-secrets`** (OpenTofu, pipeline por WIF) | Crea los **contenedores** de secreto, sus etiquetas obligatorias (`registry/labels.yaml`) y su IAM | `tf-apply-qa@`: administra secretos, **no** tiene `secretAccessor` |
 | **Valores** | Generados con recurso `ephemeral` y escritos con el atributo **write-only** `secret_data_wo`, de modo que el valor **nunca entra en el estado** de OpenTofu | La misma, en el mismo apply. Verificar el soporte en la versión de OpenTofu y del proveedor `google` fijadas (V9). Si no está, la versión inicial la crea un script fuera de OpenTofu |
-| **ESO** en el namespace `sonarqube` | Lee los valores y los materializa como `Secret` de Kubernetes | KSA `eso-sonarqube` vía Workload Identity, `secretAccessor` **sobre cada secreto**, nunca sobre el proyecto (§7.4: un permiso de proyecto expone los secretos de todos) |
+| **ESO** en el namespace `sonarqube` | Lee los valores y los materializa como `Secret` de Kubernetes | KSA `qa-eso-sonarqube` vía Workload Identity, `secretAccessor` **sobre cada secreto**, nunca sobre el proyecto (§7.4: un permiso de proyecto expone los secretos de todos) |
 
-- **`SecretStore` por namespace**, no `ClusterSecretStore`: el principal de Workload Identity es exactamente `ns/sonarqube/sa/eso-sonarqube` (R15).
+- **`SecretStore` por namespace**, no `ClusterSecretStore`: el principal de Workload Identity es exactamente `ns/sonarqube/sa/qa-eso-sonarqube` (R15).
 - **Los `Secret` de Kubernetes quedan en etcd cifrados con la clave KMS `gke-secrets`** (§4.14, arquitectura §5.7). Son copia, no fuente de verdad.
 - **Por qué ESO y no el add-on de Secret Manager para GKE** (driver CSI): el add-on monta ficheros, pero el chart de SonarQube lee la password JDBC de una variable de entorno y CNPG exige un `Secret` de Kubernetes.
 - **Por outputs sharing solo viajan nombres de secreto**, nunca valores (§11.6, R8).
 - **Secretos en el proyecto de `qa`**, replicación **user-managed** en `europe-west1`.
 
-**Acceso humano y del pipeline.** El pipeline accede por WIF para **gestionar** secretos; leer valores no forma parte de ningún despliegue. Lectura humana solo para SRE, **just-in-time** con Privileged Access Manager (justificación, máximo 1 h, aprobación de otro miembro de SRE). *Data Access audit logs* en Secret Manager y alerta ante cualquier `AccessSecretVersion` cuyo principal no sea un KSA `eso-*` ni esté en la lista de lectores explícitos, revisada por PR (propuesta de ESO §9.2; el reconciliador de Keycloak lee con su propia identidad).
+**Acceso humano y del pipeline.** El pipeline accede por WIF para **gestionar** secretos; leer valores no forma parte de ningún despliegue. Lectura humana solo para SRE, **just-in-time** con Privileged Access Manager (justificación, máximo 1 h, aprobación de otro miembro de SRE). *Data Access audit logs* en Secret Manager y alerta ante cualquier `AccessSecretVersion` cuyo principal no sea un KSA `<env>-eso-*` ni esté en la lista de lectores explícitos, revisada por PR (propuesta de ESO §9.2; el reconciliador de Keycloak lee con su propia identidad).
 
 **Protección frente a borrado.** Borrar un secreto en Secret Manager es inmediato e irreversible. Por eso: ninguna identidad de pipeline salvo la de destroy tiene `secretmanager.secrets.delete`; `lifecycle { prevent_destroy = true }` en `qa-sonarqube-secret-key`; y destrucción diferida de versiones (`version_destroy_ttl`, 30 días) para poder deshacer una rotación equivocada.
 
@@ -200,7 +200,7 @@ Tres piezas, cada una con una sola responsabilidad:
 
 Requiere que `postgres-operator` autorice `Cluster` y `ScheduledBackup` en `tenant_resources` (AM §10.4). Keycloak usa el mismo patrón: es el segundo `Cluster` del entorno.
 
-Backups a GCS con **Workload Identity**: IAM `roles/storage.objectAdmin` sobre el bucket para el principal exacto `principal://iam.googleapis.com/projects/<n>/locations/global/workloadIdentityPools/<proyecto>.svc.id.goog/subject/ns/sonarqube/sa/sonarqube-db`. Sin clave JSON; sin comodín.
+Backups a GCS con **Workload Identity**: IAM `roles/storage.objectAdmin` sobre el bucket para el principal exacto `principal://iam.googleapis.com/projects/<n>/locations/global/workloadIdentityPools/<proyecto>.svc.id.goog/subject/ns/sonarqube/sa/qa-sonarqube-db`. Sin clave JSON; sin comodín.
 
 ### 4.5 Publicación
 
@@ -421,15 +421,15 @@ Lo que la documentación **no** dice: qué stack crea las claves, en qué capa, 
 
 ### 4.15 Red: VPC separada y borde propio
 
-`qa` es un entorno **dedicado**, con **proyecto GCP propio** (`disasterproject-qa`) y **VPC propia**. R23 describe el problema de una topología hub-and-spoke: el peering de VPC no es transitivo y los backends de un balanceador deben estar en su misma VPC, así que un balanceador **en el hub** no alcanza un NEG **en `qa`**. La salida para `qa` es no pasar por el hub: todo el borde vive en `disasterproject-qa`.
+`qa` es un entorno **dedicado** con **VPC propia** dentro del **proyecto non-prod compartido** (`disasterproject-nonprod`). R23 describe el problema de una topología hub-and-spoke: el peering de VPC no es transitivo y los backends de un balanceador deben estar en su misma VPC, así que un balanceador **en el hub** no alcanza un NEG **en `qa`**. La salida para `qa` es no pasar por el hub: todo el borde vive en `disasterproject-nonprod`.
 
 | Elemento | Dónde | Por qué |
 |---|---|---|
-| Global external Application LB (backend service, URL map, proxy, forwarding rule) | Stack `gcp-qa-edge`, capa 1, en `disasterproject-qa`, después del proxy de Envoy (propuesta `edge-qa` §4) | El backend service y el NEG de Envoy quedan en la misma VPC. Un LB externo global no necesita subred proxy-only |
-| IP global, política de Cloud Armor, certificado wildcard | Stack `gcp-qa-edge-base`, capa 1, en `disasterproject-qa`, en la fase A: el certificado queda activo antes que el Gateway (propuesta `edge-qa` DL1) | Deben estar en el **mismo proyecto que el LB**. Con un proyecto por entorno, las capabilities `cert`, `waf` y `edge-ip` las provee el entorno, no la landing zone |
-| Zona `qa.disasterproject.com` | En `disasterproject-qa`, **creada por la landing zone** junto con la delegación desde `disasterproject.com` y el `DS` de DNSSEC; el entorno escribe los registros con `dns.admin` sobre esa zona | Así la capa 0 no lee name servers de la capa 1, y zona, delegación y `DS` no se desincronizan (propuesta `edge-qa` DL2) |
-| Zona privada `qa.internal` | Cloud DNS **privada** en `disasterproject-qa`, enlazada solo a la VPC de `qa`; la crea el stack de red y cada arquetipo escribe sus registros bajo `<namespace>.qa.internal` | Nombres para clientes de la VPC fuera del cluster (propuesta de Kafka §6.3). `.internal` está reservado para uso privado: no resuelve fuera de la VPC, ni por el peering con el hub salvo que se enlace allí a propósito |
-| KMS, Artifact Registry, WIF de GitHub | Proyecto de landing zone | Permisos entre proyectos: agente de GKE de `disasterproject-qa` sobre la clave `gke-secrets`; SA de nodos lectora del registro; identidades de pipeline por WIF |
+| Global external Application LB (backend service, URL map, proxy, forwarding rule) | Stack `gcp-qa-edge`, capa 1, en `disasterproject-nonprod`, después del proxy de Envoy (propuesta `edge-qa` §4) | El backend service y el NEG de Envoy quedan en la misma VPC. Un LB externo global no necesita subred proxy-only |
+| IP global, política de Cloud Armor, certificado wildcard | Stack `gcp-qa-edge-base`, capa 1, en `disasterproject-nonprod`, en la fase A: el certificado queda activo antes que el Gateway (propuesta `edge-qa` DL1) | Deben estar en el **mismo proyecto que el LB**. Con los entornos fuera del proyecto de la landing zone, las capabilities `cert`, `waf` y `edge-ip` las provee el entorno, no la landing zone |
+| Zona `qa.disasterproject.com` | En `disasterproject-nonprod`, **creada por la landing zone** junto con la delegación desde `disasterproject.com` y el `DS` de DNSSEC; el entorno escribe los registros con `dns.admin` sobre esa zona | Así la capa 0 no lee name servers de la capa 1, y zona, delegación y `DS` no se desincronizan (propuesta `edge-qa` DL2) |
+| Zona privada `qa.internal` | Cloud DNS **privada** en `disasterproject-nonprod`, enlazada solo a la VPC de `qa`; la crea el stack de red y cada arquetipo escribe sus registros bajo `<namespace>.qa.internal` | Nombres para clientes de la VPC fuera del cluster (propuesta de Kafka §6.3). `.internal` está reservado para uso privado: no resuelve fuera de la VPC, ni por el peering con el hub salvo que se enlace allí a propósito |
+| KMS, Artifact Registry, WIF de GitHub | Proyecto de landing zone | Permisos entre proyectos: agente de GKE de `disasterproject-nonprod` sobre la clave `gke-secrets`; SA de nodos lectora del registro; identidades de pipeline por WIF |
 | Plano de control de GKE | Endpoint público con redes autorizadas vacías; nodos privados en la VPC de `qa` | Acceso del pipeline según §4.13 |
 | Egress | Cloud NAT de `qa` | Keycloak → Entra ID; Cloud Armor y el LB no lo usan |
 | APIs de Google (Secret Manager, GCS, Artifact Registry, KMS) | Private Google Access en las subredes de `qa` | Sin NAT ni internet |
@@ -451,7 +451,7 @@ Direccionamiento: una `/17` del bloque permanente `10.4.0.0/14` por resolución 
 | Acceso a la API de GKE | Redes autorizadas abiertas por job a través del servicio intermedio | §4.13, R18 |
 | Región | `europe-west1` | Contexto (§0) |
 | KMS | Key ring `qa` regional en el proyecto de landing zone, sin capability, protegido frente a destrucción | §4.14 |
-| Proyecto | `disasterproject-qa`, uno por entorno | §0, §4.15 |
+| Proyecto | `disasterproject-nonprod`, uno por entorno | §0, §4.15 |
 | Org policies | Sin claves de SA, región confinada, sin IPs públicas en nodos, sin red `default` (`compute.skipDefaultNetworkCreation`), peerings solo hacia `servicenetworking` (`compute.restrictVpcPeering`) | §11.7; propuesta `network-qa` §2 y §5 |
 
 ---
@@ -578,7 +578,7 @@ kind: EnvironmentBinding
 metadata: { name: qa, model: dedicated, cloud: gcp, region: europe-west1 }
 platform:
   landing_zone: disasterproject-gcp-lz
-  project_id: disasterproject-qa
+  project_id: disasterproject-nonprod
 bindings:
   network:             { archetype: environment, version: 3.0.0,          stack_id: gcp-qa-network }
   cluster:             { archetype: gke, version: 2.5.0,                  stack_id: gcp-qa-gke }

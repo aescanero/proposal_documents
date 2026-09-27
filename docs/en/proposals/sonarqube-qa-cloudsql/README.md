@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 3 · **the `qa` path**: the global `database-platform` provider is `postgres-cloudsql` ([`../postgres-cloudsql-qa/`](../postgres-cloudsql-qa/README.md)). The CNPG base ([`../sonarqube-qa/`](../sonarqube-qa/README.md)) is the path for clients that choose `postgres-operator` |
+| **Status** | Proposal · revision 4 · **the `qa` path**: the global `database-platform` provider is `postgres-cloudsql` ([`../postgres-cloudsql-qa/`](../postgres-cloudsql-qa/README.md)). The CNPG base ([`../sonarqube-qa/`](../sonarqube-qa/README.md)) is the path for clients that choose `postgres-operator` |
 | **Scope** | Replace SonarQube's CloudNativePG `Cluster` with a dedicated **Cloud SQL for PostgreSQL** instance: model, instance, connectivity, identity, secrets, network, backup, observability, stacks, policies, execution and plan |
 | **Base** | Stage 1 [`README.md`](../sonarqube-qa/README.md) (S1 §n) and stage 2 [`02-archetype-sonarqube.md`](../sonarqube-qa/02-archetype-sonarqube.md) (S2 §n). **Anything this document does not mention stays as in the base** |
 | **Reference specification** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `developer-guide.md` (DG §n), `risk-register.md` |
@@ -15,7 +15,7 @@ Nothing in this document reopens a `CLAUDE.md` decision. It does reopen **D2** o
 
 ## 0. Summary
 
-**SonarQube's database moves from a CNPG `Cluster` inside GKE to a dedicated Cloud SQL for PostgreSQL instance in `disasterproject-qa`, with a private IP via Private Services Access (PSA) and connections through the Cloud SQL Auth Proxy as a sidecar.**
+**SonarQube's database moves from a CNPG `Cluster` inside GKE to a dedicated Cloud SQL for PostgreSQL instance in `disasterproject-nonprod`, with a private IP via Private Services Access (PSA) and connections through the Cloud SQL Auth Proxy as a sidecar.**
 
 **No new mechanism is needed.** AM §5.5 already defines the case: `database-platform` is `optional`, and the archetype declares two conditional stacks — `data` (dedicated managed instance) when the capability is unbound, `data-tenant` (operator tenant) when it is bound. Which path is taken is decided by the **environment binding**, not by the archetype. Consequence: the same `sonarqube` 0.2.0 archetype serves both the base and this variant; the difference between the two proposals is one line of the `qa` binding and the implementation of the `data` stack.
 
@@ -92,7 +92,7 @@ Source: [`diagrams/02-orden-despliegue.mmd`](diagrams/02-orden-despliegue.mmd)
 | Setting | Value | Reason |
 |---|---|---|
 | Name | `qa-sonarqube-main-g<generation>`, starting at `g1` | **The name of a deleted instance cannot be reused for a week.** The generation suffix allows restoring by clone (§7) without hitting that rule (RC5) |
-| Connection name | `disasterproject-qa:europe-west1:qa-sonarqube-main-g1` | Deterministic: a **global**, not outputs sharing (platform-overview §4) |
+| Connection name | `disasterproject-nonprod:europe-west1:qa-sonarqube-main-g1` | Deterministic: a **global**, not outputs sharing (platform-overview §4) |
 | Edition | `ENTERPRISE` | Enterprise Plus (99.99 %, near-zero-downtime maintenance, PITR up to 35 days) is not justified in `qa` (DC2) |
 | Version | `POSTGRES_<major>`: the highest supported by the pinned SonarQube version **(verify against SonarQube's matrix)** | As with the CNPG image in S2 §5.3 |
 | Tier | `db-custom-2-8192` (2 vCPU, 8 GB) | The same per-instance size as the base (S1 §4.12) |
@@ -142,7 +142,7 @@ sonarqube:
         - --http-address=0.0.0.0
         - --prometheus
         - --max-sigterm-delay=30s
-        - disasterproject-qa:europe-west1:qa-sonarqube-main-g1
+        - disasterproject-nonprod:europe-west1:qa-sonarqube-main-g1
       startupProbe: { httpGet: { path: /startup, port: 9090 }, periodSeconds: 1, failureThreshold: 30 }
       resources:
         requests: { cpu: 100m, memory: 128Mi }
@@ -167,10 +167,10 @@ The rest of S2 §6.1 is unchanged. The 12 GiB memory limit belongs to the `sonar
 
 | Element | Value |
 |---|---|
-| Identity | KSA `sonarqube` via Workload Identity, direct principal `principal://…/subject/ns/sonarqube/sa/sonarqube`, no GCP service account. `automount_service_account_token` stays `false`: Workload Identity uses the metadata server, not the KSA token |
+| Identity | KSA `qa-sonarqube` via Workload Identity, direct principal `principal://…/subject/ns/sonarqube/sa/qa-sonarqube`, no GCP service account. `automount_service_account_token` stays `false`: Workload Identity uses the metadata server, not the KSA token |
 | Role | `roles/cloudsql.client` (`cloudsql.instances.connect`, `cloudsql.instances.get`) |
-| Scope | **Project level with a condition**: the role has no instance-level binding. `resource.type == "sqladmin.googleapis.com/Instance" && resource.name == "projects/disasterproject-qa/instances/qa-sonarqube-main-g1"` |
-| If VC1 fails | If the proxy or Cloud SQL does not accept the direct federated principal: service account `sonarqube-sql@disasterproject-qa`, `roles/iam.workloadIdentityUser` for the KSA and an annotation on the KSA. Role and condition unchanged |
+| Scope | **Project level with a condition**: the role has no instance-level binding. `resource.type == "sqladmin.googleapis.com/Instance" && resource.name == "projects/disasterproject-nonprod/instances/qa-sonarqube-main-g1"` |
+| If VC1 fails | If the proxy or Cloud SQL does not accept the direct federated principal: service account `sonarqube-sql@disasterproject-nonprod`, `roles/iam.workloadIdentityUser` for the KSA and an annotation on the KSA. Role and condition unchanged |
 
 **The condition in architecture §7.4 did not work as written.** It used `resource.name.endsWith('${var.db_connection_name}')`, but the connection name has the form `project:region:instance` and the resource name IAM evaluates is `projects/<p>/instances/<i>`. It never matches: the grant has no effect and the connection is denied. The correct form is used here (VC2); §7.4 is corrected in both languages (§12).
 
@@ -373,7 +373,7 @@ kind: EnvironmentBinding
 metadata: { name: qa, model: dedicated, cloud: gcp, region: europe-west1 }
 platform:
   landing_zone: disasterproject-gcp-lz
-  project_id: disasterproject-qa
+  project_id: disasterproject-nonprod
 bindings:
   network:             { archetype: environment, version: 3.0.0,          stack_id: gcp-qa-network }
   cluster:             { archetype: gke, version: 2.5.0,                  stack_id: gcp-qa-gke }
@@ -549,7 +549,7 @@ globals "db" {
 # }
 ```
 
-`global.platform.network_id` and `global.platform.psa_range_name` are deterministic (`projects/disasterproject-qa/global/networks/qa`, `qa-psa`) and the resolver writes them to `binding.tm.hcl`, next to the other deterministic producer facts (S2 §4.1).
+`global.platform.network_id` and `global.platform.psa_range_name` are deterministic (`projects/disasterproject-nonprod/global/networks/qa`, `qa-psa`) and the resolver writes them to `binding.tm.hcl`, next to the other deterministic producer facts (S2 §4.1).
 
 ### 9.4 Sharing inputs table — replaces S2 §5.10
 
@@ -568,7 +568,7 @@ globals "db" {
 
 | Stack | Change |
 |---|---|
-| `iam` | KSA `sonarqube-db` goes (it was CNPG's identity towards GCS). `sonarqube` and `eso-sonarqube` remain |
+| `iam` | KSA `qa-sonarqube-db` goes (it was CNPG's identity towards GCS). `sonarqube` and `qa-eso-sonarqube` remain |
 | `secrets` | `qa-sonarqube-db` with `generate = false` (§5). No other change |
 | `firewall` | Table in §6 |
 | `app` | Proxy sidecar and JDBC to `127.0.0.1` (§4.1). Inputs unchanged |

@@ -184,6 +184,7 @@ Términos técnicos y definiciones extraídos de `platform-overview.md`, `archet
 | **Stack productor** | Un stack que declara bloques `output`, haciendo disponibles hechos de tiempo de ejecución a otros stacks. |
 | **Stack consumidor** | Un stack que declara bloques `input`, extrayendo hechos de tiempo de ejecución de un stack productor. |
 | **Entorno dedicado** | Una plataforma que sirve exactamente a una instancia de arquetipo. |
+| **Proyecto non-prod** | El proyecto de GCP (`disasterproject-nonprod`) que comparten todos los entornos no productivos — `dev`, `qa`, `demos`, `sandbox`, `ephemeral-*` —, cada uno con su propia VPC, cluster, bases de datos y borde, con nombres prefijados por el entorno y la facturación repartida por etiquetas. `prod` nunca lo comparte. Se añade un segundo cuando se alcanzan los límites. |
 | **Entorno compartido** | Una plataforma que sirve a muchas instancias de arquetipo a la vez (típico para demos). |
 | **Globals** | La capa de datos en tiempo de compilación de Terramate, heredada hacia abajo por el árbol de directorios y sobreescribible en cualquier nivel; usada para valores conocidos antes del apply. Regla general: globals para todo lo conocido antes del apply, outputs sharing solo para valores que se conocen después del apply. |
 | **Outputs Sharing** (`sharing_backend`/`output`/`input`) | El mecanismo **experimental** de Terramate para pasar hechos de tiempo de ejecución (IDs de VPC, endpoints de cluster, ARN de OIDC) entre stacks que no pueden conocerse en tiempo de generación. Requiere `experiments = ["outputs-sharing"]`. Aceptado pese a ser experimental (riesgo R1); los contratos se centralizan en `imports/contracts/` para que un cambio incompatible sea una edición acotada. |
@@ -251,7 +252,7 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 | Término | Definición |
 |---|---|
 | **`workload_identity_pool`** (GKE) | El espacio de identidad de GCP por proyecto (`<project>.svc.id.goog`) que enlaza cuentas de servicio de Kubernetes con cuentas de servicio de Google; una salida del cluster. |
-| **Workload Identity (GKE)** | El mecanismo de GCP que enlaza una SA de Kubernetes con una SA de Google a través del workload identity pool; debe activarse a nivel de cluster y por node pool, o los pods recaen en compartir la SA del nodo. El binding nunca debe usar un comodín (`POOL[*/*]`) — riesgo R15. |
+| **Workload Identity (GKE)** | El mecanismo de GCP que enlaza una SA de Kubernetes con IAM de GCP a través del workload identity pool; debe activarse a nivel de cluster y por node pool, o los pods recaen en compartir la SA del nodo. El binding nunca debe usar un comodín (`POOL[*/*]`) — riesgo R15. El pool es **uno por proyecto**, así que en el proyecto non-prod compartido todo KSA con IAM de GCP lleva el prefijo del entorno (`qa-eso-sonarqube`) — riesgo R54. |
 | **`oidc_provider_arn` / `oidc_provider_url`** (EKS) | Los dos hechos OIDC que debe emitir el stack de cluster de EKS para poder escribir políticas de confianza IRSA — AWS necesita dos hechos donde GCP/Azure necesitan solo uno. |
 | **IRSA (IAM Roles for Service Accounts)** | El mecanismo de EKS que enlaza una SA de Kubernetes con un rol IAM a través de federación OIDC y una política de confianza acotada por `sub`/`aud`. Descrito como "el caso de uso canónico de outputs sharing en AWS", ya que la política de confianza no puede escribirse sin el ARN/URL OIDC que produce el apply del stack de cluster. |
 | **Proveedor OIDC (EKS)** | El proveedor de identidad OIDC por cluster, compartido por toda instancia de arquetipo en ese cluster — reconstruir el cluster invalida todo rol IRSA de la flota (riesgo R11). |
@@ -351,7 +352,7 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 
 | Término | Definición |
 |---|---|
-| **Modelos Dedicado / Compartido / Híbrido** | Topologías plataforma-a-instancia: Dedicado (1:1, aislamiento = cuenta/proyecto cloud), Compartido (1:N, aislamiento = namespace + IAM), Híbrido (red compartida, clusters dedicados por grupo de instancias). |
+| **Modelos Dedicado / Compartido / Híbrido** | Topologías plataforma-a-instancia: Dedicado (1:1, aislamiento = proyecto cloud para `prod`, VPC y cluster propios en el proyecto non-prod en los demás), Compartido (1:N, aislamiento = namespace + IAM), Híbrido (red compartida, clusters dedicados por grupo de instancias). |
 | **`global.platform.model`** | La flag global (`"dedicated"` o `"shared"`) que condiciona la salida del generador — p. ej. las salvaguardas de tenancy solo se emiten cuando es `"shared"`. |
 | **Salvaguardas de tenancy (modelo compartido)** | Recursos por instancia generados solo para instancias de modelo compartido: un `kubernetes_namespace` dedicado con `pod-security.kubernetes.io/enforce: restricted`, un `kubernetes_resource_quota`, un `kubernetes_limit_range`, una `kubernetes_network_policy` default-deny. |
 | **`global.quota`** | Objeto de globals requerido (cpu, memoria, pods, loadbalancers) que las instancias de modelo compartido deben definir, forzado por assertion. |
@@ -548,7 +549,7 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 
 ---
 
-## 26. Registro de riesgos (`risk-register.md`) — 53 riesgos por dominio (52 activos)
+## 26. Registro de riesgos (`risk-register.md`) — 54 riesgos por dominio (53 activos)
 
 Cada riesgo tiene un número R estable y nunca reutilizado, una probabilidad, un impacto y una mitigación ligada a una sección del documento.
 

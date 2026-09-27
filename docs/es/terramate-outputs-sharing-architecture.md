@@ -490,7 +490,7 @@ globals {
 # stacks/platforms/gcp/demos/config.tm.hcl          ← capa de entorno
 globals {
   env        = "demos"
-  project_id = "disasterproject-demos"
+  project_id = "disasterproject-nonprod"
   region     = "europe-west1"
   vpc_cidr   = "10.4.0.0/17"             # reclamado del bloque permanente (AM §9.2)
 }
@@ -2386,6 +2386,8 @@ resource "google_service_account_iam_member" "apply" {
 }
 ```
 
+**En el proyecto non-prod compartido**, `tf-apply-qa@` y `tf-apply-dev@` son identidades distintas, pero un rol concedido a nivel de proyecto alcanza a todos los entornos del proyecto. Concede a nivel de recurso donde el servicio lo admita (secretos, buckets, claves, cuentas de servicio, instancias de Cloud SQL con condiciones IAM sobre el prefijo del nombre); donde solo existe un rol de proyecto (`roles/container.admin`, `roles/compute.networkAdmin`), acepta que una identidad de apply no productiva puede tocar otro entorno no productivo, y apóyate en los prefijos de estado por entorno, CODEOWNERS y la puerta de entorno. Esa exposición nunca llega a `prod`, que es otro proyecto.
+
 El claim `attribute.environment` solo está presente cuando el job del workflow declara `environment:`. Ligar la SA de apply a ese atributo significa que **el rol de apply es inalcanzable desde un job sin la puerta de entorno**, lo que hace que el control de required-reviewers de GitHub sea un límite de seguridad real en lugar de una conveniencia de UI.
 
 | Identidad | Roles | Alcance |
@@ -2599,6 +2601,8 @@ Dos observaciones que dan forma al diseño multi-tenant:
 - **GKE y EKS restringen la identidad por namespace**, así que el namespace *es* el límite de tenencia y nunca debe compartirse entre instancias.
 - **Cloud Run y Fargate restringen la identidad por servicio o tarea**, un límite más fino que no requiere RBAC a nivel de cluster — una razón por la que ambos son mejores valores por defecto para entornos demo compartidos.
 
+**El pool de GKE es por proyecto, no por cluster.** `PROJECT.svc.id.goog` lo comparten todos los clusters del proyecto, y el principal solo nombra namespace y KSA. En el proyecto non-prod compartido, `sonarqube/eso-sonarqube` de `dev` y el de `qa` serían una sola identidad. Por eso todo KSA que recibe IAM de GCP se llama `<env>-<nombre>` (`qa-eso-sonarqube`); la regla P12 de Gatekeeper rechaza un ServiceAccount con el prefijo de otro entorno, y G1 rechaza un `member` de IAM sin el prefijo del entorno dueño (R54). EKS y AKS no tienen esta trampa: su emisor OIDC es por cluster, y la condición de confianza o la credencial federada lo nombra.
+
 Nunca escribas un comodín en una condición de confianza de workload identity. `system:serviceaccount:*:*` o `POOL[*/*]` concede el rol a cada pod del cluster, anulando silenciosamente todo el modelo.
 
 ### 11.9 Línea base de seguridad de red
@@ -2648,12 +2652,14 @@ flowchart TD
 
 | | Dedicado | Compartido | Híbrido |
 |---|---|---|---|
-| **Límite de aislamiento** | Cuenta/proyecto/suscripción de cloud | Namespace de Kubernetes + IAM | Cluster |
+| **Límite de aislamiento** | Cuenta/proyecto/suscripción de cloud para `prod`; su propia VPC y cluster dentro del proyecto non-prod compartido en los demás | Namespace de Kubernetes + IAM | Cluster |
 | **Radio de impacto de un cambio de plataforma** | 1 instancia | Todas las instancias | Instancias en ese cluster |
 | **Coste por instancia** | Alto | Muy bajo | Medio |
 | **Tiempo de aprovisionar una instancia** | 20–40 min (plataforma completa) | 2–5 min (solo stacks de app) | 10–20 min |
 | **Uso típico** | prod, qa, regulado | demos, formación, PoC | dev, integración |
 | **Acoplamiento del ciclo de vida** | Destroy de instancia = destroy de plataforma | El destroy de instancia **no debe** tocar la plataforma | Destroy de cluster = sus instancias |
+
+**La ubicación en proyectos es ortogonal al modelo.** `prod` tiene su propio proyecto de cloud; todo entorno no productivo (`dev`, `qa`, `demos`, `sandbox`, `ephemeral-*`) vive en un proyecto non-prod compartido, cada uno con su propia VPC, cluster, bases de datos y borde, con nombres prefijados por el entorno y la facturación repartida por etiquetas (`CLAUDE.md`). Un `qa` dedicado lo es, por tanto, a nivel de VPC y cluster, no de proyecto. Dos cosas que antes daba gratis el límite del proyecto hay que reconstruirlas dentro del proyecto compartido: **Workload Identity**, cuyo pool es uno por proyecto, así que todo KSA con IAM de GCP lleva el prefijo del entorno (§11.8, R54); y **el IAM del pipeline**, tratado en §11.2.
 
 ### 12.2 El mecanismo de binding
 
@@ -3321,7 +3327,7 @@ El invariante de ordenamiento que antes dependía de un script de shell es ahora
 
 ## 15. Registro de riesgos
 
-El registro completo — 53 riesgos agrupados por dominio (52 activos; R28 retirado como duplicado de R26), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
+El registro completo — 54 riesgos agrupados por dominio (53 activos; R28 retirado como duplicado de R26), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
 
 Los cinco sobre los que actuar primero:
 

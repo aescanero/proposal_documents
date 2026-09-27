@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 3 |
+| **Status** | Proposal · revision 4 |
 | **Scope** | The network part of the environment archetype on `qa`: project APIs, VPC, baseline firewall, Cloud NAT, private access to Google APIs, private services access (PSA), private DNS zones, the environment's address pool, the `network` contract, stacks, policies, execution and plan. The edge (`env-edge`, `gcp-qa-edge`) is the next proposal |
 | **Why now** | It is the first thing applied on `qa` after the landing zone, and six proposals have left it requirements (§0.1). The GKE proposal took the node subnet away from it (DN2), so its contract changes |
 | **Base** | S1 §4.14 (KMS), §4.15 (separate VPC); architecture §5.2 (network stack), §11.7 (org policies), §11.9 (network baseline); AM §8–§9 (claims and pools). What is there is not repeated |
@@ -22,8 +22,8 @@ Source: [`diagrams/06-bloques-presentacion.py`](diagrams/06-bloques-presentacion
 
 | Question | Answer | Consequence |
 |---|---|---|
-| What it is | Archetype `environment`, `kind: catalog`, **layer 1**, instance `qa`. Provides **`network` 3.0.0** and, in the next proposal, `env-edge` | Stacks `gcp-qa-apis` and `gcp-qa-network`; `gcp-qa-edge` later |
-| Project | `disasterproject-qa`, **created by the landing zone** (with its project number, billing account and org policies) | The environment has no organisation permissions: it configures the project, it does not create it |
+| What it is | Archetype `environment`, `kind: catalog`, **layer 1**, instance `qa`. Provides **`network` 3.0.0** and, in the next proposal, `env-edge` | Stack `gcp-qa-network`; `gcp-qa-edge` later. APIs belong to the project, not the environment: the landing zone enables them (§1) |
+| Project | `disasterproject-nonprod`, the project **shared** by the non-production environments (`CLAUDE.md`), **created by the landing zone** with its project number, billing account, org policies and APIs | The environment has no organisation permissions and does not own the project: it creates its resources inside it, all with the `qa` prefix, and billing is split by the `environment` label |
 | VPC | `qa`'s own, no Shared VPC and no peering with the hub (S1 §4.15) | Nothing transits the hub; R23 does not apply |
 | What it does **not** do | It creates no runtime subnets (`gke` does, DN2), nor the edge, nor the alert channel (layer 1b, `gcp-qa-cloudmon`) | Its contract carries only what every runtime shares |
 
@@ -48,7 +48,7 @@ Source: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 
 | Stack | Contents | Why separate |
 |---|---|---|
-| `apis` | `google_project_service` for the APIs `qa` uses (§1.1), with `disable_on_destroy = false` | Enabling an API takes minutes and propagates eventually; separating it avoids retries in `network`. And nobody should disable an API by destroying a stack |
+| APIs (**in the landing zone**) | `google_project_service` for the APIs the project's environments use (§1.1), with `disable_on_destroy = false`, in the stack that creates the project | In a shared project an API belongs to no environment: if `qa`'s stack enabled it, destroying `qa` could leave `dev` without it. Enabling takes minutes; doing it when the project is created avoids retries in `network` |
 | `network` | VPC, baseline firewall, Cloud Router and Cloud NAT, PSA, private DNS zones | The core; it changes little and everything consumes it |
 | `edge` | Global IP, certificate, Cloud Armor, load balancer, public zone | **Next proposal** |
 
@@ -65,7 +65,7 @@ Source: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 | `binaryauthorization`, `containeranalysis` | GKE DN10 |
 | `cloudkms` | State and etcd encryption use landing zone keys; enabled here in case the calls count against the calling project **(verify)** |
 
-The resolver should derive the list from the bound archetypes, so that a new archetype does not depend on someone remembering to edit it: each manifest would declare the APIs it uses in a new field (`cloud_apis`), which does not exist in the schema today **(DW1)**. Until it does, it is the table above in the environment's globals.
+The resolver should derive the list from the bound archetypes, so that a new archetype does not depend on someone remembering to edit it: each manifest would declare the APIs it uses in a new field (`cloud_apis`), which does not exist in the schema today **(DW1)**. Until it does, it is the table above in the project's globals, in the landing zone.
 
 ---
 
@@ -73,7 +73,7 @@ The resolver should derive the list from the bound archetypes, so that a new arc
 
 | Setting | Value | Reason |
 |---|---|---|
-| Name | `qa` (global `network_name`); self link `projects/disasterproject-qa/global/networks/qa` | Deterministic |
+| Name | `qa` (global `network_name`); self link `projects/disasterproject-nonprod/global/networks/qa` | Deterministic |
 | Mode | `auto_create_subnetworks = false` | Every subnet is a claim with an owner (AM §8.1) |
 | Routing | `REGIONAL` | Everything is in `europe-west1` |
 | MTU | 1460 (the default) | Changing it later requires no VMs in the VPC: set now and left alone |
@@ -123,6 +123,8 @@ The exhausted-ports alert (`nat/dropped_sent_packets_count` with reason `OUT_OF_
 | `googleapis.com.` | `private.googleapis.com.` A `199.36.153.8`–`.11`; `*.googleapis.com.` CNAME `private.googleapis.com.` |
 | `pkg.dev.` | `*.pkg.dev.` CNAME `private.googleapis.com.` — Artifact Registry (`europe-docker.pkg.dev`) for node pulls |
 | `gcr.io.` | `*.gcr.io.` and `gcr.io.` CNAME/A to `private.googleapis.com` — GKE system images still served from there **(verify, VW1)** |
+
+**In the shared project**, each environment has its own zones (resources `qa-googleapis`, `qa-pkg-dev`, `qa-gcr-io`), bound only to its VPC: the same DNS name can sit in several private zones of the project as long as each is bound to a different VPC.
 
 `restricted.googleapis.com` (VPC Service Controls) is not used: `qa` has no VPC-SC perimeter, and the restricted VIP rejects APIs that do not support it.
 
@@ -184,9 +186,9 @@ GKE's DN2 correction already removed `subnet_self_link`, `gke_pods_range_name` a
 
 | Value | How it arrives | Value on `qa` |
 |---|---|---|
-| `network_self_link` | Outputs sharing, from `network` | `projects/disasterproject-qa/global/networks/qa` |
+| `network_self_link` | Outputs sharing, from `network` | `projects/disasterproject-nonprod/global/networks/qa` |
 | `private_service_range` | Outputs sharing, from `network` | `qa-psa` |
-| `project_id` | Outputs sharing and global | `disasterproject-qa` |
+| `project_id` | Outputs sharing and global | `disasterproject-nonprod` |
 | `network_name`, `psa_range_name`, `psa_cidr`, `internal_zone` | Deterministic globals | `qa`, `qa-psa`, `10.4.144.0/21`, `qa-internal` |
 | `flow_logs` | Global | §2 |
 
@@ -204,7 +206,7 @@ metadata:
   version: 3.0.0
   layer: 1
   kind: catalog
-  description: An environment in its own project — VPC, NAT, private Google APIs, PSA and private DNS
+  description: An environment with its own VPC (own project in prod, shared in non-prod) — VPC, NAT, private Google APIs, PSA and private DNS
   owners: [team-platform]
 
 requires:
@@ -227,9 +229,7 @@ claims:
     size: 21
 
 stacks:
-  - name: apis
   - name: network
-    after: [apis]
 ```
 
 `env-edge` and the edge stacks are added by version **3.1.0** of this same archetype: the full manifest is in the `edge-qa` proposal §8.2.
@@ -265,13 +265,13 @@ assert {
 | What | How |
 |---|---|
 | Bootstrap | The landing zone creates the project, grants the cross-project permissions and the `tofu-state` key (S1 §4.14) |
-| First deployment | Phase A of S1 §6: `apis` → `network` → GKE. `postgres-cloudsql` can run in parallel with GKE as soon as the PSA exists |
+| First deployment | Phase A of S1 §6: project APIs (landing zone) → `network` → GKE. `postgres-cloudsql` can run in parallel with GKE as soon as the PSA exists |
 | Changes | Infrequent; `plan` reviewed by the platform team (CODEOWNERS) |
 | Destruction | `protected` tag, `prevent_destroy` on VPC, PSA and zones; only with the destroy identity. Destroying the network is destroying the environment |
 
 ### 9.3 Encrypted state
 
-`gcp-qa-network` is the first `qa` stack whose state is encrypted with the landing zone's `tofu-state` key (S1 §4.14). `gcp-qa-apis` also encrypts, even though it comes first: no `qa` stack writes state in the clear.
+`gcp-qa-network` is the first `qa` stack whose state is encrypted with the landing zone's `tofu-state` key (S1 §4.14). No `qa` stack writes state in the clear, and the key belongs to the environment even though the project is shared: `dev`'s state cannot be decrypted with `qa`'s.
 
 ### 9.4 Candidate risks
 
@@ -324,7 +324,7 @@ assert {
 
 | # | Decision | Status | Recommendation | Alternative |
 |---|---|---|---|---|
-| DW1 | Stacks and APIs | **Approved** | `apis` and `network` separate; API list derived from the bound archetypes | One stack; a hand-kept list |
+| DW1 | Stacks and APIs | **Approved**; revised for the shared project | `network` in the environment; APIs in the landing zone when the project is created; list derived from the bound archetypes | APIs in an environment stack |
 | DW2 | Google APIs | **Approved** | Private zones towards `private.googleapis.com` | Public VIP with `FQDNNetworkPolicy`; `restricted.googleapis.com` with VPC-SC |
 | DW3 | Cloud NAT | **Approved** | `AUTO_ONLY`, dynamic allocation 256–8192, error logs | Fixed IPs; default static ports |
 | DW4 | PSA | **Approved** | `/21` in `data` | `/24` |
@@ -338,8 +338,8 @@ assert {
 
 | Phase | Contents | Exit criterion | Estimate |
 |---|---|---|---|
-| **0 · Landing zone** | Project, org policies, `tofu-state` key, `qa` identities; **VW5** | `plan` of `gcp-qa-apis` with encrypted state | 1 day (the landing zone's) |
-| **1 · Network** | `apis`, `network`; `assert`s and G1 rules | VPC, NAT, PSA and zones created | 1 day |
+| **0 · Landing zone** | Project, org policies, `tofu-state` key, `qa` identities; **VW5** | APIs enabled; `plan` of `gcp-qa-network` with encrypted state | 1 day (the landing zone's) |
+| **1 · Network** | `network`; `assert`s and G1 rules | VPC, NAT, PSA and zones created | 1 day |
 | **2 · With GKE** | **VW1**, **VW2**, **VW4** with the GKE proposal's cluster | Pods that leave via NAT and reach Google APIs through the private VIP | 0.5 days |
 | **3 · With Cloud SQL** | **VW3** with the first instance | The proxy connects from a pod | 0.5 days |
 

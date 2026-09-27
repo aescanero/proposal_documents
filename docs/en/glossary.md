@@ -184,6 +184,7 @@ Technical terms and definitions drawn from `platform-overview.md`, `archetype-mo
 | **Producer stack** | A stack that declares `output` blocks, making runtime facts available to other stacks. |
 | **Consumer stack** | A stack that declares `input` blocks, pulling runtime facts from a producer stack. |
 | **Dedicated environment** | A platform serving exactly one archetype instance. |
+| **Non-prod project** | The single GCP project (`disasterproject-nonprod`) shared by every non-production environment — `dev`, `qa`, `demos`, `sandbox`, `ephemeral-*` — each with its own VPC, cluster, databases and edge, names prefixed by the environment and billing split by labels. `prod` never shares it. A second one is added when limits are reached. |
 | **Shared environment** | A platform serving many archetype instances simultaneously (typical for demos). |
 | **Globals** | Terramate's compile-time data layer, inherited down the directory tree and overridable at any level; used for values known before apply. Rule of thumb: globals for anything known before apply, outputs sharing only for values knowable after apply. |
 | **Outputs Sharing** (`sharing_backend`/`output`/`input`) | Terramate's **experimental** mechanism for passing runtime facts (VPC IDs, cluster endpoints, OIDC ARNs) between stacks that cannot be known at generate time. Requires `experiments = ["outputs-sharing"]`. Accepted despite being experimental (risk R1); contracts centralised in `imports/contracts/` so a breaking change is a bounded edit. |
@@ -251,7 +252,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 | Term | Definition |
 |---|---|
 | **`workload_identity_pool`** (GKE) | GCP's per-project identity namespace (`<project>.svc.id.goog`) binding Kubernetes service accounts to Google service accounts; a cluster output. |
-| **Workload Identity (GKE)** | GCP's mechanism binding a Kubernetes SA to a Google SA via the workload identity pool; must be enabled cluster-wide and per node pool, or pods fall back to sharing the node SA. Binding must never use a wildcard (`POOL[*/*]`) — risk R15. |
+| **Workload Identity (GKE)** | GCP's mechanism binding a Kubernetes SA to GCP IAM via the workload identity pool; must be enabled cluster-wide and per node pool, or pods fall back to sharing the node SA. Binding must never use a wildcard (`POOL[*/*]`) — risk R15. The pool is **one per project**, so in the shared non-prod project every KSA with GCP IAM carries the environment prefix (`qa-eso-sonarqube`) — risk R54. |
 | **`oidc_provider_arn` / `oidc_provider_url`** (EKS) | The two OIDC facts an EKS cluster stack must output for IRSA trust policies to be written — AWS needs two facts where GCP/Azure need only one. |
 | **IRSA (IAM Roles for Service Accounts)** | EKS's mechanism binding a Kubernetes SA to an IAM role via OIDC federation and a trust policy scoped by `sub`/`aud`. Described as "the canonical outputs-sharing use case on AWS," since the trust policy cannot be written without the OIDC ARN/URL the cluster stack's apply produces. |
 | **OIDC provider (EKS)** | The per-cluster OIDC identity provider shared by every archetype instance on that cluster — a cluster rebuild invalidates every IRSA role fleet-wide (risk R11). |
@@ -351,7 +352,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 
 | Term | Definition |
 |---|---|
-| **Dedicated / Shared / Hybrid models** | Platform-to-instance topologies: Dedicated (1:1, isolation = cloud account/project), Shared (1:N, isolation = namespace + IAM), Hybrid (shared network, dedicated clusters per instance group). |
+| **Dedicated / Shared / Hybrid models** | Platform-to-instance topologies: Dedicated (1:1, isolation = cloud project for `prod`, own VPC and cluster in the non-prod project otherwise), Shared (1:N, isolation = namespace + IAM), Hybrid (shared network, dedicated clusters per instance group). |
 | **`global.platform.model`** | The global flag (`"dedicated"` or `"shared"`) conditioning generator output — e.g. tenancy guard rails only emitted when `"shared"`. |
 | **Tenancy guard rails (shared model)** | Per-instance resources generated only for shared-model instances: a dedicated `kubernetes_namespace` with `pod-security.kubernetes.io/enforce: restricted`, a `kubernetes_resource_quota`, a `kubernetes_limit_range`, a default-deny `kubernetes_network_policy`. |
 | **`global.quota`** | Required globals object (cpu, memory, pods, loadbalancers) shared-model instances must define, enforced by assertion. |
@@ -548,7 +549,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 
 ---
 
-## 26. Risk register (`risk-register.md`) — 53 risks by domain (52 active)
+## 26. Risk register (`risk-register.md`) — 54 risks by domain (53 active)
 
 Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mitigation tied to a document section.
 

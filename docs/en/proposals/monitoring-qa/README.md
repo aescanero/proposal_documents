@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 5 |
+| **Status** | Proposal · revision 6 |
 | **Scope** | The layer 3 `monitoring-oss` archetype on `qa` (metrics, alerts, logs, dashboards, probes) and what layer 1b `cloud-monitoring-gcp` contributes alongside it: the boundary between them, stack, security, the `monitoring` contract, alert routing, who watches the watcher, network, stacks, policies, execution and plan |
 | **Why now** | SonarQube (S1 §4.7, S2 §5.9), the Cloud SQL variant (§8), Keycloak (§10) and ESO (§9) already take for granted the `prometheus=qa` selector, the dashboard sidecar, the blackbox exporter, Loki and the shared notification channel. ESO also left the rules for layer 3 components here |
 | **Reference specification** | `archetype-model.md` (AM §n; §3 layer 1b, §4.2 `monitoring` traits), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -135,7 +135,7 @@ Gatekeeper bounds the exception: in `monitoring-agents` only the two images are 
 | People with the `sre` role | Everything: Grafana as Admin, Explore over metrics and logs | OIDC with Keycloak |
 | Teams (`team-*`) | Their team's dashboards; **no Explore** | OIDC; Grafana folders per team |
 | Prometheus, Alertmanager, Loki | Not published | `kubectl port-forward` (SRE) |
-| Grafana to Cloud Monitoring | Project metrics, read-only | KSA `grafana` with `roles/monitoring.viewer` at project level (§11.2, justified exception) |
+| Grafana to Cloud Monitoring | Project metrics, read-only | KSA `qa-grafana` with `roles/monitoring.viewer` at project level (§11.2, justified exception). In the shared non-prod project it sees the metrics of **every** non-production environment: dashboards filter by the `environment` label, and it is accepted because these are metrics, not data |
 
 **Logs in a single Loki tenant** (DM4). Multi-tenant Loki per team would require Fluent Bit to label the tenant, one datasource per team and per-user headers. On `qa` the choice is a single tenant and **removing Explore from teams**: a logs panel on a team's dashboard filters by its namespaces, but nobody outside SRE queries Loki freely. The risk remains that a log contains sensitive data from another team (RM3); Fluent Bit strips the `Authorization` and `Cookie` headers and known token patterns before sending.
 
@@ -147,7 +147,7 @@ Grafana logs in with OIDC against Keycloak, but Keycloak (layer 4) requires `mon
 |---|---|
 | Keycloak URLs | By environment convention: `https://sso.<dns_suffix>/realms/<env>`, the same that the `oidc-idp` contract publishes (Keycloak §11.3). An assert in `keycloak` checks that its hostname and realm follow the convention |
 | Grafana's OIDC client | Declared by Keycloak's `realm` stack as a platform client (Keycloak §6.6) |
-| Client secret | `qa-monitoring-oss-grafana-oidc`, created by this archetype's `secrets` stack with `secretAccessor` for the `keycloak-config` principal (Keycloak §6.5). The principal can be granted before the KSA exists |
+| Client secret | `qa-monitoring-oss-grafana-oidc`, created by this archetype's `secrets` stack with `secretAccessor` for the `qa-keycloak-config` principal (Keycloak §6.5). The principal can be granted before the KSA exists |
 | Before Keycloak exists | Grafana starts; OIDC login fails until then. Local `admin` account (`qa-monitoring-oss-grafana-admin`) as break-glass |
 | Groups → roles | `groups` claim (`entra_roles` attribute, Keycloak §5.3): `sre` → Admin, `team-*` → Viewer on its folder |
 
@@ -231,10 +231,10 @@ All deterministic: contract outputs that consumers receive as globals. Version *
 | Secret | Consumer | Note |
 |---|---|---|
 | `qa-monitoring-oss-grafana-admin` | Grafana | Break-glass (§4.3) |
-| `qa-monitoring-oss-grafana-oidc` | Grafana and Keycloak's reconciler | IAM for `eso-monitoring-oss` and for `keycloak-config` (ESO §9.2 explicit readers list). Grafana's platform client in the realm (Keycloak §6.6) references it with `secretRef` |
+| `qa-monitoring-oss-grafana-oidc` | Grafana and Keycloak's reconciler | IAM for `qa-eso-monitoring-oss` and for `qa-keycloak-config` (ESO §9.2 explicit readers list). Grafana's platform client in the realm (Keycloak §6.6) references it with `secretRef` |
 | `qa-monitoring-oss-alertmanager-receivers` | Alertmanager | Chat webhook URL and SMTP credentials, as JSON |
 
-All through ESO with the `eso-monitoring-oss` KSA (ESO §5.2); names follow the `qa-<archetype>-` prefix that ESO §5.2 requires. **Requires `secrets` with the `eso` trait.**
+All through ESO with the `qa-eso-monitoring-oss` KSA (ESO §5.2); names follow the `qa-<archetype>-` prefix that ESO §5.2 requires. **Requires `secrets` with the `eso` trait.**
 
 ### 8.3 Network
 
@@ -343,7 +343,7 @@ capacity:
   memory_mib: 8192
   pvc_gib: 80
   ingress_routes: 1
-  workload_identities: 3                              # eso-monitoring-oss, loki→GCS, grafana→Cloud Monitoring
+  workload_identities: 3                              # qa-eso-monitoring-oss, qa-loki→GCS, qa-grafana→Cloud Monitoring
 ```
 
 `runtimes: [gke, eks, aks]`: the stack is the same; only the Loki bucket (GCS, S3, Blob) and the identity change, as branches of the `storage` generator.
@@ -356,9 +356,9 @@ Source: [`diagrams/02-stacks-arquetipo.mmd`](diagrams/02-stacks-arquetipo.mmd)
 
 | Stack | Contents | Inputs via sharing |
 |---|---|---|
-| `iam` | Namespaces `monitoring` (`restricted`; labels `trust.disasterproject.com/internal-ca: "true"` and `gateway.disasterproject.com/routes: "true"` and annotation `gateway.disasterproject.com/hostnames: grafana.qa.disasterproject.com`, S2 §5.1) and `monitoring-agents` (`privileged`; `trust.disasterproject.com/internal-ca: "true"`, no routes label because it publishes none); KSAs `eso-monitoring-oss`, `loki`, `grafana` | `cluster_*` |
+| `iam` | Namespaces `monitoring` (`restricted`; labels `trust.disasterproject.com/internal-ca: "true"` and `gateway.disasterproject.com/routes: "true"` and annotation `gateway.disasterproject.com/hostnames: grafana.qa.disasterproject.com`, S2 §5.1) and `monitoring-agents` (`privileged`; `trust.disasterproject.com/internal-ca: "true"`, no routes label because it publishes none); KSAs `qa-eso-monitoring-oss`, `loki`, `grafana` | `cluster_*` |
 | `secrets` | §8.2: containers, per-secret IAM, `SecretStore` and `ExternalSecret` | `cluster_*`, `workload_identity_pool` |
-| `storage` | Loki bucket, lifecycle, `objectAdmin` for `loki`; `monitoring.viewer` for `grafana` | `workload_identity_pool` |
+| `storage` | Loki bucket, lifecycle, `objectAdmin` for `qa-loki`; `monitoring.viewer` for `qa-grafana` | `workload_identity_pool` |
 | `firewall` | §8.3 | `cluster_*` |
 | `crds` | prometheus-operator CRDs with `helm.sh/resource-policy: keep` | `cluster_*` |
 | `metrics` | Operator, Prometheus, Alertmanager, kube-state-metrics, node-exporter, blackbox; platform rules (§5.1); Gatekeeper constraints for `monitoring-agents` | `cluster_*` |
@@ -375,6 +375,7 @@ Source: [`diagrams/02-stacks-arquetipo.mmd`](diagrams/02-stacks-arquetipo.mmd)
 | Notification channels, with the destination configured at deployment (§16) | Output `notification_channel_id` (Cloud SQL variant §8) |
 | Log-based alerts | Secret reads outside the list (ESO §9.2), changes to authorised networks outside the intermediate service (S1 §4.13), destruction of KMS key versions (S1 §4.14) |
 | Edge alerts | Backend 5xx as seen from the GLB, p95 latency, certificate state other than `ACTIVE`, Cloud Armor denial spikes, Adaptive Protection (`edge-qa` proposal §7); exhausted NAT ports (`network-qa` proposal §3) |
+| Shared project | `gcp-qa-cloudmon` lives in the non-prod project alongside the other environments: every alert filters by the `environment` label or the resource's `qa-` prefix, and its channels are `qa`'s. Without that filter, a `dev` failure pages `qa` |
 | Dead-man's switch | §6 |
 | *Data Access audit logs* | Enabled for Secret Manager and Cloud KMS; not for the rest (cost) |
 

@@ -1,7 +1,7 @@
 flowchart LR
     subgraph ANS["ns orders · instance orders"]
         MS["messaging stack<br/>creates_tenant_resources: event-bus"]
-        CERT["secrets stack<br/>qa-orders-kafka-events in Secret Manager<br/>write-only · accessor for eso-kafka"]
+        CERT["secrets stack<br/>qa-orders-kafka-events in Secret Manager<br/>write-only · accessor for qa-eso-kafka"]
     end
 
     subgraph KNS["ns kafka"]

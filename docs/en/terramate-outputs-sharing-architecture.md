@@ -482,7 +482,7 @@ globals {
 # stacks/platforms/gcp/demos/config.tm.hcl          ← environment layer
 globals {
   env        = "demos"
-  project_id = "disasterproject-demos"
+  project_id = "disasterproject-nonprod"
   region     = "europe-west1"
   vpc_cidr   = "10.4.0.0/17"             # claimed from the permanent block (AM §9.2)
 }
@@ -2375,6 +2375,8 @@ resource "google_service_account_iam_member" "apply" {
 }
 ```
 
+**In the shared non-prod project**, `tf-apply-qa@` and `tf-apply-dev@` are distinct identities, but a role granted at project level reaches every environment in the project. Grant at resource level wherever the service supports it (secrets, buckets, keys, service accounts, Cloud SQL instances with IAM conditions on the name prefix); where only a project-level role exists (`roles/container.admin`, `roles/compute.networkAdmin`), accept that a non-prod apply identity can touch another non-prod environment, and rely on the per-environment state prefixes, CODEOWNERS and the environment gate. That exposure never reaches `prod`, which is a different project.
+
 The `attribute.environment` claim is only present when the workflow job declares `environment:`. Binding the apply SA to that attribute means **the apply role is unreachable from a job without the environment gate**, which is what makes GitHub's required-reviewers control a real security boundary rather than a UI convenience.
 
 | Identity | Roles | Scope |
@@ -2588,6 +2590,8 @@ Two observations that shape multi-tenant design:
 - **GKE and EKS scope identity by namespace**, so the namespace *is* the tenancy boundary and must never be shared between instances.
 - **Cloud Run and Fargate scope identity per service or task**, which is a finer boundary requiring no cluster-level RBAC — one reason both are better defaults for shared demo environments.
 
+**GKE's pool is per project, not per cluster.** `PROJECT.svc.id.goog` is shared by every cluster in the project, and the principal names only namespace and KSA. In the shared non-prod project, `sonarqube/eso-sonarqube` in `dev` and in `qa` would be one identity. Every KSA that receives GCP IAM is therefore named `<env>-<name>` (`qa-eso-sonarqube`); Gatekeeper rule P12 rejects a ServiceAccount carrying another environment's prefix, and G1 rejects an IAM `member` without the owning environment's prefix (R54). EKS and AKS do not share this trap: their OIDC issuer is per cluster, and the trust condition or federated credential names it.
+
 Never write a wildcard into a workload identity trust condition. `system:serviceaccount:*:*` or `POOL[*/*]` grants every pod in the cluster the role, silently defeating the entire model.
 
 ### 11.9 Network security baseline
@@ -2637,12 +2641,14 @@ flowchart TD
 
 | | Dedicated | Shared | Hybrid |
 |---|---|---|---|
-| **Isolation boundary** | Cloud account / project | Kubernetes namespace + IAM | Cluster |
+| **Isolation boundary** | Cloud account / project for `prod`; its own VPC and cluster inside the shared non-prod project otherwise | Kubernetes namespace + IAM | Cluster |
 | **Blast radius of a platform change** | 1 instance | All instances | Instances on that cluster |
 | **Cost per instance** | High | Very low | Medium |
 | **Time to provision an instance** | 20–40 min (full platform) | 2–5 min (app stacks only) | 10–20 min |
 | **Typical use** | prod, qa, regulated | demos, training, PoC | dev, integration |
 | **Lifecycle coupling** | Instance destroy = platform destroy | Instance destroy must **not** touch platform | Cluster destroy = its instances |
+
+**Project placement is orthogonal to the model.** `prod` has its own cloud project; every non-production environment (`dev`, `qa`, `demos`, `sandbox`, `ephemeral-*`) lives in a shared non-prod project, each with its own VPC, cluster, databases and edge, with names prefixed by the environment and billing split by labels (`CLAUDE.md`). A dedicated `qa` is therefore dedicated at the VPC and cluster level, not the project level. Two things the project boundary used to give for free must be rebuilt inside the shared project: **Workload Identity**, whose pool is one per project, so every KSA holding GCP IAM carries the environment prefix (§11.8, R54); and **pipeline IAM**, covered in §11.2.
 
 ### 12.2 The binding mechanism
 
@@ -3310,7 +3316,7 @@ The ordering invariant that previously relied on a shell script is now a Rego po
 
 ## 15. Risk register
 
-The full register — 53 risks grouped by domain (52 active; R28 retired as a duplicate of R26), with likelihood, impact, mitigation and the section that specifies each control — is maintained in its own document, `risk-register.md`. It is reviewed at every roadmap phase gate rather than read end to end.
+The full register — 54 risks grouped by domain (53 active; R28 retired as a duplicate of R26), with likelihood, impact, mitigation and the section that specifies each control — is maintained in its own document, `risk-register.md`. It is reviewed at every roadmap phase gate rather than read end to end.
 
 The five to act on first:
 

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 1 |
+| **Estado** | Propuesta · revisión 2 |
 | **Alcance** | El proveedor CloudNativePG de `database-platform`: el operador y su plugin de backups, lo que un consumidor puede crear, la forma de un `Cluster`, imágenes, TLS, backups, alta disponibilidad del operador, upgrades, observabilidad, red, contrato, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | Es el proveedor para los clientes que lo quieren todo en el cluster (`CLAUDE.md`: gestionado primero, CNPG como alternativa mantenida). SonarQube ya diseñó su camino CNPG (E2 §5.3) y le dejó requisitos (E2 §9). `qa` **no** lo enlaza: se prueba con la matriz de G1 y el efímero semanal (propuesta `postgres-cloudsql` §6) |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -94,8 +94,8 @@ Fuente: [`diagrams/03-backups.mmd`](diagrams/03-backups.mmd)
 
 | Pieza | Diseño | Referencia |
 |---|---|---|
-| Destino | Un bucket **por consumidor**, `gs://<proyecto>-<instancia>-pgbackup`, creado por el stack `data-tenant` del consumidor | E2 §5.3 |
-| Identidad | El KSA del `Cluster` (`serviceAccountTemplate`) por Workload Identity directa; `objectAdmin` sobre **ese** bucket | E1 §4.4 |
+| Destino | Un bucket **por consumidor**, `gs://disasterproject-<env>-<instancia>-pgbackup` (con el entorno: el proyecto non-prod es compartido), creado por el stack `data-tenant` del consumidor | E2 §5.3 |
+| Identidad | El KSA del `Cluster` (`serviceAccountTemplate`), con el prefijo del entorno (`qa-<instancia>-db`, R54), por Workload Identity directa; `objectAdmin` sobre **ese** bucket | E1 §4.4 |
 | Plugin | barman-cloud: base diaria (`ScheduledBackup`) y WAL continuo, con PITR | — |
 | Retención | 14 días en el `ObjectStore`; soft delete de GCS 7 días; **sin** versionado ni retention lock, que rompen la purga de barman | E1 §4.9 |
 | Borrado del `Cluster` | El bucket es de otro stack y lleva `prevent_destroy`: los backups sobreviven al `Cluster` | RO1 |

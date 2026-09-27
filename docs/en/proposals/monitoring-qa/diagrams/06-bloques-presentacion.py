@@ -45,7 +45,7 @@ o.append(f'<rect width="{W}" height="{H}" fill="#ffffff"/>')
 
 # title
 text(60,72,"Monitoring — layer-3 archetype, monitoring provider",40,800)
-text(60,108,"monitoring-oss · environment qa · GCP disasterproject-qa · 9 stacks · Prometheus, Alertmanager, Loki, Fluent Bit, Grafana · layer 1b watches layer 3",19,400,SUB)
+text(60,108,"monitoring-oss · environment qa · GCP disasterproject-nonprod · 9 stacks · Prometheus, Alertmanager, Loki, Fluent Bit, Grafana · layer 1b watches layer 3",19,400,SUB)
 o.append(f'<rect x="60" y="124" width="120" height="5" rx="2" fill="{pal["fund"][1]}"/>')
 
 LX,LY,LW,LH=40,160,330,670

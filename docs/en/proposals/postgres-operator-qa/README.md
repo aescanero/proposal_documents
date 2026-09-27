@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 1 |
+| **Status** | Proposal · revision 2 |
 | **Scope** | The CloudNativePG provider of `database-platform`: the operator and its backup plugin, what a consumer may create, the shape of a `Cluster`, images, TLS, backups, operator availability, upgrades, observability, network, contract, stacks, policies, execution and plan |
 | **Why now** | It is the provider for customers who want everything in the cluster (`CLAUDE.md`: managed first, CNPG as a maintained alternative). SonarQube already designed its CNPG path (E2 §5.3) and left requirements for it (E2 §9). `qa` does **not** bind it: it is exercised by the G1 matrix and the weekly ephemeral environment (`postgres-cloudsql` proposal §6) |
 | **Reference specification** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -94,8 +94,8 @@ Source: [`diagrams/03-backups.mmd`](diagrams/03-backups.mmd)
 
 | Piece | Design | Reference |
 |---|---|---|
-| Destination | One bucket **per consumer**, `gs://<project>-<instance>-pgbackup`, created by the consumer's `data-tenant` stack | E2 §5.3 |
-| Identity | The `Cluster`'s KSA (`serviceAccountTemplate`) through direct Workload Identity; `objectAdmin` on **that** bucket | E1 §4.4 |
+| Destination | One bucket **per consumer**, `gs://disasterproject-<env>-<instance>-pgbackup` (with the environment: the non-prod project is shared), created by the consumer's `data-tenant` stack | E2 §5.3 |
+| Identity | The `Cluster`'s KSA (`serviceAccountTemplate`), with the environment prefix (`qa-<instance>-db`, R54), through direct Workload Identity; `objectAdmin` on **that** bucket | E1 §4.4 |
 | Plugin | barman-cloud: daily base (`ScheduledBackup`) and continuous WAL, with PITR | — |
 | Retention | 14 days in the `ObjectStore`; GCS soft delete 7 days; **no** versioning or retention lock, which break barman's purge | E1 §4.9 |
 | Deleting the `Cluster` | The bucket belongs to another stack and carries `prevent_destroy`: backups outlive the `Cluster` | RO1 |
