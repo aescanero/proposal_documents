@@ -1,0 +1,18 @@
+sequenceDiagram
+    autonumber
+    participant CM as cert-manager (internal-ca)
+    participant AP as approver-policy
+    participant C as Cliente (ns orders)
+    participant K as Broker Kafka
+    participant UO as User Operator
+
+    C->>CM: Certificate CN orders-events.orders.svc, client auth
+    CM->>AP: CertificateRequest
+    AP-->>CM: aprobado, nombre del propio namespace
+    CM-->>C: Secret kafka-client (la clave no sale del namespace)
+    UO->>K: ACLs y cuotas del KafkaUser orders-events.orders.svc
+    C->>K: TLS a 9093, presenta su certificado
+    Note over K: valida la cadena contra internal-ca (CA de clientes, sin clave)
+    Note over K: principal = CN, ACLs solo sobre orders-*
+    K-->>C: produce y consume en orders-*
+    Note over C,K: un certificado válido de otro namespace se autentica pero no tiene ACLs, se deniega

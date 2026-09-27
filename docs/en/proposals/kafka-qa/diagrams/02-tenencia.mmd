@@ -1,0 +1,26 @@
+flowchart LR
+    subgraph ANS["ns orders · instance orders"]
+        MS["messaging stack<br/>creates_tenant_resources: event-bus"]
+        CERT["Certificate kafka-client<br/>CN orders-events.orders.svc<br/>usages: client auth"]
+    end
+
+    subgraph KNS["ns kafka"]
+        T["KafkaTopic orders-events<br/>≤ 12 partitions · replication 3<br/>retention.bytes mandatory"]
+        U["KafkaUser orders-events.orders.svc<br/>tls-external"]
+        ACL["Generated ACLs<br/>topic and group with prefix orders-"]
+        Q["Generated quotas<br/>1 MiB/s produce · 2 MiB/s consume"]
+    end
+
+    GK{"Gatekeeper<br/>prefix · topicName · ACLs · quotas"}
+    G1{"G1<br/>ledger · budgets · CN = KafkaUser"}
+
+    MS --> T
+    MS --> U
+    MS --> CERT
+    U --- ACL
+    U --- Q
+    G1 -. "in the PR" .-> MS
+    GK -. "at admission" .-> T
+    GK -. "at admission" .-> U
+
+    style KNS fill:#e8f0fe

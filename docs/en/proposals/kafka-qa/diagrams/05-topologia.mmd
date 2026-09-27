@@ -1,0 +1,23 @@
+flowchart TB
+    subgraph Z1["europe-west1-b"]
+        N1["kafka node<br/>n2-standard-4"]
+        K1["kafka-0<br/>controller + broker<br/>heap 4 GiB · limit 12 GiB"]
+        D1[("PVC 200 GiB")]
+        N1 --- K1 --- D1
+    end
+    subgraph Z2["europe-west1-c"]
+        N2["kafka node<br/>n2-standard-4"]
+        K2["kafka-1<br/>controller + broker"]
+        D2[("PVC 200 GiB")]
+        N2 --- K2 --- D2
+    end
+    subgraph Z3["europe-west1-d"]
+        N3["kafka node<br/>n2-standard-4"]
+        K3["kafka-2<br/>controller + broker"]
+        D3[("PVC 200 GiB")]
+        N3 --- K3 --- D3
+    end
+    P["Partition orders-events-0<br/>leader in one zone, replicas in the other two<br/>RF 3 · min.insync 2"]
+    P -.-> K1
+    P -.-> K2
+    P -.-> K3
