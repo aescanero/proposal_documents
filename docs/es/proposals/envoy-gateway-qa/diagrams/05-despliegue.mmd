@@ -1,0 +1,21 @@
+flowchart TB
+    subgraph ORD["Orden de aplicación (after)"]
+        direction LR
+        A["gcp-qa-gke<br/>Gateway API de GKE<br/>desactivado"] --> B["gcp-qa-policy"]
+        B --> C["gcp-qa-certs-ca"]
+        C --> D["gcp-qa-gateway-controller<br/>CRDs estándar · controlador"]
+        D --> E["gcp-qa-gateway-proxy<br/>Gateway qa · prevent_destroy"]
+        E --> F["gcp-qa-edge (capa 1)<br/>data del NEG · health check"]
+        E --> G["frontdoor de Keycloak,<br/>Grafana y SonarQube"]
+    end
+
+    subgraph ROLL["Rollout de un proxy · maxUnavailable 0"]
+        direction LR
+        R1["pod nuevo (maxSurge 1)"] --> R2["Ready + minReadySeconds 30"]
+        R2 --> R3["endpoint sano en el GLB"]
+        R3 --> R4["pod viejo: fuera del NEG,<br/>drenaje 60 s, cierre a 90 s"]
+    end
+
+
+    ORD ~~~ ROLL
+    style F fill:#f5f5f5,stroke-dasharray: 5 5

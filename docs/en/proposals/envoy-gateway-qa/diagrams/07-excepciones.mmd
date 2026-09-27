@@ -1,0 +1,32 @@
+flowchart TB
+    S["Request: publish a port<br/>outside the Gateway"]
+    Q1{"Is it HTTP, gRPC<br/>or WebSocket?"}
+    Q2{"Is there an implicit option?<br/>HTTPS with a token,<br/>MQTT over WebSocket, mTLS at the GLB"}
+    Q3{"Administrative access,<br/>database, debugging<br/>or temporary?"}
+    Q4{"Complete business justification<br/>and a future review_by?"}
+    Q5{"Does the counterparty<br/>come over the internet?"}
+    GW["Through the Gateway<br/>HTTPRoute"]
+    ALT["Use the implicit option"]
+    NO["Rejected<br/>kubectl exec · IAP · ephemeral ·<br/>private connectivity"]
+    B["Pattern B<br/>fixed NodePort + passthrough NLB<br/>in gcp-qa-edge · direct communication"]
+    C["Pattern D<br/>internal passthrough NLB<br/>over peering or VPN"]
+    CTL["exposures in the manifest<br/>G1 · CODEOWNERS platform and security<br/>Gatekeeper exemption per Service"]
+
+    S --> Q1
+    Q1 -->|yes| GW
+    Q1 -->|no| Q2
+    Q2 -->|yes| ALT
+    Q2 -->|no| Q3
+    Q3 -->|yes| NO
+    Q3 -->|no| Q4
+    Q4 -->|no| NO
+    Q4 -->|yes| Q5
+    Q5 -->|yes| B
+    Q5 -->|no, private network| C
+    B --> CTL
+    C --> CTL
+
+    style NO fill:#fce8e6
+    style GW fill:#e6f4ea
+    style ALT fill:#e6f4ea
+    style CTL fill:#e8f0fe

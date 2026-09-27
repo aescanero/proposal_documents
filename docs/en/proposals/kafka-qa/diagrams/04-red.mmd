@@ -1,0 +1,23 @@
+flowchart LR
+    subgraph NS["ns kafka · default-deny + Strimzi NetworkPolicies"]
+        BR["Brokers and controllers<br/>9093 tls · 9090/9091 internal<br/>9404 metrics"]
+        OPR["Operator and Entity Operator"]
+        CC["Cruise Control"]
+        KE["Kafka Exporter"]
+    end
+    APPS["namespaces with<br/>kafka.disasterproject.com/client"]
+    P["Prometheus"]
+    NLB(["Internal passthrough NLB<br/>qa's VPC only"])
+    INET(["Internet"])
+
+    APPS -->|"TCP 9093 SCRAM over TLS"| BR
+    OPR -->|"9091, 9093"| BR
+    CC -->|"9091"| BR
+    P -->|"9404 and metrics"| BR
+    P --> KE
+    P --> CC
+    NLB -. "32100–32103, SCRAM<br/>externalTrafficPolicy Local" .-> BR
+    BR -.-x|"DENIED"| INET
+
+    style INET fill:#fce8e6
+    style NLB fill:#f5f5f5,stroke-dasharray: 5 5

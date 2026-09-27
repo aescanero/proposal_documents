@@ -1,0 +1,33 @@
+flowchart LR
+    subgraph PLAT["Consume de la plataforma"]
+        direction TB
+        CL["cluster · GKE<br/>node pool kafka"]
+        PO["policy · Gatekeeper"]
+        CE["certs · internal-ca"]
+        MO["monitoring · Prometheus"]
+    end
+
+    subgraph L4["Capa 4 · event-bus · gcp-qa-kafka"]
+        direction TB
+        OP["Strimzi<br/>solo namespace kafka"]
+        KC["Kafka KRaft<br/>3 nodos duales, uno por zona"]
+        EO["Topic y User Operator"]
+        EX["Kafka Exporter · Cruise Control"]
+    end
+
+    subgraph CONS["Consumidores · stack messaging"]
+        direction TB
+        A["orders<br/>KafkaTopic orders-*<br/>KafkaUser orders-events"]
+        B["otra instancia<br/>su prefijo, sus ACLs, sus cuotas"]
+    end
+
+    EXT(["Clientes de la VPC de qa<br/>fuera del cluster"])
+
+    PLAT --> L4
+    A -->|"SCRAM sobre TLS 9093<br/>contraseña del consumidor"| KC
+    B -->|"SCRAM 9093"| KC
+    A -. "tenant resources<br/>en ns kafka" .-> EO
+    EXT -. "balanceador interno, SCRAM<br/>nunca fuera de la VPC" .-> KC
+
+    style L4 fill:#e8f0fe
+    style EXT fill:#f5f5f5,stroke-dasharray: 5 5

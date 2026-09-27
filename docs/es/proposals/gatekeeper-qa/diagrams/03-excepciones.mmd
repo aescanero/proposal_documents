@@ -1,0 +1,17 @@
+flowchart LR
+    MAN["Manifiesto del consumidor<br/>admission_exceptions · exposures<br/>regla, objeto, motivo, review_by"]
+    RES["Resolver<br/>resolution.json"]
+    G1{"G1<br/>justificación completa<br/>review_by futuro"}
+    CO["CODEOWNERS<br/>plataforma + seguridad"]
+    EXC["Stack exemptions<br/>gcp-qa-policy-exemptions"]
+    CON["Parámetros del Constraint<br/>por namespace/kind/nombre"]
+    APP["Stack del consumidor<br/>after: exemptions"]
+    NO["Nunca: namespace entero,<br/>excludedNamespaces a mano"]
+
+    MAN --> RES --> EXC --> CON
+    MAN --> G1
+    MAN --> CO
+    EXC --> APP
+    NO -.-x CON
+
+    style NO fill:#fce8e6

@@ -157,6 +157,8 @@ provides:
 
 `monitoring-managed` provides the same capability and version but requires `managed-prometheus`. An application requires `monitoring`; the resolver picks the provider whose traits the environment's cluster satisfies, and fails naming the missing trait rather than producing a `CreateContainerError` twenty minutes into an apply.
 
+**Node-pool traits.** Some traits are properties of one node pool, not of the whole cluster: `sysctl-max-map-count`, `gpu`, `spot`, `arm64`. The runtime manifest lists them because it **can** offer them; the resolver treats one as present only if a node pool in the environment binding (`cluster.node_pools[].traits`) declares it. Otherwise a consumer requiring `sysctl-max-map-count` would resolve against an environment with no such pool and fail at start-up — exactly the failure traits exist to prevent. The consumer reaches its pool through the pool's taint, and only the pool's `owners` may tolerate it (Gatekeeper; `gke-qa` proposal §5.3).
+
 ### 4.3 Trait registry
 
 Traits are a controlled vocabulary. An unregistered trait is a resolution error, because a typo that silently matches nothing is worse than no check.
@@ -166,13 +168,15 @@ The table below is a **reading copy**; the source of truth is `registry/traits.y
 | Domain | Traits |
 |---|---|
 | Compute | `self-managed-nodes`, `managed-nodes`, `daemonset-privileged`, `hostpath`, `node-agent`, `gpu`, `arm64`, `spot`, `overlay-pods`, `sysctl-max-map-count` |
-| Ingress | `gateway-api`, `ingress-api`, `http-route`, `grpc-route`, `tcp-route`, `cross-namespace-refgrant`, `oidc-security-policy`, `jwt-auth`, `local-rate-limit`, `global-rate-limit`, `mtls-backend` |
+| Ingress | `gateway-api`, `ingress-api`, `http-route`, `grpc-route`, `tcp-route`, `cross-namespace-refgrant`, `oidc-security-policy`, `jwt-auth`, `local-rate-limit`, `global-rate-limit`, `mtls-backend`, `backend-tls` |
 | Edge | `iac-owned-edge`, `managed-cert`, `waf`, `global-anycast`, `regional-only` |
 | Identity | `workload-identity`, `irsa`, `pod-identity`, `managed-identity`, `saml-idp` |
-| Data | `private-endpoint`, `iam-auth`, `multi-az`, `psa-shared`, `cnpg` |
+| Data | `private-endpoint`, `iam-auth`, `multi-az`, `psa-shared`, `cnpg`, `cloudsql` |
 | Messaging | `strimzi`, `kraft`, `acl-authz`, `tls-mtls`, `schema-registry`, `tiered-storage` |
 | Policy | `gatekeeper`, `custom-templates`, `audit-api`, `referential-constraints`, `mutation` |
 | Observability | `managed-prometheus`, `otlp-native`, `managed-tracing`, `prometheus-operator-crds` |
+| Secrets | `eso` |
+| Certs | `cert-manager` |
 
 `iac-owned-edge` records whether every cloud resource in the edge path is in Terraform state. GCP standalone NEGs are not (architecture document §10.2). If a compliance requirement ever demands full IaC ownership, the resolver detects the gap at validation time rather than at audit time.
 
@@ -347,24 +351,23 @@ Kafka is deliberately an archetype: the design intent is **a common bus with sep
 
 ### 5.5 Conditional stacks
 
-An archetype that can either bring its own database or use a shared platform declares both paths in one manifest:
+An archetype that can run on either `database-platform` provider declares both paths in one manifest, selected by the bound provider's trait:
 
 ```yaml
 requires:
   - capability: database-platform
-    version: "^1.0.0"
-    optional: true                # used when the environment provides it
+    version: "^2.0.0"
 
 stacks:
   - name: data
-    condition: "!resolved(database-platform)"     # dedicated Cloud SQL, only when not
+    condition: "has_trait(database-platform, cloudsql)"   # its own managed instance (Cloud SQL)
   - name: data-tenant
-    condition: "resolved(database-platform)"      # a Database CR against the shared operator
+    condition: "has_trait(database-platform, cnpg)"       # its own Cluster against the shared operator
 ```
 
-The same archetype creates a dedicated instance where `database-platform` is unbound and a tenant database where it is bound, from one manifest.
+The provider is **global per environment** (§2), chosen in the binding, and the consumer does not choose. Services are **managed first**: `postgres-cloudsql` is the default, and `postgres-operator` (CloudNativePG) is the maintained alternative for clients who want everything in the cluster. Either path gives each consumer its own instance, so the choice is **managed versus operated**, never shared versus isolated. Neither choice touches the archetype.
 
-Which path an environment takes is a **data-isolation decision, not a cost one**. In `demos` the environment deliberately leaves `database-platform` unbound: project-office demos arrive with arbitrary requirements and data that must not be co-located, so each tenant gets its own managed instance. An environment that prefers density — a training or integration environment with homogeneous, trusted workloads — binds it and shares the operator. Neither choice touches the archetype.
+`!resolved(database-platform)` remains legal for an environment that leaves the capability unbound, but no permanent environment does: `demos`, `qa` and `prod` bind `postgres-cloudsql` (§7), and the managed path is chosen by `has_trait(database-platform, cloudsql)`.
 
 ---
 
@@ -398,7 +401,7 @@ requires:
     version: "^2.0.0"
     traits: [acl-authz]
   - capability: database-platform
-    version: "^1.0.0"
+    version: "^2.0.0"
     optional: true
   - capability: monitoring
     version: "^1.5.0"
@@ -414,7 +417,7 @@ stacks:
   - name: secrets
     after: [iam]
   - name: data
-    condition: "!resolved(database-platform)"
+    condition: "has_trait(database-platform, cloudsql)"
     after: [iam]
     claims:
       - kind: cidr
@@ -422,7 +425,7 @@ stacks:
         purpose: db-subnet
         size: 24
   - name: data-tenant
-    condition: "resolved(database-platform)"
+    condition: "has_trait(database-platform, cnpg)"
     after: [iam]
   - name: messaging
     after: [iam]
@@ -546,8 +549,8 @@ bindings:
   monitoring:          { archetype: monitoring-managed,   version: 1.8.0, stack_id: gcp-demos-monitoring }
   oidc-idp:            { archetype: keycloak,             version: 4.1.0, stack_id: gcp-demos-keycloak }
   event-bus:           { archetype: kafka,                version: 2.0.0, stack_id: gcp-demos-kafka }
-  # database-platform is deliberately NOT bound: demo tenants get dedicated
-  # managed instances so their data is never co-located. See the note below.
+  database-platform:   { archetype: postgres-cloudsql,    version: 0.1.0, stack_id: gcp-demos-postgres-cloudsql }
+  # each demo tenant gets its own managed instance: data never co-located (see below)
 
 network:
   cidr: 10.4.0.0/17
@@ -598,7 +601,7 @@ policy:
 Two properties worth noting:
 
 - `cluster` is bound to `gke-autopilot`, so `monitoring` **cannot** be bound to `monitoring-nodeagent`. The binding file is validated, not just application manifests.
-- `database-platform` is **not** bound. Demo workloads come from the project office with arbitrary requirements and data that must not be co-located, so every archetype with a conditional `data` stack takes the dedicated path: ten tenants, ten managed instances. The `condition:` mechanism is not wasted — production environments may bind `database-platform` and take the shared-operator path from the same manifest.
+- `database-platform` is bound to `postgres-cloudsql`, the managed provider (§5.5). Demo workloads come from the project office with arbitrary requirements and data that must not be co-located, and the managed provider gives every archetype with the conditional pair its own instance: ten tenants, ten managed instances. The trait (`cloudsql` or `cnpg`) picks the path; neither path shares data between consumers.
 
 Three consequences of choosing dedicated instances, worth recording:
 
@@ -882,18 +885,13 @@ stacks:
   - name: iam
   - name: cluster                                   # Strimzi Kafka CR, KRaft mode
     after: [iam]
-    claims:
-      - kind: cidr
-        zone: data
-        purpose: kafka-storage-subnet
-        size: 26
   - name: policy                                    # default ACLs and quota templates
     after: [cluster]
 
 provides:
   - capability: event-bus
     version: 2.0.0
-    traits: [strimzi, kraft, acl-authz, tls-mtls, schema-registry]
+    traits: [strimzi, kraft, acl-authz]
     outputs:
       - { name: bootstrap_servers,  from: cluster }
       - { name: cluster_ca_secret,  from: cluster }
@@ -918,6 +916,8 @@ stacks:
   - name: messaging
     creates_tenant_resources: [event-bus]
 ```
+
+**The user's identity.** A consumer authenticates by SCRAM-SHA-512 over TLS. The password belongs to the consumer: it lives in Secret Manager, the provider's ESO materialises it in the Kafka namespace through an `ExternalSecret` (a third tenant resource), and the `KafkaUser` reads it with `password.valueFrom`. The value never passes through the pipeline, and neither the platform nor the `kafka` archetype knows it. The Kafka proposal (`proposals/kafka-qa/`) specifies it, together with the 2.1.0 version of the contract (`client_auth`, `ca_bundle_configmap`, `client_namespace_label`; `cluster_ca_secret` deprecated). The bus uses persistent volumes and the cluster's pod range: it claims no subnet.
 
 ### 10.2 Three rules that make it safe
 
@@ -954,13 +954,15 @@ The same pattern covers any operator-backed shared service:
 | Provider | Capability | Tenant resources |
 |---|---|---|
 | `kafka` | `event-bus` | `KafkaTopic`, `KafkaUser` |
-| `postgres-operator` | `database-platform` | `Database`, `Role` |
+| `postgres-operator` | `database-platform` | `Cluster`, `ObjectStore`, `ScheduledBackup`, `Backup`, `Pooler` — one dedicated `Cluster` per consumer, never a logical database in a shared one |
 | `redis-operator` | `cache` | `RedisInstance` |
 | `keycloak` | `oidc-idp` | `ConfigMap` named `client-{{ instance }}-*`, reconciled into a client by keycloak-config-cli. The current Keycloak Operator has no client CRD; groups come from the upstream IdP, so no role resource is offered |
 
 An assertion closes the whole class of failure:
 
 > No stack may create resources in another archetype's namespace unless it declares `creates_tenant_resources` and the provider authorises that kind in `tenant_resources`.
+
+**Tenant resources in the consumer's own namespace.** Kafka and Keycloak reconcile only in their own namespace, so their tenant resources live there. An operator that reconciles in every namespace, such as CloudNativePG, is different: the consumer creates its `Cluster` in **its own** namespace, and the data stay there. The rule still applies — the kind belongs to the provider, so the consumer declares `creates_tenant_resources` and the provider authorises it in `tenant_resources` wherever it is created. The `postgres-operator-qa` proposal §1 has the detail.
 
 ### 10.5 The Keycloak bootstrap invariant
 
@@ -1127,11 +1129,12 @@ archetypectl resolve --instance demos-alpha
     { "capability": "ingress",           "provider": "gateway-envoy-gke@3.1.0", "stack_id": "gcp-demos-gateway" },
     { "capability": "oidc-idp",          "provider": "keycloak@4.1.0",          "stack_id": "gcp-demos-keycloak" },
     { "capability": "event-bus",         "provider": "kafka@2.0.0",             "stack_id": "gcp-demos-kafka" },
+    { "capability": "database-platform", "provider": "postgres-cloudsql@0.1.0", "stack_id": "gcp-demos-postgres-cloudsql" },
         { "capability": "monitoring",        "provider": "monitoring-managed@1.8.0","stack_id": "gcp-demos-monitoring" }
   ],
   "stacks": ["iam", "secrets", "data", "messaging", "firewall", "app", "frontdoor"],
   "skipped_stacks": [
-    { "name": "data-tenant", "reason": "condition false: database-platform not bound in demos" }
+    { "name": "data-tenant", "reason": "condition false: database-platform is postgres-cloudsql (trait cloudsql, not cnpg)" }
   ],
   "claims": [
     { "kind": "hostname", "value": "alpha.demos.disasterproject.com", "state": "active", "pr": 412 },
@@ -1281,13 +1284,15 @@ Layer 5 manifests are the payoff: `webapp-3tier` names no cloud. Moving it from 
 | `serverless-runtime` | `cloudrun` | `fargate` | `container-apps` |
 | `policy` | `policy-gatekeeper` | `policy-gatekeeper` | `policy-gatekeeper` |
 | `ingress` | `gateway-envoy-gke` | `gateway-envoy-eks` | `gateway-agfc-aks` or `gateway-envoy-aks` |
-| `certs` | Certificate Manager | ACM | App Gateway certs / Key Vault |
+| `cert` (edge, public) | Certificate Manager | ACM | App Gateway certs / Key Vault |
+| `certs` (in-cluster) | `cert-manager` | `cert-manager` | `cert-manager` |
 | `secrets` | Secret Manager | Secrets Manager | Key Vault |
 | `event-bus` | `kafka` (Strimzi) | `kafka` (Strimzi) | `kafka` (Strimzi) |
+| `database-platform` | `postgres-cloudsql` (default), `postgres-operator` | RDS (default), `postgres-operator` | Flexible Server (default), `postgres-operator` |
 | `cloud-observability` | Cloud Monitoring | CloudWatch | Azure Monitor |
 | `workload-identity` trait | Workload Identity Federation | IRSA / Pod Identity | Workload Identity |
 
-Operator-backed layer-4 archetypes (Kafka, Postgres, Redis, Keycloak) are the same everywhere — they run on Kubernetes. That is a significant portability win and an argument for preferring operators over managed services where the trade-off is close.
+Operator-backed layer-4 archetypes (Kafka, Postgres, Redis, Keycloak) are the same everywhere — they run on Kubernetes. That is a real portability win, but the platform's rule is **managed first** (`CLAUDE.md`): where a managed service is equivalent it is the default provider, and the operator-based archetype is the maintained alternative for clients who want it. Both stay behind the same capability contract, so the choice is made in the environment binding, not in the archetypes.
 
 ### 14.3 Adding a fourth cloud
 
@@ -1336,15 +1341,15 @@ webapp-3tier@2.3.0
 │   ├── secrets       ^2.0.0            → secrets-operator@2.0.1
 │   └── (owns its own data stack internally — not a dependency)
 ├── event-bus         ^2.0.0            → kafka@2.0.0
-├── database-platform ^1.0.0 (optional) → UNRESOLVED (not bound in demos)
+├── database-platform ^2.0.0 (optional) → postgres-cloudsql@0.1.0 (trait cloudsql)
 └── monitoring        ^1.5.0 (optional) → monitoring-managed@1.8.0
 ```
 
-Fifteen archetypes; the application declared six.
+Sixteen archetypes; the application declared six.
 
 **Step 6** would reject `monitoring-nodeagent`: it needs `daemonset-privileged`, absent from Autopilot.
 
-**Step 9** resolves conditions. Because `database-platform` is unbound in `demos`, `data-tenant` is skipped and the `data` stack is generated — a dedicated Cloud SQL instance for this tenant. Ten tenants, ten instances, no co-located data.
+**Step 9** resolves conditions. Because `demos` binds `database-platform` to `postgres-cloudsql` (trait `cloudsql`), `data-tenant` is skipped and the `data` stack is generated — a dedicated Cloud SQL instance for this tenant. Ten tenants, ten instances, no co-located data.
 
 **Step 11** validates 6 topics and 1 user against Kafka's limits of 20 and 3, all prefixed `alpha-`.
 

@@ -1,0 +1,40 @@
+flowchart LR
+    subgraph EDGE["Capa 1 · capability cert (NO es esta propuesta)"]
+        CM["Certificate Manager<br/>*.qa.disasterproject.com<br/>certificado público en el GLB"]
+    end
+
+    subgraph L3["Capa 3 · capability certs · gcp-qa-certs"]
+        direction TB
+        CA["CA interna<br/>ClusterIssuer internal-ca"]
+        AP["approver-policy<br/>cada namespace, sus nombres"]
+        TM["trust-manager<br/>Bundle internal-ca-bundle"]
+        CI["cainjector"]
+    end
+
+    subgraph CONS["Consumidores"]
+        direction TB
+        GW["Envoy · certificado de backend<br/>que presenta al GLB"]
+        KC["Keycloak · TLS del pod<br/>keycloak-service.keycloak.svc"]
+        WH["Webhooks de ESO<br/>y prometheus-operator"]
+    end
+
+    subgraph TRUST["Confían en la CA (ConfigMap del Bundle)"]
+        direction TB
+        E2["Envoy → Keycloak<br/>BackendTLSPolicy"]
+        G2["Grafana → Keycloak"]
+        B2["blackbox http_2xx_internal_ca"]
+        R2["reconciliador → Keycloak"]
+    end
+
+    GK["Gatekeeper (capa 2b)<br/>su propio rotador:<br/>va antes que cert-manager"]
+
+    CA --> GW
+    CA --> KC
+    CA --> WH
+    AP -. "aprueba o deniega" .-> CA
+    CI -. "inyecta caBundle" .-> WH
+    TM --> TRUST
+
+    style EDGE fill:#f5f5f5,stroke-dasharray: 5 5
+    style L3 fill:#e8f0fe
+    style GK fill:#f5f5f5

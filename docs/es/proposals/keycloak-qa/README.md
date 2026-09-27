@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 2 |
+| **Estado** | Propuesta · revisión 6 |
 | **Alcance** | El arquetipo de capa 4 `keycloak` en `qa`: instalación, datos, configuración, realm `qa` con Entra ID como IdP de origen, clientes de los consumidores como tenant resources, claves, publicación, red, disponibilidad, observabilidad, stacks, políticas, ejecución y plan |
-| **Supuesto de datos** | La variante Cloud SQL ([`../sonarqube-qa-cloudsql/`](../sonarqube-qa-cloudsql/README.md), DC1): `database-platform` sin enlazar en `qa`, así que Keycloak trae su propia instancia (DC8 de esa variante). Si DC1 se rechaza, el mismo manifiesto toma el camino `data-tenant` con un `Cluster` CNPG (AM §5.5) y solo cambia §3 |
+| **Supuesto de datos** | El proveedor global de `database-platform` del entorno ([`../postgres-cloudsql-qa/`](../postgres-cloudsql-qa/README.md)). En `qa`, `postgres-cloudsql`: Keycloak crea su propia instancia Cloud SQL (stack `data`, §3). Con `postgres-operator`, su propio `Cluster` CNPG (stack `data-tenant`) |
 | **Consumidores conocidos** | SonarQube por SAML ([`../sonarqube-qa/`](../sonarqube-qa/README.md), E1/E2), Grafana por OIDC, aplicaciones futuras con `SecurityPolicy` OIDC en el Gateway |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `developer-guide.md` (DG §n), `risk-register.md` |
 | **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano. `diagrams/09-bloques-presentacion.svg` (1920×1080, para presentaciones) se genera con `09-bloques-presentacion.py`, no con Mermaid |
@@ -235,9 +235,14 @@ tenant_resources:
   - kind: ConfigMap
     namePrefix: "client-{{ instance }}-"
     maxCount: 3
+  - kind: ReferenceGrant
+    namePrefix: "sp-{{ instance }}"
+    maxCount: 1
 ```
 
 Cada `ConfigMap` lleva las etiquetas `keycloak.disasterproject.com/realm: qa` y `archetype.disasterproject.com/instance: <instancia>`, y en `data.client.json` la representación del cliente. `KeycloakRealmRole` (AM §10.4) no se ofrece: los grupos vienen de Entra (§5.3).
+
+**El `ReferenceGrant`** solo lo crea un consumidor que protege sus rutas con una `SecurityPolicy` OIDC. Su `provider.backendRefs` apunta a `keycloak-service`, en **este** namespace, y Envoy Gateway rechaza una referencia entre namespaces si el destino no la autoriza con un `ReferenceGrant` (propuesta de Envoy Gateway §4.3, VG7). Forma única: nombre `sp-<instancia>`, `from` = `SecurityPolicy` del namespace de la instancia, `to` = el Service `keycloak-service`. Gatekeeper rechaza cualquier otra (§12.3).
 
 ### 6.2 Qué puede declarar un cliente
 
@@ -340,7 +345,7 @@ AM §10.5 y arquitectura §10.7 exigen dos cosas; así se cumplen:
 | Invariante | Cómo |
 |---|---|
 | La ruta de Keycloak no lleva `SecurityPolicy` | §8.1; assert en el stack `frontdoor`; constraint de Gatekeeper que deniega una `SecurityPolicy` dirigida a esa ruta |
-| El discovery OIDC del Gateway se resuelve por el Service interno, no por el hostname público | En la `SecurityPolicy` de cada consumidor: `provider.issuer` = URL pública (debe coincidir con el `iss`), y **`provider.backendRefs`** → `keycloak-service.keycloak:8443` con `BackendTLSPolicy`. Envoy pide las URLs públicas pero las conexiones van al Service **(verificar el soporte de `backendRefs` en el proveedor OIDC en la versión fijada de Envoy Gateway, VK2)** |
+| El discovery OIDC del Gateway se resuelve por el Service interno, no por el hostname público | En la `SecurityPolicy` de cada consumidor: `provider.issuer` = URL pública (debe coincidir con el `iss`), y **`provider.backendRefs`** → `keycloak-service.keycloak:8443` con `BackendTLSPolicy` y el `ReferenceGrant` `sp-<instancia>` de §6.1. Envoy pide las URLs públicas pero las conexiones van al Service **(verificar el soporte de `backendRefs` en el proveedor OIDC en la versión fijada de Envoy Gateway, VK2)** |
 
 Así Envoy no necesita el GLB ni el DNS público para hablar con Keycloak, y un entorno en frío arranca en el orden de la figura. El arquetipo publica `internal_service` en su contrato para que los consumidores no escriban el nombre a mano.
 
@@ -427,20 +432,19 @@ requires:
   - capability: policy
     version: "^1.0.0"
   - capability: ingress
-    version: ">=3.0.0 <4.0.0"
-    traits: [gateway-api, http-route]
+    version: ">=3.2.0 <4.0.0"
+    traits: [gateway-api, http-route, backend-tls, cross-namespace-refgrant]
   - capability: certs
     version: "^1.0.0"
+    traits: [cert-manager]
   - capability: secrets
     version: "^2.0.0"
+    traits: [eso]
   - capability: monitoring
     version: "^1.5.0"
     traits: [prometheus-operator-crds]
   - capability: database-platform
-    version: "^1.0.0"
-    traits: [cnpg]
-    optional: true
-    reason: "Sin database-platform, el arquetipo trae su instancia gestionada (AM §5.5)"
+    version: "^2.0.0"                              # sin trait de proveedor: lo decide el entorno
 
 provides:
   - capability: oidc-idp
@@ -457,16 +461,19 @@ provides:
       - kind: ConfigMap
         namePrefix: "client-{{ instance }}-"
         maxCount: 3
+      - kind: ReferenceGrant
+        namePrefix: "sp-{{ instance }}"
+        maxCount: 1
 
 stacks:
   - name: iam
   - name: secrets
     after: [iam]
   - name: data
-    condition: "!resolved(database-platform)"
+    condition: "has_trait(database-platform, cloudsql)"
     after: [iam, secrets]
   - name: data-tenant
-    condition: "resolved(database-platform)"
+    condition: "has_trait(database-platform, cnpg)"
     after: [iam, secrets]
     creates_tenant_resources: [database-platform]
   - name: firewall
@@ -511,7 +518,7 @@ Fuente: [`diagrams/02-stacks-arquetipo.mmd`](diagrams/02-stacks-arquetipo.mmd)
 
 | Stack | Generador | Contenido | Entradas por sharing |
 |---|---|---|---|
-| `iam` | `gen_tenant_namespace.tm.hcl` | Namespace `keycloak` (PSS `restricted`); KSAs `keycloak`, `eso-keycloak`, `keycloak-config` | `cluster_*` (gke) |
+| `iam` | `gen_tenant_namespace.tm.hcl` | Namespace `keycloak` (PSS `restricted`; etiquetas `trust.disasterproject.com/internal-ca: "true"` y `gateway.disasterproject.com/routes: "true"` y anotación `gateway.disasterproject.com/hostnames: sso.qa.disasterproject.com`, E2 §5.1); KSAs `keycloak`, `eso-keycloak`, `keycloak-config` | `cluster_*` (gke) |
 | `secrets` | `gen_secrets.tm.hcl` | `qa-keycloak-db` (sin versión), `-admin`, `-config-cli` (generados write-only), `-realm-signing`, `-entra-cert` (versión del script de arranque); `SecretStore` y `ExternalSecret` | `cluster_*`, `workload_identity_pool` |
 | `data` | `gen_data.tm.hcl` | §3.1 | `workload_identity_pool`, `notification_channel_id` |
 | `firewall` | `gen_helm_stack.tm.hcl` | §8.3 | `cluster_*` |
@@ -560,6 +567,10 @@ assert {
   message   = "keycloak: la ruta pública solo expone /realms/qa/ y /resources/ (§8.1)"
 }
 assert {
+  assertion = global.keycloak.hostname == "https://sso.${global.platform.dns_suffix}" && global.keycloak.realm == global.platform.env
+  message   = "keycloak: hostname https://sso.<dns_suffix> y realm = nombre del entorno; Grafana los deriva por convención (monitorización §4.3)"
+}
+assert {
   assertion = tm_startswith(global.keycloak.hostname, "https://")
   message   = "keycloak: hostname v2 exige la URL pública completa"
 }
@@ -581,6 +592,7 @@ assert {
 |---|---|
 | **Nueva:** forma del `ConfigMap` de cliente | §6.4 |
 | **Nueva:** sin `SecurityPolicy` sobre la ruta de Keycloak | Primera invariante de R22, también en admisión |
+| **Nueva:** forma del `ReferenceGrant` | Solo `sp-<instancia>`, `from` = `SecurityPolicy` de ese namespace, `to` = Service `keycloak-service`; ningún otro `ReferenceGrant` en `keycloak` (§6.1) |
 | Existentes | PSS `restricted`, etiquetas obligatorias, registros permitidos (operador, Keycloak, proxy por digest) |
 
 ---
@@ -646,7 +658,7 @@ Se detiene en la instancia Cloud SQL (doble protección) y en `qa-keycloak-realm
 | # | Decisión | Estado | Recomendación | Alternativa |
 |---|---|---|---|---|
 | DK1 | Instalación | Propuesta | Keycloak Operator oficial | Chart `keycloakx` |
-| DK2 | Datos | Heredada de DC1/DC8 | Cloud SQL propio | `Cluster` CNPG si DC1 se rechaza |
+| DK2 | Datos | Consecuencia de la propuesta `postgres-cloudsql` (DQ1, DQ2) | Cloud SQL propio en `qa` | `Cluster` CNPG propio si el entorno enlaza `postgres-operator` |
 | DK3 | Conexión a la BD | Propuesta | Auth Proxy por `unsupported.podTemplate` | IP privada con `verify-ca` |
 | DK4 | Configuración del realm y clientes | Propuesta | keycloak-config-cli con documento fusionado y remote state | `KeycloakRealmImport` (solo crea); proveedor de OpenTofu (credenciales de admin en el pipeline, E2 §5.5) |
 | DK5 | Grupos | Propuesta | Atributo `entra_roles` importado del claim `roles` | Mapper por app role (E1 §4.6) |

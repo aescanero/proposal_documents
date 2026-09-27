@@ -87,7 +87,7 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R29 | **Shared Kafka bus saturated by one tenant** | Medium on `demos` | High — affects every tenant | `KafkaUser` producer/consumer quotas, not just ResourceQuota; `kafka_partitions` budget enforced at PR time (AM §10.3) |
 | R30 | **Tenant writes unprefixed Kafka topics** | High without admission policy | Medium — silent collision between demos | Mandatory `{{ instance }}-` prefix enforced by the provider; ACLs derived by the `kafka` archetype, never hand-written |
 | R31 | **Demo archetypes accumulate past their usefulness** | Certain | Medium — ranges, identities and quotas leak | `expiresOn` mandatory for `kind: demo`; scheduled job opens a destroy PR; never automatic destruction |
-| R32 | **Each demo provisions its own managed database** | High if `database-platform` is unbound | Medium — a shared demo environment stops being cheap | Bind `database-platform` in shared environments; conditional `data` / `data-tenant` stacks in one manifest (AM §5.5) |
+| R32 | **Each demo provisions its own managed database** | Certain in `demos`, by design | Medium — a shared demo environment stops being cheap | Accepted: both `database-platform` providers give each consumer its own instance (`CLAUDE.md`, isolation over cost). Bounded by the `managed_db_instances` capacity in the binding (25 in `demos`); a CNPG `Cluster` costs less than a Cloud SQL instance where a client chooses `postgres-operator` |
 
 ## 6. Policy and validation
 

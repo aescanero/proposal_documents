@@ -1,0 +1,28 @@
+flowchart LR
+    subgraph LZ["Landing zone · capa 0"]
+        direction TB
+        PRJ["crea el proyecto disasterproject-qa<br/>org policies · facturación"]
+        KEY["clave tofu-state"]
+        POOL["pool global 10.0.0.0/8<br/>asigna 10.4.128.0/17"]
+    end
+    subgraph ENV["environment · capa 1 · provee network 3.0.0"]
+        direction TB
+        API["apis<br/>APIs del proyecto"]
+        NET["network<br/>VPC · firewall base · Cloud NAT<br/>PSA · zonas DNS privadas"]
+        EDGE["edge<br/>propuesta siguiente"]
+    end
+    subgraph CONS["Consumidores"]
+        direction TB
+        GKE["gke · subred de nodos"]
+        SQL["postgres-cloudsql · instancias en qa-psa"]
+        KAF["kafka · registros en qa.internal"]
+    end
+    PRJ --> API --> NET
+    KEY -. "cifra el estado" .-> NET
+    POOL -. "binding: network.cidr" .-> NET
+    NET -- "network_self_link · private_service_range" --> CONS
+    NET -. "globals: psa_cidr · internal_zone · flow_logs" .-> CONS
+    NET -.-> EDGE
+
+    style NET fill:#e8f0fe
+    style EDGE fill:#f3f4f6,stroke-dasharray: 5 5

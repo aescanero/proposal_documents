@@ -1,0 +1,17 @@
+flowchart TB
+    B["binding del entorno<br/>database-platform"]
+    R4["paso 4 · BIND<br/>un proveedor, una búsqueda"]
+    R9{"paso 9 · CONDITION<br/>traits del proveedor"}
+    D["stack data<br/>Cloud SQL del consumidor"]
+    T["stack data-tenant<br/>Cluster CNPG del consumidor"]
+    X["migración (descrita, no construida)<br/>por instancia, con review_by"]
+    N["Sin selección por consumidor:<br/>rompe la paridad qa ↔ prod"]
+
+    B --> R4 --> R9
+    R9 -->|"cloudsql"| D
+    R9 -->|"cnpg"| T
+    X -. "solo si se construye" .-> R4
+    N -.-x R4
+
+    style N fill:#fce8e6
+    style X fill:#f5f5f5,stroke-dasharray: 5 5

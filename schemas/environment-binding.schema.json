@@ -212,6 +212,91 @@
         },
         "node_machine_type": {
           "type": "string"
+        },
+        "node_pools": {
+          "description": "Node pools of the environment's cluster (gke-qa proposal \u00a75.3). Added by hand until registry-generate exists; traits must come from registry/traits.yaml.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "machine_type",
+              "zones",
+              "autoscaling"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,38}$"
+              },
+              "machine_type": {
+                "type": "string"
+              },
+              "zones": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              },
+              "autoscaling": {
+                "type": "object",
+                "required": [
+                  "min_per_zone",
+                  "max_per_zone"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "min_per_zone": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "max_per_zone": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              },
+              "taint": {
+                "type": "string",
+                "pattern": "^dedicated=[a-z][a-z0-9-]*:(NoSchedule|NoExecute|PreferNoSchedule)$"
+              },
+              "sysctls": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "traits": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "gpu",
+                    "arm64",
+                    "spot",
+                    "sysctl-max-map-count"
+                  ]
+                },
+                "description": "Node-pool scoped traits (AM \u00a74.2). Generated from registry/traits.yaml (entries marked node-pool scoped) \u2014 do not edit by hand."
+              },
+              "owners": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]{1,62}$"
+                },
+                "minItems": 1,
+                "description": "Archetypes whose namespaces may tolerate the taint (Gatekeeper P11)."
+              }
+            },
+            "dependentRequired": {
+              "taint": [
+                "owners"
+              ]
+            }
+          }
         }
       }
     }

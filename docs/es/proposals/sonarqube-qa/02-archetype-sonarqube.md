@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · etapa 2 · revisión 1 |
+| **Estado** | Propuesta · etapa 2 · revisión 4 |
 | **Parte de** | [`README.md`](README.md) (etapa 1: elementos y dependencias, cerrada) |
 | **Alcance** | El arquetipo de capa 5 `sonarqube`: estructura en el repositorio, manifiesto, los stacks que lo forman, la plantilla (generador) de cada stack, contratos, ejecución, configuración, políticas, lo que provee y el plan de implementación por fases |
 | **Fuera de alcance** | Las capas 0–4 de `qa` (son de la plataforma; aquí solo aparecen como productores y como requisitos) |
@@ -36,7 +36,7 @@ Fuente: [`diagrams/20-bloques-presentacion.py`](diagrams/20-bloques-presentacion
 | El bucket de backups de PostgreSQL lo crea el **propio arquetipo** (stack `data-tenant`); `object-store` deja de ser una dependencia | AM §5.1: un arquetipo aporta su propio almacén de datos, y destruirlo destruye su almacén. Un bucket de plataforma compartido obligaría a condiciones IAM por prefijo, frágiles con `objects.list` |
 | `sso` pasa a ir **antes** de `app` | La URL de SonarQube es determinista (claim de hostname), así que el cliente SAML puede existir antes que la aplicación. El primer login funciona en cuanto `app` arranca |
 | Nuevo stack `config` | Grupos, plantillas de permisos y quality gate como código. SonarQube guarda esa configuración en BD y no tiene configuración declarativa nativa |
-| El límite de cuerpo de petición deja de ser un recurso del arquetipo | En Envoy Gateway ese límite es una `ClientTrafficPolicy` que se asocia al **Gateway**, que es de la plataforma. Pasa a ser un requisito al arquetipo `gateway` (§9) |
+| El límite de cuerpo de petición deja de ser un recurso del arquetipo | Envoy no limita el cuerpo mientras lo transmite; el límite solo aparecería con filtros que lo almacenan, y el Gateway no los activa (propuesta de Envoy Gateway §2.3). No hace falta ningún recurso, ni aquí ni en el Gateway |
 
 ---
 
@@ -55,7 +55,6 @@ archetypes/sonarqube/                        # definición del arquetipo (versio
 │       ├── externalsecrets.yaml             # stack secrets
 │       ├── cnpg-cluster.yaml                # stack data-tenant
 │       ├── httproute.yaml                   # stack frontdoor
-│       ├── backendtrafficpolicy.yaml        # stack frontdoor
 │       ├── podmonitor.yaml                  # stack observability
 │       ├── prometheusrule.yaml              # stack observability
 │       ├── probe.yaml                       # stack observability (blackbox)
@@ -146,12 +145,12 @@ requires:
     traits: [gateway-api, http-route]
   - capability: secrets
     version: "^2.0.0"
+    traits: [eso]
   - capability: oidc-idp
     version: "^4.2.0"                              # 4.2 añade las salidas SAML (§5.5)
     traits: [saml-idp]
   - capability: database-platform
-    version: "^1.0.0"
-    traits: [cnpg]
+    version: "^2.0.0"                              # sin trait de proveedor: lo decide el entorno
   - capability: monitoring
     version: "^1.5.0"
     traits: [prometheus-operator-crds]
@@ -163,11 +162,15 @@ stacks:
   - name: iam
   - name: secrets
     after: [iam]
+  - name: data
+    condition: "has_trait(database-platform, cloudsql)"   # Cloud SQL, variante §9.3
+    after: [iam, secrets]
   - name: data-tenant
+    condition: "has_trait(database-platform, cnpg)"       # CNPG, §5.3
     after: [iam, secrets]
     creates_tenant_resources: [database-platform]
   - name: firewall
-    after: [data-tenant]
+    after: [data, data-tenant]                     # el resolver descarta el omitido
   - name: sso
     after: [iam]
     creates_tenant_resources: [oidc-idp]
@@ -195,6 +198,7 @@ capacity:
   cpu_millicores: 8000
   memory_mib: 28672
   pvc_gib: 250
+  managed_db_instances: 1                          # camino data
   ingress_routes: 1
   workload_identities: 2
 
@@ -271,7 +275,7 @@ globals "sonarqube" {
   cpu_request_m    = 4000
 
   es_pvc_gib      = 50
-  storage_class   = "hyperdisk-balanced"
+  storage_class   = global.cluster.storage_class   # contrato cluster 2.5.0: standard-rwo en GKE (propuesta de GKE §6)
 
   db_instances    = 2
   db_storage_gib  = 100
@@ -343,7 +347,7 @@ import { source = "/imports/generators/v1/gen_app.tm.hcl" }
 |---|---|
 | **Propósito** | Namespace de la instancia y las cuentas de servicio de Kubernetes. Es el primer stack: todo lo demás vive dentro |
 | **Generador** | `gen_tenant_namespace.tm.hcl` (genérico, cloud-agnóstico salvo la anotación de identidad) |
-| **Recursos** | `kubernetes_namespace` `sonarqube` (etiquetas `archetype`, `instance`, `pod-security.kubernetes.io/enforce: restricted`); KSA `sonarqube`, `eso-sonarqube`, `sonarqube-db`; `LimitRange` por defecto |
+| **Recursos** | `kubernetes_namespace` `sonarqube` (etiquetas `archetype`, `instance`, `pod-security.kubernetes.io/enforce: restricted`, `trust.disasterproject.com/internal-ca: "true"` y `gateway.disasterproject.com/routes: "true"`; anotación `gateway.disasterproject.com/hostnames: sonar.qa.disasterproject.com`); KSA `sonarqube`, `eso-sonarqube`, `sonarqube-db`; `LimitRange` por defecto |
 | **No crea** | Cuentas de servicio GCP. Con Workload Identity directa se concede IAM al principal del KSA en el recurso que lo necesita, en el stack que crea ese recurso |
 | **Entradas** | `cluster_endpoint`, `cluster_ca` (de `gcp-qa-gke`) |
 | **Salidas (CMDB)** | `namespace` |
@@ -358,7 +362,12 @@ generate_hcl "_namespace.tf" {
         name   = global.platform.namespace
         labels = merge(global.labels.namespace, {
           "pod-security.kubernetes.io/enforce" = "restricted"
-        })
+          "trust.disasterproject.com/internal-ca" = "true"      # bundle de internal-ca (cert-manager §4)
+        }, tm_length(global.claims.hostnames) > 0 ? global.ingress.route_namespace_label : {},
+           tm_contains(global.required_capabilities, "event-bus") ? global.event_bus.client_namespace_label : {})
+        annotations = tm_length(global.claims.hostnames) > 0 ? {      # la instancia reclamó al menos un hostname
+          "gateway.disasterproject.com/hostnames" = tm_join(",", global.claims.hostnames)
+        } : {}
       }
     }
     resource "kubernetes_service_account_v1" "ksa" {
@@ -375,6 +384,12 @@ generate_hcl "_namespace.tf" {
 ```
 
 `automount_service_account_token` solo en el KSA de ESO: SonarQube no habla con la API de Kubernetes y no debe tener token montado.
+
+**Etiqueta y anotación del Gateway.** Toda instancia que reclama un hostname recibe en su namespace la etiqueta de `route_namespace_label` (salida del contrato `ingress`, un global) y la anotación con sus hostnames reclamados. Sin la etiqueta, el Gateway ignora la `HTTPRoute` (`allowedRoutes`); sin la anotación, Gatekeeper la rechaza (propuesta de Envoy Gateway §4.1). Ambas salen de la resolución, no del manifiesto: conftest (G1) comprueba que la anotación coincide con los claims de la instancia. La etiqueta `security_policy_label` no se pone: SonarQube no exige `oidc-security-policy`.
+
+**Etiqueta de confianza.** Todo namespace recibe `trust.disasterproject.com/internal-ca: "true"`, y trust-manager deja en él el `ConfigMap` `internal-ca-bundle`. Todo el TLS y el mTLS dentro del cluster usan la misma CA interna; la validación externa es de los balanceadores (propuesta de cert-manager §1, DT10). El bundle solo contiene certificados públicos, así que repartirlo a todos no expone nada.
+
+**Etiqueta de cliente de Kafka.** Si el manifiesto requiere `event-bus`, el namespace recibe `kafka.disasterproject.com/client: "true"` (salida `client_namespace_label` del contrato). Es el selector de la `NetworkPolicy` que Strimzi genera para el listener: sin ella, el cliente no llega al broker (propuesta de Kafka §6.2). SonarQube no la lleva.
 
 ### 5.2 `secrets` — Secret Manager y External Secrets
 
@@ -441,11 +456,11 @@ generate_hcl "_secrets.tf" {
 | **Generador** | `gen_data_tenant_cnpg.tm.hcl`: rama GCP para bucket e IAM, parte común para el `helm_release` |
 | **Recursos GCP** | `google_storage_bucket` `disasterproject-qa-sonarqube-main-pgbackup` (regional, `uniform_bucket_level_access`, `public_access_prevention = "enforced"`, **sin** versionado ni retention lock — E1 §4.9, soft delete 7 días); `google_storage_bucket_iam_member` `objectAdmin` al principal de `sonarqube-db` |
 | **Recursos K8s** | `helm_release` con `database.enabled=true`: `Cluster` CNPG `sonarqube-db` (2 instancias, anti-afinidad por nodo, `bootstrap.initdb` con `secret: sonarqube-db`), backups con el plugin barman-cloud (`ObjectStore` + `ScheduledBackup` diario) **(verificar: API del plugin en la versión de CNPG fijada)** |
-| **Tenant resource** | `Cluster`, `ScheduledBackup` en el propio namespace — requiere que `postgres-operator` los autorice (E1 §4.4) |
-| **Entradas** | `cluster_*`, `workload_identity_pool` (gke); `cnpg_version` (de `gcp-qa-postgres-operator`) |
+| **Tenant resource** | `Cluster`, `ObjectStore`, `ScheduledBackup` y `Backup` en el propio namespace, autorizados por `postgres-operator` (propuesta `postgres-operator-qa` §1) |
+| **Entradas** | `cluster_*`, `workload_identity_pool` (gke). `operator_version` e `image_catalog` llegan como globales del contrato `database-platform`, no por sharing; `after` sigue apuntando a `gcp-qa-postgres-operator` para que los CRDs existan |
 | **Salidas** | `db_rw_service` = `sonarqube-db-rw.sonarqube.svc` · `db_name` = `sonarqube` · `backup_bucket` |
 
-`cnpg_version` entra por sharing para que un `assert` compare la API que usa el chart con la del operador instalado: un chart del arquetipo escrito para una API más nueva que el operador falla en `generate`, no en el apply.
+Un `assert` compara la API que usa el chart con `operator_version`, la versión de CNPG que fija el arquetipo proveedor: un chart del arquetipo escrito para una API más nueva que el operador falla en `generate`, no en el apply. Es un global y no una entrada por sharing porque lo determina la versión del arquetipo enlazado, no el estado del stack (propuesta `postgres-operator-qa` §7.1, DO6).
 
 ```yaml
 # chart/templates/cnpg-cluster.yaml (extracto de valores efectivos)
@@ -454,8 +469,12 @@ kind: Cluster
 metadata: { name: sonarqube-db }
 spec:
   instances: 2
-  imageName: ghcr.io/cloudnative-pg/postgresql:<mayor soportada por SonarQube>   # verificar
-  storage: { size: 100Gi, storageClass: hyperdisk-balanced }
+  imageCatalogRef:                       # catálogo de la plataforma, por digest (postgres-operator-qa §2)
+    apiGroup: postgresql.cnpg.io
+    kind: ClusterImageCatalog
+    name: postgresql                     # global image_catalog
+    major: <mayor soportada por SonarQube>   # verificar
+  storage: { size: 100Gi, storageClass: standard-rwo }   # global storage_class
   resources: { requests: { cpu: "2", memory: 8Gi }, limits: { memory: 8Gi } }
   postgresql:
     parameters:
@@ -480,7 +499,7 @@ Fuente: [`diagrams/15-datos-backup.mmd`](diagrams/15-datos-backup.mmd)
 | **Propósito** | Default-deny de entrada y salida y las excepciones de E1 §4.8 |
 | **Generador** | `gen_helm_stack.tm.hcl` con `firewall.enabled=true` |
 | **Recursos** | `NetworkPolicy` × 7: default-deny; Envoy → 9000; Prometheus → 9000 y 9187; SonarQube → CNPG 5432; CNPG ↔ CNPG; operador CNPG → 8000; DNS; CNPG → Private Google Access 443 |
-| **Selectores** | Por etiqueta de pod y de namespace, nunca por CIDR, salvo el egress a `199.36.153.8/30` (`private.googleapis.com`) **(verificar)** |
+| **Selectores** | Por etiqueta de pod y de namespace, nunca por CIDR, salvo el egress a `199.36.153.8/30` (`private.googleapis.com`), que depende de las zonas DNS privadas de la red (propuesta `network-qa` §4) |
 | **Por qué después de `data-tenant`** | Los selectores de CNPG (`cnpg.io/cluster=sonarqube-db`) existen cuando existe el `Cluster`; aplicar antes no falla, pero el orden deja claro qué protege a qué |
 
 ### 5.5 `sso` — cliente SAML en Keycloak
@@ -567,7 +586,7 @@ Alta de un equipo = app role en Entra ID (equipo de identidad) + una entrada en 
 
 | | |
 |---|---|
-| **Recursos** | `HTTPRoute` `sonarqube` (host `sonar.qa.disasterproject.com`, `parentRefs` al Gateway `qa`); `BackendTrafficPolicy` asociada a la ruta: timeout de petición 120 s |
+| **Recursos** | `HTTPRoute` `sonarqube` (host `sonar.qa.disasterproject.com`, `parentRefs` al Gateway `qa`, sección `https`) con `timeouts.request: 120s` en la regla: canal estándar de Gateway API, sin un kind propio de Envoy (propuesta de Envoy Gateway §2.2, §7.2) |
 | **Lo que no lleva** | **`SecurityPolicy`** (E1 §4.6, R44) — lo impone un `assert` (§7.1) |
 | **Entradas** | Ninguna por sharing: nombre y namespace del Gateway son globals |
 | **Después de `app`** | La ruta apunta a un Service que existe |
@@ -578,7 +597,7 @@ Alta de un equipo = app role en Entra ID (equipo de identidad) + una entrada en 
 |---|---|
 | **Recursos** | `PodMonitor` de SonarQube (cabecera `X-Sonar-Passcode` desde el Secret `sonarqube-passcode`); `PrometheusRule` con las alertas de E1 §4.7; `Probe` del blackbox exporter contra `https://sonar.qa.disasterproject.com/api/system/status`; `ConfigMap` de dashboard con la etiqueta que recoge el sidecar de Grafana |
 | **Entradas** | Ninguna por sharing: `rules_selector` es global |
-| **Alertas del arquetipo** | Disponibilidad, cola del CE, tareas fallidas, heap, OOMKilled, PVC, retraso de réplica, último backup > 26 h, `ExternalSecret` sin sincronizar |
+| **Alertas del arquetipo** | Disponibilidad, cola del CE, tareas fallidas, heap, OOMKilled, PVC, retraso de réplica, último backup > 26 h. La de `ExternalSecret` sin sincronizar es de plataforma (propuesta de ESO §9.2) |
 
 ### 5.10 Tabla de entradas por sharing (lo que G1 compara con `after`)
 
@@ -587,11 +606,10 @@ Alta de un equipo = app role en Entra ID (equipo de identidad) + una entrada en 
 | todos los que usan Kubernetes | `cluster_endpoint` | `gcp-qa-gke` | `mock-endpoint.example.invalid` (sin esquema: GKE) |
 | todos los que usan Kubernetes | `cluster_ca` (sensitive) | `gcp-qa-gke` | `bW9jaw==` |
 | `secrets`, `data-tenant` | `workload_identity_pool` | `gcp-qa-gke` | `mock-project.svc.id.goog` |
-| `data-tenant` | `cnpg_version` | `gcp-qa-postgres-operator` | `"0.0.0"`, que el assert trata como desconocido en preview |
 | `app` | `saml_sso_url` | `gcp-qa-keycloak` | `https://mock-idp.example.invalid/realms/mock/protocol/saml` |
 | `app` | `saml_idp_certificate` | `gcp-qa-keycloak` | certificado PEM de prueba válido, CN `mock-idp` |
 
-El mock de `cnpg_version` rompe la regla del prefijo `mock-` a propósito: el valor debe ser un semver parseable. Queda anotado como excepción en el contrato.
+Todos los mocks llevan el prefijo `mock-` o son de tipo correcto sin excepciones: la antigua entrada `cnpg_version`, que obligaba a un mock semver fuera de la regla, pasó a ser el global `operator_version` (propuesta `postgres-operator-qa` §7.1).
 
 ---
 
@@ -624,7 +642,7 @@ sonarqube:
     requests: { cpu: "4", memory: 12Gi }
     limits: { memory: 12Gi }                    # sin límite de CPU (DG §8.3)
 
-  persistence: { enabled: true, storageClass: hyperdisk-balanced, size: 50Gi }
+  persistence: { enabled: true, storageClass: standard-rwo, size: 50Gi }   # global storage_class
 
   postgresql: { enabled: false }
   jdbcOverwrite:
@@ -729,12 +747,14 @@ assert {
 
 ### 7.4 Gatekeeper (admisión, capa 2b)
 
+El catálogo completo, con el dueño de cada regla, está en la propuesta de Gatekeeper (§4); las reglas del núcleo son P1–P11. Esta tabla solo recoge su efecto sobre SonarQube.
+
 | Constraint | Efecto sobre `sonarqube` |
 |---|---|
-| PSS `restricted` | Rechaza los init containers del chart si alguien los reactiva |
+| PSS `restricted` (Pod Security Admission, etiqueta del namespace) | Rechaza los init containers del chart si alguien los reactiva |
 | Etiquetas obligatorias | Namespace, pods y PVC con `archetype`, `instance`, `app.kubernetes.io/*` |
 | Registros permitidos | Solo Artifact Registry de la landing zone |
-| **Nueva:** `SecurityPolicy` en namespaces de aplicación | Denegada salvo en los namespaces que el arquetipo `gateway` autorice; refuerza R44 en admisión |
+| **Nueva:** `SecurityPolicy` en namespaces de aplicación | Denegada salvo en namespaces con `gateway.disasterproject.com/security-policy: "true"`, que solo lleva quien exige el trait `oidc-security-policy` o `jwt-auth` (propuesta de Envoy Gateway §9.2). `sonarqube` no lo exige; refuerza R44 en admisión |
 | **Nueva:** `ConfigMap` en el namespace de Keycloak | Un tenant solo crea `client-<su instancia>-*` (§5.5) |
 
 ---
@@ -795,9 +815,9 @@ Lo que este arquetipo necesita de otros y que todavía no está especificado:
 |---|---|---|
 | `gcp-qa-gke` | Node pool `sonar` con sysctl y taint (E1 §4.1); salida `workload_identity_pool` | `app`, `secrets`, `data-tenant` |
 | `keycloak` | Reconciliador de clientes por `ConfigMap`; salidas `saml_sso_url` y `saml_idp_certificate`; `oidc-idp` 4.2.0 | `sso`, `app` |
-| `postgres-operator` | Autorizar `Cluster` y `ScheduledBackup` como tenant resources; plugin barman-cloud instalado; salida `cnpg_version` | `data-tenant` |
-| `gateway-envoy-gke` | `ClientTrafficPolicy` del Gateway sin límite de cuerpo inferior a 100 MiB; permitir `BackendTrafficPolicy` en namespaces de aplicación; denegar `SecurityPolicy` fuera de los autorizados | `frontdoor` |
-| `gcp-qa-edge` | Timeout del backend service ≥ 120 s (R45); exclusiones de Cloud Armor en `/api/ce/submit` | Análisis grandes |
+| `postgres-operator` | **Resuelto** en la propuesta `postgres-operator-qa`: `Cluster`, `ObjectStore`, `ScheduledBackup`, `Backup` y `Pooler` como tenant resources en el namespace del consumidor (§1); plugin barman-cloud (§5); `operator_version` como global (§7.1); `ClusterImageCatalog` (§2) | `data-tenant` |
+| `gateway-envoy-gke` | **Resuelto** en la propuesta de Envoy Gateway (`../envoy-gateway-qa/`): sin límite de cuerpo (§2.3); timeout por ruta con `timeouts.request` hasta 120 s y 60 s por defecto en el Gateway (§2.2); `BackendTrafficPolicy` de tenant permitida con límites y `SecurityPolicy` solo en namespaces etiquetados (§9.2) | `frontdoor` |
+| `gcp-qa-edge` | **Resuelto** en la propuesta `edge-qa`: timeout de 120 s (§4); exclusiones de Cloud Armor en `/api/ce/submit` y en `SAMLResponse` de `/oauth2/callback/saml` (§3.2) | Análisis grandes, login |
 | `monitoring-oss` | Selector de reglas `prometheus=qa`; sidecar de dashboards de Grafana; blackbox exporter | `observability` |
 | `secrets-eso-gsm` | ESO instalado con soporte de Workload Identity en `SecretStore` namespaced | `secrets` |
 

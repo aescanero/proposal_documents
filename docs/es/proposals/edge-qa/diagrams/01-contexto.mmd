@@ -1,0 +1,24 @@
+flowchart LR
+    subgraph LZ["Landing zone · capa 0"]
+        direction TB
+        PZ["zona disasterproject.com<br/>NS + DS de qa"]
+        QZ["crea la zona qa.disasterproject.com<br/>en disasterproject-qa · DNSSEC"]
+    end
+    subgraph ENV["environment 3.1.0 · capa 1"]
+        direction TB
+        BASE["edge-base · fase A<br/>IP · wildcard · CAA · certificado<br/>Cloud Armor · política SSL"]
+        LB["edge · fase B<br/>backend service · URL maps<br/>proxies · forwarding rules"]
+        L4["edge-l4 · solo con excepciones<br/>passthrough por exposure"]
+    end
+    subgraph GW["Envoy Gateway · capa 3"]
+        PROXY["stack proxy<br/>crea el NEG eg-qa-neg"]
+    end
+    GKE["gke · stack nodepools<br/>grupos de instancias"]
+    PZ --> QZ --> BASE --> LB
+    BASE --> L4
+    PROXY -. "after + data del NEG<br/>arista ascendente" .-> LB
+    GKE -. "sharing + after" .-> L4
+
+    style LB fill:#e8f0fe
+    style BASE fill:#e8f0fe
+    style L4 fill:#f3f4f6,stroke-dasharray: 5 5

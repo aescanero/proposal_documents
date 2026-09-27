@@ -1,0 +1,20 @@
+flowchart LR
+    CP(["GKE control plane"])
+    subgraph NS["ns gatekeeper-system · exempt from itself"]
+        WH["webhook × 3<br/>10250 · 8888 metrics · 9090 health"]
+        AU["audit<br/>8888 · 9090"]
+    end
+    API["Kubernetes API"]
+    P["Prometheus"]
+    DNS["kube-dns :53"]
+    INET(["Internet"])
+
+    CP -->|"TCP 10250"| WH
+    WH -->|"443"| API
+    AU -->|"443"| API
+    P -->|"8888"| WH
+    P -->|"8888"| AU
+    WH -->|"53"| DNS
+    WH -.-x|"DENIED · no external providers"| INET
+
+    style INET fill:#fce8e6

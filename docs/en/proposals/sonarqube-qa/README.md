@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · stage 1 of N · **stage 1 closed** · revision 12 (aligned with stage 2) |
+| **Status** | Proposal · stage 1 of N · **stage 1 closed** · revision 18 (aligned with stage 2) |
 | **Scope** | What elements a complete `qa` environment needs to run SonarQube Community Build, what each one depends on, and which open source tool covers it |
 | **Out of scope** | Code (generators, contracts, charts), detailed per-pipeline integration, upgrade procedure. Later stages |
 | **Reference specification** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `developer-guide.md` (DG §n), `risk-register.md` |
@@ -124,22 +124,25 @@ Platform tooling unchanged: Terramate, OpenTofu, conftest, Checkov.
 | Element | Proposal | Reason |
 |---|---|---|
 | Cluster | GKE Standard, **regional**, **private nodes**, control-plane endpoint with empty authorized networks by default (§4.13), Workload Identity, `STABLE` release channel, `deletion_protection: true` (§12.6) | Baseline from §5.7 |
+| System logs and metrics | `logging_config`: `SYSTEM_COMPONENTS` only; `monitoring_config`: `SYSTEM_COMPONENTS` and `managed_prometheus.enabled = false` | Workload logs only in Loki and no double metric collection (monitoring proposal §1) |
+| GKE Gateway API | `gateway_api_config { channel = "CHANNEL_DISABLED" }` | The `gateway` archetype installs the CRDs on the standard channel. With GKE's, GKE manages them and pins their version, and the `gke-l7-*` `GatewayClass`es appear, which create load balancers without Cloud Armor (Envoy Gateway proposal §3) |
 | Pods per node | 64 (platform default) | The Autopilot open question does not apply |
 | Node pool `sonar` | 1 **n2-standard-8** node (8 vCPU, 32 GB) in **one zone**, taint `dedicated=sonar:NoSchedule` | Isolates sysctl and memory pressure. Single zone because the PVC is zonal |
+| Node pool `kafka` | 3 × **n2-standard-4** (4 vCPU, 16 GB), one per zone, taint `dedicated=kafka:NoSchedule` | Kafka lives off the OS page cache and spreads its replicas across zones (Kafka proposal §2.1) |
 | Sysctl | `node_config.linux_node_config.sysctls = { "vm.max_map_count" = "524288" }` | Removes the privileged init container |
 | `fs.file-max` | No action: the kernel sizes it from RAM, and at 32 GB it comfortably clears 131072 | Verify in V1 |
-| StorageClass | `hyperdisk-balanced`, `WaitForFirstConsumer`, `allowVolumeExpansion: true` | Configurable IOPS without over-provisioning disk |
+| StorageClass | The `storage_class` global of the `cluster` contract: `standard-rwo` (`pd-balanced`, `WaitForFirstConsumer`, `allowVolumeExpansion: true`) | The N2 series does not support Hyperdisk Balanced; `pd-balanced` gives 3000 baseline IOPS plus 6 per GiB (GKE proposal §6, DN3) |
 | Pipeline access to the control plane | Public control-plane endpoint with **empty authorized networks by default**; the runner's IP is opened and closed per job | Team decision (§4.13); covers R18 |
 
 **Why not Autopilot.** It does not allow configuring node sysctl or privileged containers. A trait **`sysctl-max-map-count`** is proposed on `cluster`: `gke` has it, `gke-autopilot` does not, and a wrong binding fails at resolution rather than on first boot, with `max virtual memory areas vm.max_map_count [65530] is too low`.
 
 **Plan B** if V1 fails: `SONAR_SEARCH_JAVAADDITIONALOPTS=-Dnode.store.allow_mmap=false`, at the cost of ES performance. With 200 projects this would need measuring before being accepted.
 
-**Single zone.** If the zone goes down, SonarQube stays down until it recovers. Accepted for `qa`. The alternative is `hyperdisk-balanced-high-availability` (synchronous replica across two zones) with the node pool spread across those two zones: an RTO of minutes on zone loss, at double the disk cost.
+**Single zone.** If the zone goes down, SonarQube stays down until it recovers. Accepted for `qa`. The alternative is regional `pd-balanced` (`replication-type: regional-pd`, synchronous replica across two zones) with the node pool spread across those two zones: an RTO of minutes on zone loss, at double the disk cost.
 
 ### 4.2 Admission policy (layer 2b)
 
-`qa`: `enforcementAction: deny`, `failurePolicy: Ignore` (§13.7).
+`qa`: `enforcementAction: deny`, `failurePolicy: Ignore` (§13.7). Pod Security is enforced by **Pod Security Admission**, built into the API server, through the namespace label `pod-security.kubernetes.io/enforce: restricted`; Gatekeeper prevents lowering it and adds what PSS does not cover: read-only root, allowed registries by digest and a memory limit (Gatekeeper proposal §3, §4).
 
 ![SonarQube pod](diagrams/08-pod-sonarqube.svg)
 
@@ -152,7 +155,7 @@ Platform tooling unchanged: Terramate, OpenTofu, conftest, Checkov.
 | `readOnlyRootFilesystem` (if a constraint requires it) | `emptyDir` for `temp` and `logs`; verify what else it writes (V2) |
 | Images only from allowed registries | `europe-docker.pkg.dev/<project>/…`, by digest |
 
-If SonarQube cannot run with a read-only root filesystem, the escape hatch is a **name-scoped exemption** for `sonarqube/sonarqube-0`, reviewed in the PR — never relaxing the constraint for the whole of `qa`.
+If SonarQube cannot run with a read-only root filesystem, the escape hatch is an exception by name to rule P3 for the `sonarqube` `StatefulSet`, declared in the manifest's `admission_exceptions` with its justification and review date, and generated by the `exemptions` stack (Gatekeeper proposal §5.1) — never relaxing the rule for the whole of `qa`.
 
 ### 4.3 Secrets
 
@@ -181,13 +184,13 @@ Three pieces, each with a single responsibility:
 - **Only secret names travel over outputs sharing**, never values (§11.6, R8).
 - **Secrets live in the `qa` project**, user-managed replication in `europe-west1`.
 
-**Human and pipeline access.** The pipeline accesses secrets via WIF to **manage** them; reading values is not part of any deployment. Human reads only for SRE, **just-in-time** via Privileged Access Manager (justification, 1-hour maximum, approval from another SRE member). Secret Manager *Data Access audit logs*, with an alert for any `AccessSecretVersion` whose principal is not an ESO KSA.
+**Human and pipeline access.** The pipeline accesses secrets via WIF to **manage** them; reading values is not part of any deployment. Human reads only for SRE, **just-in-time** via Privileged Access Manager (justification, 1-hour maximum, approval from another SRE member). Secret Manager *Data Access audit logs*, with an alert for any `AccessSecretVersion` whose principal is neither an `eso-*` KSA nor on the explicit reader allow-list, reviewed by PR (ESO proposal §9.2; Keycloak's reconciler reads under its own identity).
 
 **Deletion protection.** Deleting a Secret Manager secret is immediate and irreversible. Hence: no pipeline identity other than the destroy one holds `secretmanager.secrets.delete`; `lifecycle { prevent_destroy = true }` on `qa-sonarqube-secret-key`; and deferred version destruction (`version_destroy_ttl`, 30 days) to allow undoing a mistaken rotation.
 
 ### 4.4 Data: PostgreSQL with CloudNativePG
 
-Leaving `database-platform` unbound is `demos`'s decision. In `qa` the proposal is to **bind it** to CloudNativePG, with a **dedicated instance** per consumer:
+**Updated by the `postgres-cloudsql` proposal** ([`../postgres-cloudsql-qa/`](../postgres-cloudsql-qa/README.md)). SonarQube does not choose the engine: the environment's global `database-platform` provider does, and managed services come first. On `qa`, as on `prod`, it is **Cloud SQL**, and SonarQube follows the `data` path of the Cloud SQL variant ([`../sonarqube-qa-cloudsql/`](../sonarqube-qa-cloudsql/README.md)). What follows describes the **CNPG** path (`data-tenant`), which stays supported for clients that choose `postgres-operator`. Within that path, the option is:
 
 | Option | What SonarQube creates | Recommendation |
 |---|---|---|
@@ -204,12 +207,12 @@ Backups to GCS via **Workload Identity**: IAM `roles/storage.objectAdmin` on the
 | Element | Proposal |
 |---|---|
 | Hostname | `sonar.qa.disasterproject.com` — a ledger **claim** even though the DNS record is a wildcard: name uniqueness remains a scarce resource |
-| DNS | Wildcard record `*.qa.disasterproject.com` → global IP, created once by `gcp-qa-edge` |
+| DNS | Wildcard record `*.qa.disasterproject.com` → global IP, created once by `gcp-qa-edge-base` (`edge-qa` proposal §1) |
 | Public TLS | Certificate Manager, wildcard, on the GLB |
 | Internal TLS | GLB → Envoy over HTTPS, certificate from cert-manager's internal CA |
 | Gateway | One per environment, `allowedRoutes.namespaces.from: Selector` (§10.6); standalone NEG `eg-qa-neg` (§10.2, R20) |
 | Backend service timeout | **120 s** (30 s by default): a large project's report upload exceeds it |
-| Envoy | `BackendTrafficPolicy` on the route with a timeout ≥ 120 s. The body-size limit is a `ClientTrafficPolicy` on the **Gateway**: a requirement placed on the `gateway` archetype, not to go below 100 MiB (stage 2 §9) |
+| Envoy | `timeouts.request: 120s` on the `HTTPRoute` (standard channel). No body limit: Envoy does not impose one while streaming (Envoy Gateway proposal §2.2, §2.3) |
 | VPC firewall | GLB health-check ranges (`35.191.0.0/16`, `130.211.0.0/22`) to Envoy's pods — a legitimate `cidr:` selector (AM §6.3) |
 
 Gateway API resources packaged in the chart and deployed with `helm_release`, never `kubernetes_manifest` (R24).
@@ -269,9 +272,9 @@ With 200 projects, permissions **only** via templates: a new project is born wit
 | PostgreSQL | CNPG exporter | Replica lag; connections > 80%; last successful backup > 26 h ago |
 | Logs | Fluent Bit → Loki (GCS) | `ERROR` rate |
 | Certificates | cert-manager | Internal CA or Envoy certificate < 14 days |
-| Secrets | ESO metrics | `ExternalSecret` unsynced > 15 min (a rotated Secret Manager secret not reaching the pod) |
+| Secrets | ESO metrics | `ExternalSecret` unsynced > 15 min (a rotated Secret Manager secret not reaching the pod). **Platform rule** for every namespace, declared by the monitoring archetype (ESO proposal §9.2), not by SonarQube |
 
-Alerts born from **GCP audit logs** do not go through Prometheus: they are log-based alerts from layer 1b (`cloud-observability`). Three of them: a secret read by a principal that is not ESO (§4.3), changes to the authorized networks made outside the intermediate service (§4.13), and any KMS key destroy operation (§4.14). That is why layer 1b is not reduced to zero.
+Alerts born from **GCP audit logs** do not go through Prometheus: they are log-based alerts from layer 1b (`cloud-observability`). Three of them: a secret read by a principal outside the authorised reader list (§4.3), changes to the authorized networks made outside the intermediate service (§4.13), and any KMS key destroy operation (§4.14). That is why layer 1b is not reduced to zero.
 
 `PodMonitor` and `PrometheusRule` go in the archetype's chart (CRD required at plan time, R24); hence the trait **`prometheus-operator-crds`**. Grafana logs in via OIDC to Keycloak, with no cycle.
 
@@ -292,7 +295,7 @@ Default-deny `NetworkPolicy` for ingress and egress in `sonarqube`:
 | All | kube-dns | 53 |
 | SonarQube | Internet | **Denied**; `sonar.updatecenter.activate=false` |
 
-GKE enforces `NetworkPolicy` via Dataplane V2; egress to Google's APIs is expressed either by FQDN (`FQDNNetworkPolicy`) or by the Private Google Access ranges — verify which one the pinned version supports.
+GKE enforces `NetworkPolicy` via Dataplane V2; egress to Google's APIs is expressed as an `ipBlock` to `199.36.153.8/30` (`private.googleapis.com`). It only works because the `qa` network has private DNS zones resolving `*.googleapis.com` and `*.pkg.dev` to that VIP: without them the names resolve to public IPs and the rule blocks them (`network-qa` proposal §4, RW1). `FQDNNetworkPolicy` is kept for destinations outside Google, such as Entra ID.
 
 ### 4.9 Backup and recovery
 
@@ -339,9 +342,10 @@ Confirmed estimate: a median of 50k lines per project, ≈ 10M lines in total, �
 | Resource | Initial value | Basis |
 |---|---|---|
 | Node pool `sonar` | 1 × n2-standard-8 (8 vCPU, 32 GB) | 12 GiB container + page cache for ES |
+| Node pool `kafka` | 3 × n2-standard-4 (4 vCPU, 16 GB), one per zone | 4 GiB heap per broker, 12 GiB limit; the rest is page cache (Kafka proposal §2.1) |
 | SonarQube pod | request 4 vCPU / 12 GiB, limit 12 GiB, **no CPU limit** | With a low `limits.cpu`, the JVMs pick SerialGC and the CE slows down (DG §8.3) |
 | Heaps | web `-Xmx2g`, CE `-Xmx3g`, search `-Xmx3g` | Σ 8 GiB + ≈ 1.5 GiB non-heap + margin = 12 GiB. **Never** heap = limit |
-| ES PVC | 50 GiB `hyperdisk-balanced`, 3000 IOPS | Expandable |
+| ES PVC | 50 GiB `standard-rwo` (`pd-balanced`), ≈ 3300 IOPS | Expandable |
 | PostgreSQL | 2 instances (primary + replica), 2 vCPU / 8 GiB, 100 GiB, `max_connections` 200 | SonarQube's pool ≈ 60 per process |
 | GCS backups | ≈ 2–3× the database size, with 14 days of WAL | — |
 
@@ -421,9 +425,10 @@ What the documentation does **not** say: which stack creates the keys, at what l
 
 | Element | Where | Why |
 |---|---|---|
-| Global external Application LB (backend service, URL map, proxy, forwarding rule) | Stack `gcp-qa-edge`, layer 1, in `disasterproject-qa` | The backend service and Envoy's NEG sit in the same VPC. A global external LB needs no proxy-only subnet |
-| Global IP, Cloud Armor policy, wildcard certificate | Stack `gcp-qa-edge`, layer 1, in `disasterproject-qa` | Must be in the **same project as the LB**. With one project per environment, the `cert`, `waf` and `edge-ip` capabilities are provided by the environment, not the landing zone |
-| `qa.disasterproject.com` zone | In `disasterproject-qa`, delegated from `disasterproject.com` (landing zone project) | The wildcard and the certificate's DNS authorization records are written without any permission on the parent zone |
+| Global external Application LB (backend service, URL map, proxy, forwarding rule) | Stack `gcp-qa-edge`, layer 1, in `disasterproject-qa`, after Envoy's proxy (`edge-qa` proposal §4) | The backend service and Envoy's NEG sit in the same VPC. A global external LB needs no proxy-only subnet |
+| Global IP, Cloud Armor policy, wildcard certificate | Stack `gcp-qa-edge-base`, layer 1, in `disasterproject-qa`, in phase A: the certificate is active before the Gateway (`edge-qa` proposal DL1) | Must be in the **same project as the LB**. With one project per environment, the `cert`, `waf` and `edge-ip` capabilities are provided by the environment, not the landing zone |
+| `qa.disasterproject.com` zone | In `disasterproject-qa`, **created by the landing zone** together with the delegation from `disasterproject.com` and the DNSSEC `DS`; the environment writes the records with `dns.admin` on that zone | So layer 0 reads no name servers from layer 1, and zone, delegation and `DS` cannot drift apart (`edge-qa` proposal DL2) |
+| Private `qa.internal` zone | A **private** Cloud DNS zone in `disasterproject-qa`, bound only to `qa`'s VPC; the network stack creates it and each archetype writes its records under `<namespace>.qa.internal` | Names for VPC clients outside the cluster (Kafka proposal §6.3). `.internal` is reserved for private use: it does not resolve outside the VPC, nor through the hub peering unless deliberately bound there |
 | KMS, Artifact Registry, GitHub WIF | Landing zone project | Cross-project grants: `disasterproject-qa`'s GKE agent on the `gke-secrets` key; the node SA reading the registry; pipeline identities via WIF |
 | GKE control plane | Public endpoint with empty authorized networks; private nodes in `qa`'s VPC | Pipeline access per §4.13 |
 | Egress | `qa`'s Cloud NAT | Keycloak → Entra ID; Cloud Armor and the LB don't use it |
@@ -447,7 +452,7 @@ Addressing: a `/17` from the permanent block `10.4.0.0/14`, assigned by resoluti
 | Region | `europe-west1` | Context (§0) |
 | KMS | Regional `qa` key ring in the landing zone project, no capability, protected from destruction | §4.14 |
 | Project | `disasterproject-qa`, one per environment | §0, §4.15 |
-| Org policies | No SA keys, region confined, no public IPs on nodes | §11.7 |
+| Org policies | No SA keys, region confined, no public IPs on nodes, no `default` network (`compute.skipDefaultNetworkCreation`), peerings only towards `servicenetworking` (`compute.restrictVpcPeering`) | §11.7; `network-qa` proposal §2 and §5 |
 
 ---
 
@@ -460,8 +465,8 @@ Since the environment is new, deploying SonarQube means deploying the entire pla
 | Phase | Stacks | Blocked by |
 |---|---|---|
 | **0** | Throwaway repository, `CLAUDE.md` checks | Nothing. Must happen first |
-| **A** | Landing zone, network, GKE | Phase 0 |
-| **B** | Gatekeeper, cert-manager, monitoring, ESO, buckets, CNPG, Keycloak, Gateway, edge | A |
+| **A** | Landing zone (with the public zone), network, edge base (`gcp-qa-edge-base`), GKE | Phase 0 |
+| **B** | Gatekeeper, cert-manager, monitoring, ESO, buckets, CNPG, Keycloak, Gateway, edge load balancer (`gcp-qa-edge`) | A |
 | **C** | The 9 stacks of `gcp-qa-sonarqube-main` (stage 2 §5) | B; V1–V3 |
 
 New edges introduced by SonarQube (each with its `after`, R2):
@@ -470,7 +475,7 @@ New edges introduced by SonarQube (each with its `after`, R2):
 |---|---|---|---|
 | `…-iam` | `gcp-qa-gke` | `workload_identity_pool` | outputs sharing |
 | `…-secrets` | `gcp-qa-secrets` | ESO's namespace and CRD version | global |
-| `…-data-tenant` | `gcp-qa-postgres-operator` | Operator version | outputs sharing |
+| `…-data-tenant` | `gcp-qa-postgres-operator` | Operator version (`operator_version`, `postgres-operator-qa` proposal §7.1) | global |
 | `…-frontdoor` | `gcp-qa-gateway` | `Gateway` name and namespace | global |
 | `…-sso` | `gcp-qa-keycloak` | Realm, SAML metadata URL | outputs sharing |
 | `…-observability` | `gcp-qa-monitoring` | Rule selector | global |
@@ -575,23 +580,49 @@ platform:
   landing_zone: disasterproject-gcp-lz
   project_id: disasterproject-qa
 bindings:
-  network:             { archetype: environment, version: 2.1.0,          stack_id: gcp-qa-network }
-  cluster:             { archetype: gke, version: 2.4.0,                  stack_id: gcp-qa-gke }
+  network:             { archetype: environment, version: 3.0.0,          stack_id: gcp-qa-network }
+  cluster:             { archetype: gke, version: 2.5.0,                  stack_id: gcp-qa-gke }
   cloud-observability: { archetype: cloud-monitoring-gcp, version: 1.2.0, stack_id: gcp-qa-cloudmon }
   policy:              { archetype: policy-gatekeeper, version: 1.0.0,    stack_id: gcp-qa-policy }
   ingress:             { archetype: gateway-envoy-gke, version: 3.1.0,    stack_id: gcp-qa-gateway }
   certs:               { archetype: cert-manager, version: 1.0.4,         stack_id: gcp-qa-certs }
   secrets:             { archetype: secrets-eso-gsm, version: 0.1.0,      stack_id: gcp-qa-secrets }
   monitoring:          { archetype: monitoring-oss, version: 0.1.0,       stack_id: gcp-qa-monitoring }
-  database-platform:   { archetype: postgres-operator, version: 0.1.0,    stack_id: gcp-qa-postgres-operator }  # YES in qa
+  database-platform:   { archetype: postgres-cloudsql, version: 0.1.0,    stack_id: gcp-qa-postgres-cloudsql }  # default provider: managed first
   oidc-idp:            { archetype: keycloak, version: 4.1.0,             stack_id: gcp-qa-keycloak }
+  event-bus:           { archetype: kafka, version: 2.1.0,                stack_id: gcp-qa-kafka }   # internal bus, never outside the VPC
   # dns: not bound — wildcard on env-edge
 network:
   cidr: 10.4.128.0/17               # AM §9.2 example; assigned by the ledger
   dns_zone: qa-disasterproject-com
   dns_suffix: qa.disasterproject.com
 cluster:
+  max_nodes: 32                     # ceiling, not size: 13 nodes + surge (GKE proposal §5.3)
   max_pods_per_node: 64
+  node_pools:                       # the environment's, not the archetypes' (GKE proposal §5.3)
+    - name: general
+      machine_type: n2-standard-8
+      zones: [europe-west1-b, europe-west1-c, europe-west1-d]
+      autoscaling: { min_per_zone: 1, max_per_zone: 3 }
+    - name: sonar
+      machine_type: n2-standard-8
+      zones: [europe-west1-b]
+      autoscaling: { min_per_zone: 1, max_per_zone: 1 }
+      taint: dedicated=sonar:NoSchedule
+      sysctls: { vm.max_map_count: "524288" }
+      traits: [sysctl-max-map-count]
+      owners: [sonarqube]
+    - name: kafka
+      machine_type: n2-standard-4
+      zones: [europe-west1-b, europe-west1-c, europe-west1-d]
+      autoscaling: { min_per_zone: 1, max_per_zone: 1 }
+      taint: dedicated=kafka:NoSchedule
+      owners: [kafka]
+capacity:                           # qa is dedicated: computed and published, not enforced (Kafka proposal §5)
+  kafka_topics: 200
+  kafka_partitions: 1000
+  kafka_storage_gib: 450
+  kafka_throughput_mibs: 60
 policy:
   gatekeeper_enforcement: deny
   gatekeeper_failure_policy: Ignore
@@ -616,7 +647,7 @@ Added to `registry/traits.yaml`, with the `enum` in `schemas/archetype-manifest.
 | # | Decision | Status | Recommendation | Alternative |
 |---|---|---|---|---|
 | D1 | Secrets backend | **Closed** | ESO + Secret Manager; OpenBao out of `qa` | — |
-| D2 | PostgreSQL | **Closed** | Its own CNPG `Cluster` | Cloud SQL |
+| D2 | PostgreSQL | **Closed** (`postgres-cloudsql` proposal) | Decided by the environment's global provider: Cloud SQL on `qa` and `prod`; with CNPG, its own `Cluster` | — |
 | D3 | Exposure | **Closed** | Public behind the GLB + Cloud Armor, no IP filtering; auth done by SonarQube | — |
 | D4 | Human authentication | **Closed** | SAML from Keycloak, brokering OIDC to Entra ID; groups via app roles | Direct SonarQube ↔ Entra ID SAML: fewer moving parts, but breaks `qa` realm consistency |
 | D5 | Runtime | **Closed** | GKE Standard | — (Autopilot lacks the sysctl) |

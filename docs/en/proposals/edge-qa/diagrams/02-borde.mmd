@@ -1,0 +1,19 @@
+flowchart LR
+    U(("client"))
+    DNS["*.qa.disasterproject.com<br/>A → qa-edge-ip"]
+    subgraph GLB["Global external Application LB · EXTERNAL_MANAGED"]
+        direction TB
+        FR80["forwarding rule :80<br/>URL map qa-redirect · 301"]
+        FR443["forwarding rule :443<br/>certificate map · SSL MODERN"]
+        CA["Cloud Armor qa-edge<br/>host · CRS · per-IP limit"]
+        BS["backend service qa-envoy<br/>HTTPS · 120 s · 60 s draining<br/>HSTS"]
+    end
+    subgraph QA["VPC qa"]
+        NEG["eg-qa-neg<br/>one per zone b · c · d"]
+        ENV["Envoy :8443<br/>routes by host"]
+        APPS["SonarQube · Keycloak · Grafana"]
+    end
+    U --> DNS --> FR443 --> CA --> BS --> NEG --> ENV --> APPS
+    U -. "http" .-> FR80
+
+    style CA fill:#fff5e6

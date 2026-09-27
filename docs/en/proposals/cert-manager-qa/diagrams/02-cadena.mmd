@@ -1,0 +1,21 @@
+flowchart TB
+    SS["Issuer SelfSigned<br/>bootstrap only"] --> ROOT["Certificate internal-ca-root<br/>isCA · ECDSA P-384 · 10 years<br/>rotationPolicy: Never"]
+    ROOT --> RS[("Secret internal-ca-root<br/>ns cert-manager<br/>etcd encrypted with KMS")]
+    RS --> CI["ClusterIssuer internal-ca<br/>CA type"]
+
+    subgraph TEN["A consumer namespace"]
+        C["Certificate<br/>90 days · renewal at 60<br/>ECDSA P-256"] --> CR["CertificateRequest"]
+        TS[("Secret &lt;name&gt;-tls")]
+    end
+
+    CR --> AP{"approver-policy<br/>SANs of its own namespace?"}
+    AP -->|"approved"| CI
+    AP -->|"denied"| DEN["Denied · the Certificate<br/>never becomes Ready"]
+    CI -->|"signs"| TS
+
+    RS --> TM["trust-manager<br/>Bundle internal-ca-bundle"]
+    TM --> CMAP["ConfigMap internal-ca-bundle<br/>in every namespace with the label<br/>trust.disasterproject.com/internal-ca"]
+
+    style ROOT fill:#fff4e5
+    style DEN fill:#fce8e6
+    style AP fill:#e8f0fe

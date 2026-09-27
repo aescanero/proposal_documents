@@ -66,12 +66,16 @@ Rules that follow from "kept in sync", not just "translated once":
 | **Each environment is a VPC/VNet**, a `/17` (or `/16` for production) from `10.0.0.0/8` | |
 | **Environments: `prod`, `qa`, `dev`, `demos`, `ephemeral-*`** | Normalised naming. Older drafts used `shared-demo`/`pre`/`prd` — those names are dead |
 | **`demos` is a shared environment** | Not ephemeral-per-demo. Kafka as a common bus argues for it |
-| **Data is NOT shared in `demos`** | `database-platform` is deliberately **unbound** there. Ten demos get ten managed instances. Isolation, not cost, is the criterion |
+| **Data is NOT shared in `demos`** | `database-platform` is bound to `postgres-cloudsql`, the managed provider, so each demo gets its own managed instance. Ten demos get ten managed instances. Isolation, not cost, is the criterion. It used to be left unbound for the same effect; the global-provider model made it an explicit binding |
+| **Managed services first; the strategy stays agnostic** | Where a managed service is equivalent, it is the default provider; the operator-based alternative is kept and supported, because some clients will want one and some the other. On GCP, production PostgreSQL is Cloud SQL, and `qa` mirrors production |
+| **A capability's provider is global per environment** | One provider per capability per environment, chosen in the binding (AM §2) — resolution stays a lookup. No per-consumer selection: it breaks environment parity and doubles the operations. A temporary per-instance override for migrating between providers is described, not built (`postgres-cloudsql` proposal) |
+| **`database-platform` has two maintained providers** | `postgres-cloudsql` (default, managed) and `postgres-operator` (CloudNativePG). A consumer carries both paths, `data` and `data-tenant`, selected by the provider's trait (`cloudsql` or `cnpg`). Either way each consumer gets its own instance: data are never shared |
 | **64 pods per node** (platform default) | Assumes ≥32 GB nodes. Gives `/25` per node, 128 nodes in a `/18` pod half. **Immutable after cluster creation** |
 | **Layer 2b for policy** | Admission control must precede everything it governs, including layer 3 services. Cluster-scoped, not a named service. Precedent: layer 1b for cloud monitoring |
 | **No Gatekeeper mutation** | The generator emits labels; Gatekeeper validates them. One writer, one validator. Mutation would make changes invisible in Terraform diffs and split ownership of the label list |
 | **East-west traffic resolves by DNS** | So addresses need not be reproducible across rebuilds. What IS required is **idempotency**: allocation key is `(pool, owner, purpose)` |
 | **Firewall rules are written by whoever claims the range** | Prefer workload selectors (network tags, security group references) over CIDR for east-west |
+| **A runtime creates its own subnets** | Node subnets, pod ranges and control-plane subnets are the runtime's claims (AM §9.5), so its archetype creates them in a first `*-subnets` stack. `network` publishes the VPC/VNet, egress and routing, and knows no runtime. Claim owner = creator = firewall writer; rebuilding a cluster never touches the network; the EKS subnet-tagging cycle cannot arise. Applied to the GKE, EKS and AKS guides (architecture §5.2, §6.2, §9.2) |
 | **Kafka is an archetype, not a component** | It deploys an operator and imposes a multi-tenant contract. Common bus, separated data |
 | **Neo4j, MongoDB are components** | Dedicated instances with no contract to anyone else |
 
@@ -110,7 +114,7 @@ These are the failure modes that have already been identified. Do not rediscover
 
 **GKE endpoint has no scheme; EKS endpoint includes `https://`.** Classic copy-paste bug between guides.
 
-**Deterministic naming breaks dependency cycles.** The EKS subnet-tagging cycle (network needs the cluster name, cluster needs the subnets) is solved by promoting `cluster_name` to a global. When outputs sharing appears to need a cycle, this is the remedy.
+**Deterministic naming breaks dependency cycles.** The EKS subnet-tagging cycle (network needs the cluster name, cluster needs the subnets) arose while the network owned the cluster's subnets; with the runtime owning them it cannot arise, and `cluster_name` stays a global so the runtime's stacks agree on it. When outputs sharing appears to need a cycle, a deterministic global is still the remedy.
 
 **Outputs sharing models 1-to-N, not N-to-1.** `input` blocks cannot be generated from a dynamic list. Gateway API removes the fan-in problem entirely, which is why it is the target design and the URL-map remedy is only a fallback.
 

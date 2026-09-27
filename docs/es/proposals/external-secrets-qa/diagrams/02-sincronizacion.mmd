@@ -1,0 +1,21 @@
+sequenceDiagram
+    autonumber
+    participant ES as ExternalSecret sonarqube-db
+    participant C as Controlador ESO
+    participant K as API de Kubernetes
+    participant STS as STS de Google
+    participant SM as Secret Manager
+    participant L as Audit logs
+
+    Note over ES,C: cada 15 min, o al instante con force-sync
+    ES->>C: reconciliar
+    C->>K: TokenRequest para KSA eso-sonarqube<br/>(audiencia: pool de Workload Identity)
+    K-->>C: token de KSA de vida corta
+    C->>STS: intercambio de token
+    STS-->>C: token federado<br/>principal …/ns/sonarqube/sa/eso-sonarqube
+    C->>SM: AccessSecretVersion qa-sonarqube-db/latest
+    Note over SM: IAM: secretAccessor sobre ESTE secreto<br/>para ESTE principal
+    SM-->>C: valor
+    SM->>L: registro de acceso con el principal
+    C->>K: crea o actualiza Secret sonarqube-db<br/>(ownerReference al ExternalSecret)
+    C-->>ES: status Ready · SecretSynced

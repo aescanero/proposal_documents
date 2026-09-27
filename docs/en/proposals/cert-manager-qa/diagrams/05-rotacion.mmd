@@ -1,0 +1,21 @@
+flowchart TB
+    subgraph LEAF["Leaf certificate · automatic"]
+        direction LR
+        L1["day 60 of 90<br/>cert-manager renews<br/>new key"] --> L2["Secret updated"] --> L3{"does the consumer<br/>reload?"}
+        L3 -->|"Envoy (SDS), webhooks,<br/>Keycloak (periodic reload)"| L4["no intervention"]
+        L3 -->|"reads at startup"| L5["restart in the<br/>consumer procedure"]
+    end
+
+    subgraph ROOT["CA root · planned, every 10 years or if compromised"]
+        direction LR
+        R1["1 · new root<br/>internal-ca-root-2"] --> R2["2 · Bundle with BOTH roots<br/>trust-manager distributes it"]
+        R2 --> R3["3 · ClusterIssuer points to the new one<br/>all leaves re-issued"]
+        R3 --> R4["4 · Bundle with the new one only<br/>once no leaf uses the old"]
+    end
+
+    MON["Alerts (in monitoring)<br/>leaf not Ready 15 min · leaf < 14 days<br/>root < 365 days · SERVED certificate < 14 days"]
+    MON -.-> LEAF
+    MON -.-> ROOT
+
+    style ROOT fill:#fff4e5
+    style MON fill:#f5f5f5

@@ -2,7 +2,7 @@ flowchart TB
     subgraph PLAT["Productores de plataforma (qa)"]
         GKE["gcp-qa-gke<br/>endpoint · CA · WI pool"]
         KC["gcp-qa-keycloak<br/>saml_sso_url · saml_idp_certificate"]
-        PGO["gcp-qa-postgres-operator<br/>cnpg_version"]
+        PGO["gcp-qa-postgres-operator<br/>(global: operator_version)"]
         GW["gcp-qa-gateway<br/>(globals: nombre, namespace)"]
         MON["gcp-qa-monitoring<br/>(global: rules_selector)"]
     end
@@ -15,7 +15,7 @@ flowchart TB
         SSO["sso<br/>ConfigMap client-sonarqube-main-*"]
         APP["app<br/>helm_release sonarqube"]
         CFG["config<br/>Job: grupos · permisos · gate"]
-        FD["frontdoor<br/>HTTPRoute · BackendTrafficPolicy"]
+        FD["frontdoor<br/>HTTPRoute · timeouts.request 120 s"]
         OBS["observability<br/>PodMonitor · reglas · Probe · dashboard"]
     end
 
@@ -30,7 +30,7 @@ flowchart TB
     GKE -. "sharing + after" .-> IAM
     GKE -.-> SEC
     GKE -.-> DATA
-    PGO -. "sharing + after" .-> DATA
+    PGO -. "after + global" .-> DATA
     KC -. "sharing + after" .-> APP
     GW -. "global" .-> FD
     MON -. "global" .-> OBS

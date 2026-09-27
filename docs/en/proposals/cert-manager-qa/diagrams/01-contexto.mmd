@@ -1,0 +1,40 @@
+flowchart LR
+    subgraph EDGE["Layer 1 · capability cert (NOT this proposal)"]
+        CM["Certificate Manager<br/>*.qa.disasterproject.com<br/>public certificate on the GLB"]
+    end
+
+    subgraph L3["Layer 3 · capability certs · gcp-qa-certs"]
+        direction TB
+        CA["Internal CA<br/>ClusterIssuer internal-ca"]
+        AP["approver-policy<br/>each namespace, its own names"]
+        TM["trust-manager<br/>Bundle internal-ca-bundle"]
+        CI["cainjector"]
+    end
+
+    subgraph CONS["Consumers"]
+        direction TB
+        GW["Envoy · backend certificate<br/>presented to the GLB"]
+        KC["Keycloak · pod TLS<br/>keycloak-service.keycloak.svc"]
+        WH["ESO and prometheus-operator<br/>webhooks"]
+    end
+
+    subgraph TRUST["Trust the CA (Bundle ConfigMap)"]
+        direction TB
+        E2["Envoy → Keycloak<br/>BackendTLSPolicy"]
+        G2["Grafana → Keycloak"]
+        B2["blackbox http_2xx_internal_ca"]
+        R2["reconciler → Keycloak"]
+    end
+
+    GK["Gatekeeper (layer 2b)<br/>its own rotator:<br/>it comes before cert-manager"]
+
+    CA --> GW
+    CA --> KC
+    CA --> WH
+    AP -. "approves or denies" .-> CA
+    CI -. "injects caBundle" .-> WH
+    TM --> TRUST
+
+    style EDGE fill:#f5f5f5,stroke-dasharray: 5 5
+    style L3 fill:#e8f0fe
+    style GK fill:#f5f5f5

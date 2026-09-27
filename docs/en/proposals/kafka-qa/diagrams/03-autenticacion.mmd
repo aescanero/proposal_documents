@@ -1,0 +1,19 @@
+sequenceDiagram
+    autonumber
+    participant SS as Consumer secrets stack
+    participant SM as Secret Manager
+    participant ESO as ESO (ns kafka, eso-kafka)
+    participant UO as User Operator
+    participant C as Client (ns orders or VPC)
+    participant K as Kafka broker
+
+    SS->>SM: qa-orders-kafka-events, generated write-only value
+    SS->>SM: secretAccessor for eso-kafka and for the client's identity
+    ESO->>SM: reads with Workload Identity
+    ESO-->>UO: Secret orders-events in ns kafka
+    UO->>K: SCRAM credential, ACLs and quotas of KafkaUser orders-events
+    C->>SM: reads the password under its own identity (own ESO or service account)
+    C->>K: TLS to 9093 or 3210x, validates the broker with internal-ca-bundle
+    C->>K: SASL SCRAM-SHA-512 as orders-events
+    Note over K: principal User:orders-events, ACLs only on orders-*
+    K-->>C: produces and consumes on orders-*

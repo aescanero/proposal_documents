@@ -1,0 +1,26 @@
+flowchart TB
+    subgraph R["ns monitoring · PSS restricted"]
+        direction LR
+        OP["operador"]
+        P["Prometheus"]
+        A["Alertmanager"]
+        K["kube-state-metrics"]
+        B["blackbox"]
+        L["Loki"]
+        G["Grafana"]
+    end
+
+    subgraph PRIV["ns monitoring-agents · PSS privileged"]
+        direction LR
+        NE["node-exporter<br/>hostPID · hostNetwork<br/>/proc y /sys solo lectura"]
+        FB["Fluent Bit<br/>/var/log solo lectura<br/>/var/lib/fluent-bit escritura"]
+    end
+
+    GK{{"Gatekeeper · excepción acotada<br/>solo este namespace · solo estas imágenes por digest<br/>sin privileged: true · hostPath de una lista cerrada"}}
+    GK -.-> PRIV
+
+    CL["cluster: gke<br/>traits daemonset-privileged, hostpath"]
+    CL -.-> PRIV
+
+    style PRIV fill:#fff4e5
+    style R fill:#e8f5e9

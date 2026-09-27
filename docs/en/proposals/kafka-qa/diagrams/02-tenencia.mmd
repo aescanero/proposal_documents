@@ -1,0 +1,29 @@
+flowchart LR
+    subgraph ANS["ns orders · instance orders"]
+        MS["messaging stack<br/>creates_tenant_resources: event-bus"]
+        CERT["secrets stack<br/>qa-orders-kafka-events in Secret Manager<br/>write-only · accessor for eso-kafka"]
+    end
+
+    subgraph KNS["ns kafka"]
+        T["KafkaTopic orders-events<br/>≤ 12 partitions · replication 3<br/>retention.bytes mandatory"]
+        U["KafkaUser orders-events<br/>scram-sha-512 · password.valueFrom"]
+        ES["ExternalSecret orders-events<br/>SecretStore gsm"]
+        ACL["Generated ACLs<br/>topic and group with prefix orders-"]
+        Q["Generated quotas<br/>1 MiB/s produce · 2 MiB/s consume"]
+    end
+
+    GK{"Gatekeeper<br/>prefix · topicName · ACLs · quotas"}
+    G1{"G1<br/>ledger · budgets · the instance's secret"}
+
+    MS --> T
+    MS --> U
+    CERT -. "remoteRef" .-> ES
+    MS --> ES
+    ES -->|"Secret"| U
+    U --- ACL
+    U --- Q
+    G1 -. "in the PR" .-> MS
+    GK -. "at admission" .-> T
+    GK -. "at admission" .-> U
+
+    style KNS fill:#e8f0fe

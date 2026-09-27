@@ -1,0 +1,36 @@
+flowchart LR
+    PIPE["Pipeline · tf-apply-qa@<br/>each archetype's secrets stack"]
+
+    subgraph TEN["ns &lt;tenant&gt; · e.g. sonarqube, keycloak"]
+        direction TB
+        SS["SecretStore gcpsm<br/>serviceAccountRef: eso-&lt;arquetipo&gt;"]
+        ES["ExternalSecret<br/>one per secret"]
+        S["Kubernetes Secret"]
+        POD["Consumer pod"]
+        ES --> S --> POD
+    end
+
+    subgraph ESO["ns external-secrets · gcp-qa-secrets (layer 3)"]
+        direction TB
+        WH["webhook × 2<br/>cert-manager certificate"]
+        CTRL["controller × 2<br/>leader election<br/><b>no GCP identity of its own</b>"]
+    end
+
+    subgraph GCP["disasterproject-qa"]
+        direction TB
+        STS["STS · Workload Identity"]
+        SM[("Secret Manager<br/>qa-&lt;arquetipo&gt;-*<br/>per-secret IAM")]
+        AUD[("Data Access audit logs")]
+        SM --> AUD
+    end
+
+    PIPE -->|"containers + IAM"| SM
+    PIPE -->|"SecretStore + ExternalSecret"| TEN
+    TEN -. "admission" .-> WH
+    ES -->|"reconcile"| CTRL
+    CTRL -->|"eso-* KSA token"| STS
+    CTRL -->|"AccessSecretVersion<br/>as the tenant"| SM
+    CTRL -->|"writes"| S
+
+    style CTRL fill:#e8f0fe
+    style SM fill:#fff4e5

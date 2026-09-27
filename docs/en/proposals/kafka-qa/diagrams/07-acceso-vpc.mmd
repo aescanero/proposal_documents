@@ -1,0 +1,22 @@
+flowchart LR
+    subgraph VPC["qa's VPC"]
+        direction LR
+        VM["VM or Cloud Run<br/>with direct VPC egress<br/>zone:infra · purpose:serverless-egress"]
+        DNS["Private zone qa.internal<br/>broker-n.kafka.qa.internal"]
+        ILB["Internal passthrough NLB<br/>IP from the node subnet<br/>no global access"]
+        subgraph GKE["cluster · kafka node pool"]
+            NP["nodePort 32100–32103<br/>externalTrafficPolicy Local"]
+            BR["brokers · vpc listener<br/>internal-ca certificate<br/>SCRAM-SHA-512"]
+        end
+        SM["Secret Manager<br/>qa-inst-kafka-purpose"]
+    end
+    OUT(["Hub peering · VPN ·<br/>Interconnect · Internet"])
+
+    VM -->|"resolves"| DNS
+    VM -->|"TLS + SCRAM"| ILB
+    ILB --> NP --> BR
+    VM -. "reads its password<br/>under its own identity" .-> SM
+    OUT -.-x|"firewall: pool sources only"| ILB
+
+    style OUT fill:#fce8e6
+    style VPC fill:#e8f0fe

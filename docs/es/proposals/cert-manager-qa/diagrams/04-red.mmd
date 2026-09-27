@@ -1,0 +1,26 @@
+flowchart LR
+    CP(["Plano de control de GKE"])
+    subgraph NS["ns cert-manager · default-deny ingress + egress"]
+        CTRL["controlador<br/>9402 métricas"]
+        WH["webhook<br/>10250"]
+        CAI["cainjector"]
+        AP["approver-policy<br/>webhook 10250"]
+        TM["trust-manager<br/>webhook 10250"]
+    end
+    P["Prometheus"]
+    API["API de Kubernetes"]
+    DNS["kube-dns :53"]
+    INET(["Internet"])
+
+    CP -->|"TCP 10250"| WH
+    CP -->|"TCP 10250"| AP
+    CP -->|"TCP 10250"| TM
+    P -->|"TCP 9402 y métricas"| CTRL
+    CTRL -->|"TCP 443"| API
+    CAI -->|"TCP 443"| API
+    AP -->|"TCP 443"| API
+    TM -->|"TCP 443"| API
+    CTRL -->|"53"| DNS
+    CTRL -.-x|"DENEGADO · sin ACME"| INET
+
+    style INET fill:#fce8e6

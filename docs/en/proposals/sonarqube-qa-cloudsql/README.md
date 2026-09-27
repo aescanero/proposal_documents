@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 2 · **variant** of [`../sonarqube-qa/`](../sonarqube-qa/README.md) |
+| **Status** | Proposal · revision 3 · **the `qa` path**: the global `database-platform` provider is `postgres-cloudsql` ([`../postgres-cloudsql-qa/`](../postgres-cloudsql-qa/README.md)). The CNPG base ([`../sonarqube-qa/`](../sonarqube-qa/README.md)) is the path for clients that choose `postgres-operator` |
 | **Scope** | Replace SonarQube's CloudNativePG `Cluster` with a dedicated **Cloud SQL for PostgreSQL** instance: model, instance, connectivity, identity, secrets, network, backup, observability, stacks, policies, execution and plan |
 | **Base** | Stage 1 [`README.md`](../sonarqube-qa/README.md) (S1 §n) and stage 2 [`02-archetype-sonarqube.md`](../sonarqube-qa/02-archetype-sonarqube.md) (S2 §n). **Anything this document does not mention stays as in the base** |
 | **Reference specification** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `developer-guide.md` (DG §n), `risk-register.md` |
@@ -21,7 +21,7 @@ Nothing in this document reopens a `CLAUDE.md` decision. It does reopen **D2** o
 
 | Changes | Does not change |
 |---|---|
-| `qa` binding: `database-platform` **unbound**, as in `demos` (AM §7) | Runtime, `sonar` node pool, sysctl, PSS `restricted` (S1 §4.1–4.2) |
+| `qa` binding: `database-platform` → `postgres-cloudsql`, the global provider, as in `demos` (AM §7) | Runtime, `sonar` node pool, sysctl, PSS `restricted` (S1 §4.1–4.2) |
 | `data-tenant` stack (CNPG) → `data` stack (Cloud SQL), generator `gen_data.tm.hcl` GCP branch | SAML authentication, Keycloak as Entra ID broker (S1 §4.6) |
 | SonarQube pod: **Cloud SQL Auth Proxy** sidecar; JDBC to `127.0.0.1` | Publishing, Gateway, GLB, Cloud Armor (S1 §4.5) |
 | The version of secret `qa-sonarqube-db` is written by `data`, not `secrets` (§5) | Other secrets and their ESO + Secret Manager model (S1 §4.3) |
@@ -59,13 +59,13 @@ Nothing in this document reopens a `CLAUDE.md` decision. It does reopen **D2** o
 | Resolution step (AM §12) | Result in `qa` |
 |---|---|
 | 4 · bind capability → provider | `database-platform` has **no provider**. It is `optional`: warning, not error |
-| 9 · evaluate stack conditions | `!resolved(database-platform)` is true: `data` is generated, `data-tenant` is **skipped** |
+| 9 · evaluate stack conditions | `has_trait(database-platform, cloudsql)` is true: `data` is generated, `data-tenant` is **skipped** |
 | 12 · claims | **None new.** The Cloud SQL IP comes from the PSA range, which the environment claims in zone `data`; a database inside that range is not a CIDR claim (AM §9.3) |
 | 14 · capacity | `managed_db_instances: 1`. Budgets are not applied in a dedicated environment (S1 §0); it is declared so the same manifest works in a shared environment |
 
 ### 2.2 Keycloak takes the same path — by design, not by choice
 
-The binding decides **per environment**, not per archetype: there is exactly one provider per capability and environment (AM §7). If `qa` leaves `database-platform` unbound, **every** archetype with the pair of conditional stacks takes the dedicated path. Keycloak has it (AM §5.1: *"data — its own Cloud SQL instance"*), so in `qa` Keycloak also gets its own Cloud SQL, and `gcp-qa-postgres-operator` is **not deployed**: no consumer remains.
+The binding decides **per environment**, not per archetype: there is exactly one provider per capability and environment (AM §7). If `qa` binds `database-platform` to `postgres-cloudsql`, **every** archetype with the pair of conditional stacks takes the dedicated path. Keycloak has it (AM §5.1: *"data — its own Cloud SQL instance"*), so in `qa` Keycloak also gets its own Cloud SQL, and `gcp-qa-postgres-operator` is **not deployed**: no consumer remains.
 
 Mixing — Cloud SQL for SonarQube and CNPG for Keycloak — is not possible with the binding mechanism, and that is deliberate: the decision is about the environment's data isolation, not each application's (AM §5.5). Keycloak's details belong to its own proposal; here only the consequence is recorded (DC8).
 
@@ -307,14 +307,12 @@ requires:
     traits: [gateway-api, http-route]
   - capability: secrets
     version: "^2.0.0"
+    traits: [eso]
   - capability: oidc-idp
     version: "^4.2.0"
     traits: [saml-idp]
   - capability: database-platform
-    version: "^1.0.0"
-    traits: [cnpg]
-    optional: true                                 # unbound → data stack (Cloud SQL)
-    reason: "Without database-platform, the archetype brings its own managed instance (AM §5.5)"
+    version: "^2.0.0"                              # no provider trait: the environment decides
   - capability: monitoring
     version: "^1.5.0"
     traits: [prometheus-operator-crds]
@@ -324,10 +322,10 @@ stacks:
   - name: secrets
     after: [iam]
   - name: data
-    condition: "!resolved(database-platform)"      # dedicated Cloud SQL
+    condition: "has_trait(database-platform, cloudsql)"   # Cloud SQL (postgres-cloudsql provider)
     after: [iam, secrets]
   - name: data-tenant
-    condition: "resolved(database-platform)"       # CNPG Cluster, as in the base
+    condition: "has_trait(database-platform, cnpg)"       # CNPG Cluster (postgres-operator provider)
     after: [iam, secrets]
     creates_tenant_resources: [database-platform]
   - name: firewall
@@ -377,8 +375,8 @@ platform:
   landing_zone: disasterproject-gcp-lz
   project_id: disasterproject-qa
 bindings:
-  network:             { archetype: environment, version: 2.1.0,          stack_id: gcp-qa-network }
-  cluster:             { archetype: gke, version: 2.4.0,                  stack_id: gcp-qa-gke }
+  network:             { archetype: environment, version: 3.0.0,          stack_id: gcp-qa-network }
+  cluster:             { archetype: gke, version: 2.5.0,                  stack_id: gcp-qa-gke }
   cloud-observability: { archetype: cloud-monitoring-gcp, version: 1.2.0, stack_id: gcp-qa-cloudmon }
   policy:              { archetype: policy-gatekeeper, version: 1.0.0,    stack_id: gcp-qa-policy }
   ingress:             { archetype: gateway-envoy-gke, version: 3.1.0,    stack_id: gcp-qa-gateway }
@@ -386,7 +384,7 @@ bindings:
   secrets:             { archetype: secrets-eso-gsm, version: 0.1.0,      stack_id: gcp-qa-secrets }
   monitoring:          { archetype: monitoring-oss, version: 0.1.0,       stack_id: gcp-qa-monitoring }
   oidc-idp:            { archetype: keycloak, version: 4.1.0,             stack_id: gcp-qa-keycloak }
-  # database-platform: UNBOUND — each archetype brings its own Cloud SQL (AM §5.5), as in demos
+  database-platform:   { archetype: postgres-cloudsql, version: 0.1.0,    stack_id: gcp-qa-postgres-cloudsql }  # each consumer creates its own Cloud SQL
   # dns: unbound — wildcard in env-edge
 network:
   cidr: 10.4.128.0/17
@@ -671,14 +669,14 @@ Source: [`diagrams/07-upgrade.mmd`](diagrams/07-upgrade.mmd)
 
 | # | Decision | Status | Recommendation | Alternative |
 |---|---|---|---|---|
-| DC1 | SonarQube's PostgreSQL engine in `qa` | **Proposed** — reopens D2 | Cloud SQL, `database-platform` unbound | CNPG (the base) |
+| DC1 | SonarQube's PostgreSQL engine in `qa` | **Consequence** of the `postgres-cloudsql` proposal (DQ2) | Cloud SQL, global provider `postgres-cloudsql` | CNPG, with `postgres-operator` as the global provider |
 | DC2 | Edition | Proposed | Enterprise | Enterprise Plus: 35-day PITR and near-zero-downtime maintenance, more expensive |
 | DC3 | Availability | Proposed | `ZONAL` in the `sonar` zone | `REGIONAL`, only together with the HA disk of S1 §4.1 |
 | DC4 | Connection | Proposed | Auth Proxy as a native sidecar | Direct private IP with `verify-ca`; Java Connector |
 | DC5 | Application authentication | Proposed | Password (in Secret Manager) + proxy IAM authorisation | IAM database authentication, with a GCP service account |
 | DC6 | PostgreSQL alerts | Proposed | Cloud Monitoring from the `data` stack | `stackdriver-exporter` into Prometheus |
 | DC7 | Restore | Proposed | In-place restore for upgrade rollback; clone with generation for PITR | Clone only |
-| DC8 | Keycloak in `qa` | **Consequence** of DC1 | Its own Cloud SQL | — (the binding does not allow mixing, §2.2) |
+| DC8 | Keycloak in `qa` | **Consequence** of DQ1 and DQ2 | Its own Cloud SQL | — (the provider is global per environment) |
 
 ---
 

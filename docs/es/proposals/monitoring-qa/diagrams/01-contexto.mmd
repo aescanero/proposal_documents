@@ -1,0 +1,46 @@
+flowchart LR
+    subgraph TEN["Namespaces de aplicación y plataforma"]
+        direction TB
+        PM["PodMonitor · Probe<br/>PrometheusRule<br/>etiqueta prometheus=qa"]
+        DB["ConfigMap de dashboard<br/>grafana_dashboard=1"]
+        STD["stdout de los pods"]
+    end
+
+    subgraph L3["Capa 3 · monitoring-oss · gcp-qa-monitoring"]
+        direction TB
+        PROM["Prometheus<br/>15 días · límites por scrape"]
+        AM["Alertmanager × 2"]
+        LOKI["Loki monolítico"]
+        GF["Grafana<br/>OIDC con Keycloak"]
+        FB["Fluent Bit (DaemonSet)"]
+        PROM --> AM
+        FB --> LOKI
+        PROM --> GF
+        LOKI --> GF
+    end
+
+    subgraph L1B["Capa 1b · cloud-monitoring-gcp · gcp-qa-cloudmon"]
+        direction TB
+        LBA["Alertas basadas en logs<br/>secretos · redes autorizadas · KMS"]
+        DMS["Dead-man's switch<br/>Prometheus y Alertmanager vivos"]
+        CSA["Alertas de Cloud SQL<br/>(las crea cada stack data)"]
+        NC["Canal de notificación"]
+        LBA --> NC
+        DMS --> NC
+        CSA --> NC
+    end
+
+    GCS[("GCS · disasterproject-qa-loki")]
+    SRE(["Canal del equipo SRE<br/>y canales por equipo"])
+
+    PM --> PROM
+    DB --> GF
+    STD --> FB
+    LOKI --> GCS
+    AM --> SRE
+    NC --> SRE
+    DMS -. "vigila" .-> PROM
+    DMS -. "vigila" .-> AM
+
+    style L3 fill:#e8f0fe
+    style DMS fill:#fff4e5

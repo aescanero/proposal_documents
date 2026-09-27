@@ -1,0 +1,25 @@
+flowchart LR
+    subgraph ENV["Environment · gcp-qa-network"]
+        PSA["PSA range qa-psa<br/>service networking"]
+    end
+    subgraph LZ["Landing zone"]
+        IMG["Auth Proxy image<br/>by digest, signed"]
+        ORG["org policies<br/>no public IP"]
+    end
+    subgraph P["Provider · gcp-qa-postgres-cloudsql"]
+        API["sqladmin API"]
+        GEN["gen_data.tm.hcl generator<br/>reference values + asserts"]
+        OUT["outputs: provider, connection_mode,<br/>proxy_image, psa_cidr, backup_region"]
+    end
+    subgraph C["Consumer · data stack"]
+        INST["instance env-instance-gN<br/>DB, user, password_wo"]
+        IAM["cloudsql.client with a condition"]
+        AL["alerts in Cloud Monitoring"]
+    end
+    APP["app stack<br/>Auth Proxy sidecar"]
+
+    PSA --> P
+    IMG --> OUT
+    GEN --> C
+    OUT --> APP
+    INST --> APP

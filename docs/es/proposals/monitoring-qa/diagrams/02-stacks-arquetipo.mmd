@@ -1,0 +1,42 @@
+flowchart TB
+    subgraph PLAT["Productores de plataforma (qa)"]
+        GKE["gcp-qa-gke<br/>endpoint · CA · WI pool"]
+        SEC["gcp-qa-secrets<br/>(globals: api_version ESO)"]
+        GW["gcp-qa-gateway<br/>(globals)"]
+        CRT["gcp-qa-certs<br/>(global: ClusterIssuer)"]
+    end
+
+    subgraph INST["gcp-qa-monitoring-* · stacks/platforms/gcp/qa/monitoring"]
+        IAM["iam<br/>namespaces monitoring y<br/>monitoring-agents · KSAs"]
+        S["secrets<br/>admin de Grafana · cliente OIDC<br/>receptores de Alertmanager"]
+        ST["storage<br/>bucket de Loki · IAM"]
+        FW["firewall<br/>NetworkPolicies"]
+        CRD["crds<br/>prometheus-operator<br/>resource-policy: keep"]
+        MET["metrics<br/>operador · Prometheus · Alertmanager<br/>KSM · node-exporter · blackbox<br/>reglas de plataforma"]
+        LOG["logs<br/>Loki · Fluent Bit"]
+        GRA["grafana<br/>datasources · sidecar de dashboards"]
+        FD["frontdoor<br/>HTTPRoute grafana.qa…"]
+    end
+
+    IAM --> S --> FW
+    IAM --> ST --> LOG
+    IAM --> CRD --> MET
+    FW --> MET
+    FW --> LOG
+    MET --> GRA
+    LOG --> GRA
+    S --> GRA
+    GRA --> FD
+
+    GKE -. "sharing + after" .-> IAM
+    GKE -.-> ST
+    SEC -. "global" .-> S
+    CRT -. "global" .-> CRD
+    GW -. "global" .-> FD
+
+    OUT["provides monitoring 1.8.0<br/>prometheus-operator-crds<br/>rules_selector · dashboard_label<br/>prober_url · probe_modules"]
+    MET --> OUT
+
+    style MET fill:#e8f0fe
+    style OUT fill:#e8f5e9
+    style PLAT fill:#f5f5f5

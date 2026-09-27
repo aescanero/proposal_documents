@@ -157,6 +157,8 @@ provides:
 
 `monitoring-managed` provee la misma capability y versión pero requiere `managed-prometheus`. Una aplicación requiere `monitoring`; el resolver elige el proveedor cuyos traits satisface el cluster del entorno, y falla nombrando el trait ausente en lugar de producir un `CreateContainerError` veinte minutos dentro de un apply.
 
+**Traits de node pool.** Algunos traits son propiedades de un node pool, no del cluster entero: `sysctl-max-map-count`, `gpu`, `spot`, `arm64`. El manifiesto del runtime los enumera porque **puede** ofrecerlos; el resolver da uno por presente solo si un node pool del binding del entorno (`cluster.node_pools[].traits`) lo declara. Si no, un consumidor que pide `sysctl-max-map-count` resolvería contra un entorno sin ese pool y fallaría al arrancar: justo el fallo que los traits existen para evitar. El consumidor llega a su pool por el taint del pool, y solo los `owners` del pool pueden tolerarlo (Gatekeeper; propuesta `gke-qa` §5.3).
+
 ### 4.3 Registro de traits
 
 Los traits son un vocabulario controlado. Un trait no registrado es un error de resolución, porque una errata que coincide silenciosamente con nada es peor que ninguna comprobación.
@@ -166,13 +168,15 @@ La tabla siguiente es una **copia de lectura**; la fuente de verdad es `registry
 | Dominio | Traits |
 |---|---|
 | Cómputo | `self-managed-nodes`, `managed-nodes`, `daemonset-privileged`, `hostpath`, `node-agent`, `gpu`, `arm64`, `spot`, `overlay-pods`, `sysctl-max-map-count` |
-| Ingress | `gateway-api`, `ingress-api`, `http-route`, `grpc-route`, `tcp-route`, `cross-namespace-refgrant`, `oidc-security-policy`, `jwt-auth`, `local-rate-limit`, `global-rate-limit`, `mtls-backend` |
+| Ingress | `gateway-api`, `ingress-api`, `http-route`, `grpc-route`, `tcp-route`, `cross-namespace-refgrant`, `oidc-security-policy`, `jwt-auth`, `local-rate-limit`, `global-rate-limit`, `mtls-backend`, `backend-tls` |
 | Borde | `iac-owned-edge`, `managed-cert`, `waf`, `global-anycast`, `regional-only` |
 | Identidad | `workload-identity`, `irsa`, `pod-identity`, `managed-identity`, `saml-idp` |
-| Datos | `private-endpoint`, `iam-auth`, `multi-az`, `psa-shared`, `cnpg` |
+| Datos | `private-endpoint`, `iam-auth`, `multi-az`, `psa-shared`, `cnpg`, `cloudsql` |
 | Mensajería | `strimzi`, `kraft`, `acl-authz`, `tls-mtls`, `schema-registry`, `tiered-storage` |
 | Política | `gatekeeper`, `custom-templates`, `audit-api`, `referential-constraints`, `mutation` |
 | Observabilidad | `managed-prometheus`, `otlp-native`, `managed-tracing`, `prometheus-operator-crds` |
+| Secretos | `eso` |
+| Certificados | `cert-manager` |
 
 `iac-owned-edge` registra si todo recurso cloud en el camino de borde está en el estado de Terraform. Los NEG independientes de GCP no lo están (documento de arquitectura §10.2). Si algún requisito de cumplimiento exige propiedad total en IaC, el resolver detecta la brecha en tiempo de validación en lugar de en tiempo de auditoría.
 
@@ -347,24 +351,23 @@ Kafka es deliberadamente un arquetipo: la intención de diseño es **un bus com�
 
 ### 5.5 Stacks condicionales
 
-Un arquetipo que puede traer su propia base de datos o usar una plataforma compartida declara ambos caminos en un único manifiesto:
+Un arquetipo que puede funcionar con cualquiera de los dos proveedores de `database-platform` declara ambos caminos en un único manifiesto, elegidos por el trait del proveedor enlazado:
 
 ```yaml
 requires:
   - capability: database-platform
-    version: "^1.0.0"
-    optional: true                # se usa cuando el entorno lo provee
+    version: "^2.0.0"
 
 stacks:
   - name: data
-    condition: "!resolved(database-platform)"     # Cloud SQL dedicado, solo cuando no
+    condition: "has_trait(database-platform, cloudsql)"   # su propia instancia gestionada (Cloud SQL)
   - name: data-tenant
-    condition: "resolved(database-platform)"      # un Database CR contra el operador compartido
+    condition: "has_trait(database-platform, cnpg)"       # su propio Cluster contra el operador compartido
 ```
 
-El mismo arquetipo crea una instancia dedicada donde `database-platform` está sin enlazar y una base de datos de tenant donde está enlazado, a partir de un manifiesto.
+El proveedor es **global por entorno** (§2), se elige en el binding, y el consumidor no elige. Los servicios son **gestionados primero**: `postgres-cloudsql` es el proveedor por defecto y `postgres-operator` (CloudNativePG) la alternativa mantenida para los clientes que lo quieren todo en el cluster. Ambos caminos dan a cada consumidor su propia instancia, así que la elección es **gestionado frente a operado**, nunca compartido frente a aislado. Ninguna elección toca el arquetipo.
 
-Qué camino toma un entorno es una **decisión de aislamiento de datos, no de coste**. En `demos` el entorno deja deliberadamente `database-platform` sin enlazar: las demos de la oficina de proyecto llegan con requisitos arbitrarios y datos que no deben co-ubicarse, así que cada tenant obtiene su propia instancia gestionada. Un entorno que prefiere densidad — un entorno de formación o integración con cargas homogéneas y de confianza — lo enlaza y comparte el operador. Ninguna elección toca el arquetipo.
+`!resolved(database-platform)` sigue siendo válido para un entorno que deja la capability sin enlazar, pero ningún entorno permanente lo hace: `demos`, `qa` y `prod` enlazan `postgres-cloudsql` (§7), y el camino gestionado lo elige `has_trait(database-platform, cloudsql)`.
 
 ---
 
@@ -398,7 +401,7 @@ requires:
     version: "^2.0.0"
     traits: [acl-authz]
   - capability: database-platform
-    version: "^1.0.0"
+    version: "^2.0.0"
     optional: true
   - capability: monitoring
     version: "^1.5.0"
@@ -414,7 +417,7 @@ stacks:
   - name: secrets
     after: [iam]
   - name: data
-    condition: "!resolved(database-platform)"
+    condition: "has_trait(database-platform, cloudsql)"
     after: [iam]
     claims:
       - kind: cidr
@@ -422,7 +425,7 @@ stacks:
         purpose: db-subnet
         size: 24
   - name: data-tenant
-    condition: "resolved(database-platform)"
+    condition: "has_trait(database-platform, cnpg)"
     after: [iam]
   - name: messaging
     after: [iam]
@@ -546,8 +549,8 @@ bindings:
   monitoring:          { archetype: monitoring-managed,   version: 1.8.0, stack_id: gcp-demos-monitoring }
   oidc-idp:            { archetype: keycloak,             version: 4.1.0, stack_id: gcp-demos-keycloak }
   event-bus:           { archetype: kafka,                version: 2.0.0, stack_id: gcp-demos-kafka }
-  # database-platform se deja deliberadamente SIN enlazar: los tenants de demo
-  # obtienen instancias gestionadas dedicadas para que sus datos nunca se co-ubiquen.
+  database-platform:   { archetype: postgres-cloudsql,    version: 0.1.0, stack_id: gcp-demos-postgres-cloudsql }
+  # cada tenant de demo obtiene su propia instancia gestionada: datos nunca co-ubicados (ver abajo)
   # Ver la nota más abajo.
 
 network:
@@ -599,7 +602,7 @@ policy:
 Dos propiedades a destacar:
 
 - `cluster` está enlazado a `gke-autopilot`, así que `monitoring` **no puede** estar enlazado a `monitoring-nodeagent`. El fichero de binding está validado, no solo los manifiestos de aplicación.
-- `database-platform` **no** está enlazado. Las cargas de demo llegan de la oficina de proyecto con requisitos arbitrarios y datos que no deben co-ubicarse, así que cada arquetipo con un stack `data` condicional toma el camino dedicado: diez tenants, diez instancias gestionadas. El mecanismo `condition:` no se desperdicia — los entornos de producción pueden enlazar `database-platform` y tomar el camino de operador compartido a partir del mismo manifiesto.
+- `database-platform` está enlazado a `postgres-cloudsql`, el proveedor gestionado (§5.5). Las cargas de demo llegan de la oficina de proyecto con requisitos arbitrarios y datos que no deben co-ubicarse, y el proveedor gestionado da a cada arquetipo con el par condicional su propia instancia: diez tenants, diez instancias gestionadas. El trait (`cloudsql` o `cnpg`) elige el camino; ninguno de los dos comparte datos entre consumidores.
 
 Tres consecuencias de elegir instancias dedicadas, dignas de registrarse:
 
@@ -883,18 +886,13 @@ stacks:
   - name: iam
   - name: cluster                                   # Kafka CR de Strimzi, modo KRaft
     after: [iam]
-    claims:
-      - kind: cidr
-        zone: data
-        purpose: kafka-storage-subnet
-        size: 26
   - name: policy                                    # ACLs por defecto y plantillas de cuota
     after: [cluster]
 
 provides:
   - capability: event-bus
     version: 2.0.0
-    traits: [strimzi, kraft, acl-authz, tls-mtls, schema-registry]
+    traits: [strimzi, kraft, acl-authz]
     outputs:
       - { name: bootstrap_servers,  from: cluster }
       - { name: cluster_ca_secret,  from: cluster }
@@ -919,6 +917,8 @@ stacks:
   - name: messaging
     creates_tenant_resources: [event-bus]
 ```
+
+**La identidad del usuario.** Un consumidor se autentica por SCRAM-SHA-512 sobre TLS. La contraseña es del consumidor: vive en Secret Manager, el ESO del proveedor la materializa en el namespace de Kafka con un `ExternalSecret` (un tercer tenant resource), y el `KafkaUser` la lee con `password.valueFrom`. El valor nunca pasa por el pipeline, y ni la plataforma ni el arquetipo `kafka` lo conocen. Lo especifica la propuesta de Kafka (`proposals/kafka-qa/`), junto con la versión 2.1.0 del contrato (`client_auth`, `ca_bundle_configmap`, `client_namespace_label`; `cluster_ca_secret` obsoleta). El bus usa volúmenes persistentes y el rango de pods del cluster: no reclama ninguna subred.
 
 ### 10.2 Tres reglas que lo hacen seguro
 
@@ -955,13 +955,15 @@ El mismo patrón cubre cualquier servicio compartido respaldado por un operador:
 | Proveedor | Capability | Recursos de tenant |
 |---|---|---|
 | `kafka` | `event-bus` | `KafkaTopic`, `KafkaUser` |
-| `postgres-operator` | `database-platform` | `Database`, `Role` |
+| `postgres-operator` | `database-platform` | `Cluster`, `ObjectStore`, `ScheduledBackup`, `Backup`, `Pooler` — un `Cluster` dedicado por consumidor, nunca una base lógica en uno compartido |
 | `redis-operator` | `cache` | `RedisInstance` |
 | `keycloak` | `oidc-idp` | `ConfigMap` con nombre `client-{{ instance }}-*`, que keycloak-config-cli reconcilia como cliente. El Keycloak Operator actual no tiene CRD de cliente; los grupos vienen del IdP de origen, así que no se ofrece recurso de roles |
 
 Una aserción cierra toda la clase de fallo:
 
 > Ningún stack puede crear recursos en el namespace de otro arquetipo a menos que declare `creates_tenant_resources` y el proveedor autorice ese tipo en `tenant_resources`.
+
+**Recursos de tenant en el namespace del propio consumidor.** Kafka y Keycloak reconcilian solo en su namespace, así que sus recursos de tenant viven allí. Un operador que reconcilia en todos los namespaces, como CloudNativePG, es distinto: el consumidor crea su `Cluster` en **su** namespace, y los datos se quedan allí. La regla sigue aplicándose: el tipo es del proveedor, así que el consumidor declara `creates_tenant_resources` y el proveedor lo autoriza en `tenant_resources`, se cree donde se cree. El detalle está en la propuesta `postgres-operator-qa` §1.
 
 ### 10.5 El invariante de arranque de Keycloak
 
@@ -1128,11 +1130,12 @@ archetypectl resolve --instance demos-alpha
     { "capability": "ingress",           "provider": "gateway-envoy-gke@3.1.0", "stack_id": "gcp-demos-gateway" },
     { "capability": "oidc-idp",          "provider": "keycloak@4.1.0",          "stack_id": "gcp-demos-keycloak" },
     { "capability": "event-bus",         "provider": "kafka@2.0.0",             "stack_id": "gcp-demos-kafka" },
+    { "capability": "database-platform", "provider": "postgres-cloudsql@0.1.0", "stack_id": "gcp-demos-postgres-cloudsql" },
         { "capability": "monitoring",        "provider": "monitoring-managed@1.8.0","stack_id": "gcp-demos-monitoring" }
   ],
   "stacks": ["iam", "secrets", "data", "messaging", "firewall", "app", "frontdoor"],
   "skipped_stacks": [
-    { "name": "data-tenant", "reason": "condition false: database-platform not bound in demos" }
+    { "name": "data-tenant", "reason": "condition false: database-platform is postgres-cloudsql (trait cloudsql, not cnpg)" }
   ],
   "claims": [
     { "kind": "hostname", "value": "alpha.demos.disasterproject.com", "state": "active", "pr": 412 },
@@ -1282,13 +1285,15 @@ Los manifiestos de la capa 5 son la recompensa: `webapp-3tier` no nombra ninguna
 | `serverless-runtime` | `cloudrun` | `fargate` | `container-apps` |
 | `policy` | `policy-gatekeeper` | `policy-gatekeeper` | `policy-gatekeeper` |
 | `ingress` | `gateway-envoy-gke` | `gateway-envoy-eks` | `gateway-agfc-aks` o `gateway-envoy-aks` |
-| `certs` | Certificate Manager | ACM | App Gateway certs / Key Vault |
+| `cert` (borde, público) | Certificate Manager | ACM | App Gateway certs / Key Vault |
+| `certs` (dentro del cluster) | `cert-manager` | `cert-manager` | `cert-manager` |
 | `secrets` | Secret Manager | Secrets Manager | Key Vault |
 | `event-bus` | `kafka` (Strimzi) | `kafka` (Strimzi) | `kafka` (Strimzi) |
+| `database-platform` | `postgres-cloudsql` (por defecto), `postgres-operator` | RDS (por defecto), `postgres-operator` | Flexible Server (por defecto), `postgres-operator` |
 | `cloud-observability` | Cloud Monitoring | CloudWatch | Azure Monitor |
 | trait `workload-identity` | Workload Identity Federation | IRSA / Pod Identity | Workload Identity |
 
-Los arquetipos de capa 4 respaldados por operador (Kafka, Postgres, Redis, Keycloak) son iguales en todas partes — corren sobre Kubernetes. Es una ventaja de portabilidad significativa y un argumento para preferir operadores frente a servicios gestionados donde el compromiso esté equilibrado.
+Los arquetipos de capa 4 respaldados por operador (Kafka, Postgres, Redis, Keycloak) son iguales en todas partes — corren sobre Kubernetes. Es una ganancia real de portabilidad, pero la regla de la plataforma es **gestionado primero** (`CLAUDE.md`): donde un servicio gestionado es equivalente, es el proveedor por defecto, y el arquetipo respaldado por operador es la alternativa mantenida para los clientes que la quieren. Ambos quedan detrás del mismo contrato de capability, así que la elección se hace en el binding del entorno, no en los arquetipos.
 
 ### 14.3 Añadir una cuarta cloud
 
@@ -1337,15 +1342,15 @@ webapp-3tier@2.3.0
 │   ├── secrets       ^2.0.0            → secrets-operator@2.0.1
 │   └── (posee su propio stack de datos internamente — no es una dependencia)
 ├── event-bus         ^2.0.0            → kafka@2.0.0
-├── database-platform ^1.0.0 (optional) → SIN RESOLVER (no enlazado en demos)
+├── database-platform ^2.0.0 (optional) → postgres-cloudsql@0.1.0 (trait cloudsql)
 └── monitoring        ^1.5.0 (optional) → monitoring-managed@1.8.0
 ```
 
-Quince arquetipos; la aplicación declaró seis.
+Dieciséis arquetipos; la aplicación declaró seis.
 
 **El paso 6** rechazaría `monitoring-nodeagent`: necesita `daemonset-privileged`, ausente en Autopilot.
 
-**El paso 9** resuelve las condiciones. Porque `database-platform` está sin enlazar en `demos`, `data-tenant` se omite y se genera el stack `data` — una instancia de Cloud SQL dedicada para este tenant. Diez tenants, diez instancias, sin datos co-ubicados.
+**El paso 9** resuelve las condiciones. Porque `demos` enlaza `database-platform` a `postgres-cloudsql` (trait `cloudsql`), `data-tenant` se omite y se genera el stack `data` — una instancia de Cloud SQL dedicada para este tenant. Diez tenants, diez instancias, sin datos co-ubicados.
 
 **El paso 11** valida 6 topics y 1 usuario contra los límites de Kafka de 20 y 3, todos prefijados `alpha-`.
 

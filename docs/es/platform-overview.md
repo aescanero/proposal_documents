@@ -271,9 +271,10 @@ Las cinco guías — GKE, EKS, Cloud Run, ECS Fargate, AKS — son este mismo gr
 ```mermaid
 flowchart TD
     subgraph NET["network produce"]
-        G1["GKE: network_self_link, subnet_self_link,<br/>pods_range_name, services_range_name"]
-        A1["EKS/Fargate: vpc_id, private_subnet_ids (lista)"]
-        Z1["AKS: vnet_id, node_subnet_id"]
+        G1["GKE: network_self_link<br/>(subred y rangos: los del propio arquetipo gke)"]
+        A1["EKS: vpc_id, tablas de rutas privadas<br/>(subredes de nodos: las del propio arquetipo eks)"]
+        F1["Fargate: vpc_id, private_subnet_ids (lista)"]
+        Z1["AKS: vnet_id<br/>(subred de nodos: la del propio arquetipo aks)"]
     end
     subgraph CLU["runtime produce"]
         G2["GKE: cluster_endpoint (sin esquema), cluster_ca,<br/><b>workload_identity_pool</b>"]
