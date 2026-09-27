@@ -1,0 +1,28 @@
+flowchart LR
+    L2["Capa 2 · cluster · gcp-qa-gke"]
+    subgraph L2B["Capa 2b · policy · gcp-qa-policy"]
+        direction TB
+        CTRL["controller<br/>webhook 3 réplicas · puerto 10250<br/>auditoría · sin mutación"]
+        LIB["library<br/>reglas del núcleo P1–P10"]
+        EXC["exemptions<br/>generado desde resolution.json"]
+    end
+    PSA["Pod Security Admission<br/>del API server · restricted"]
+    subgraph L3["Capas 3–5 · cada una trae sus reglas"]
+        direction TB
+        ESO["ESO"]
+        CM["cert-manager"]
+        GW["Envoy Gateway"]
+        MON["monitorización"]
+        KC["Keycloak"]
+        KF["Kafka"]
+    end
+    CI["CI · G1<br/>conftest + gator test de todos los charts"]
+
+    L2 --> L2B
+    L2B --> L3
+    CTRL --> LIB --> EXC
+    PSA -. "evalúa PSS sin webhook" .-> L3
+    LIB -. "vigila la etiqueta enforce" .-> PSA
+    CI -. "misma política antes del merge" .-> L2B
+
+    style L2B fill:#fff4e5

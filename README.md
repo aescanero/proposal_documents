@@ -33,6 +33,7 @@ Inside each language folder:
 | `proposals/cert-manager-qa/` | The layer-3 `cert-manager` archetype on `qa`: in-cluster internal CA, approver-policy, trust-manager, the `certs` 1.1.0 contract and the `cert-manager` trait |
 | `proposals/envoy-gateway-qa/` | The layer-3 `gateway-envoy-gke` archetype on `qa`: one Gateway behind the GLB via a standalone NEG, hostname ownership between tenants, timeouts, the `ingress` 3.2.0 contract and the `backend-tls` trait |
 | `proposals/kafka-qa/` | The layer-4 `kafka` archetype on `qa`: Strimzi in KRaft mode, mTLS with the internal CA, the multi-tenant contract (prefixed topics, derived ACLs, quotas), capacity budgets and the `event-bus` 2.1.0 contract |
+| `proposals/gatekeeper-qa/` | The layer-2b `policy-gatekeeper` archetype on `qa`: who owns each admission rule, the consolidated rule catalogue, PSA for Pod Security, exceptions by name derived from resolution, `gator` tests in CI and the `policy` 1.1.0 contract |
 
 The two halves meet at `binding.tm.hcl`: the resolver writes globals, the generators
 consume them.

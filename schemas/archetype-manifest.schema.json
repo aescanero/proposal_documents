@@ -32,9 +32,11 @@
           "$ref": "#/$defs/semver"
         },
         "layer": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 5
+          "description": "0-5, or the sub-layers 1b (cloud observability) and 2b (admission policy), AM §3.",
+          "anyOf": [
+            { "type": "integer", "minimum": 0, "maximum": 5 },
+            { "type": "string", "enum": ["1b", "2b"] }
+          ]
         },
         "description": {
           "type": "string"

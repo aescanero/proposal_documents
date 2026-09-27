@@ -1,0 +1,26 @@
+flowchart TB
+    subgraph CORE["policy-gatekeeper · núcleo de Kubernetes"]
+        direction LR
+        P1["P1 etiquetas"]
+        P2["P2 registros + digest"]
+        P3["P3 raíz de solo lectura"]
+        P4["P4 límite de memoria"]
+        P5["P5 tipos de Service"]
+        P6["P6 externalIPs"]
+        P7["P7 etiquetas del namespace"]
+        P8["P8 sin anotación de GSA"]
+        P9["P9 sin anónimos"]
+        P10["P10 NetworkPolicy (auditoría)"]
+    end
+    subgraph PROV["Cada proveedor · sus kinds y sus tenant resources"]
+        direction LR
+        E["ESO<br/>SecretStore, ExternalSecret"]
+        C["cert-manager<br/>Issuer, ClusterIssuer"]
+        G["Envoy Gateway<br/>HTTPRoute, políticas"]
+        M["monitorización<br/>monitoring-agents"]
+        K["Keycloak<br/>ConfigMap de cliente"]
+        F["Kafka<br/>KafkaTopic, KafkaUser"]
+    end
+    PSA["PSA restricted<br/>(API server)"]
+    CORE --- PSA
+    CORE -. "biblioteca Rego compartida<br/>(libs)" .-> PROV

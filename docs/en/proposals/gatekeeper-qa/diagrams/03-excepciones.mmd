@@ -1,0 +1,17 @@
+flowchart LR
+    MAN["Consumer's manifest<br/>admission_exceptions · exposures<br/>rule, object, reason, review_by"]
+    RES["Resolver<br/>resolution.json"]
+    G1{"G1<br/>complete justification<br/>future review_by"}
+    CO["CODEOWNERS<br/>platform + security"]
+    EXC["exemptions stack<br/>gcp-qa-policy-exemptions"]
+    CON["Constraint parameters<br/>per namespace/kind/name"]
+    APP["Consumer stack<br/>after: exemptions"]
+    NO["Never: a whole namespace,<br/>hand-written excludedNamespaces"]
+
+    MAN --> RES --> EXC --> CON
+    MAN --> G1
+    MAN --> CO
+    EXC --> APP
+    NO -.-x CON
+
+    style NO fill:#fce8e6

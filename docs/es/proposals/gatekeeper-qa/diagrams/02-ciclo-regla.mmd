@@ -1,0 +1,14 @@
+flowchart LR
+    PR["PR del dueño<br/>ConstraintTemplate + tests"]
+    G1["G1<br/>gator verify · gator test<br/>de todos los charts"]
+    DRY["dryrun<br/>en todos los entornos"]
+    AUD["auditoría<br/>informe semanal"]
+    FIX["corregir objetos<br/>o declarar excepción"]
+    WARN["warn<br/>efímeros y demos"]
+    DENY["deny<br/>dev, qa, prod"]
+
+    PR --> G1 --> DRY --> AUD --> FIX --> WARN --> DENY
+    AUD -. "sin violaciones" .-> WARN
+
+    style DRY fill:#f5f5f5
+    style DENY fill:#e6f4ea
