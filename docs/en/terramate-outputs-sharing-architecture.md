@@ -2276,6 +2276,7 @@ Terraform owns the backend service, health check, URL map, target proxy, forward
 - Name it explicitly in the `EnvoyProxy` annotation so the lookup is deterministic.
 - NEGs are **zonal**. Enforce `minReplicas ≥ number of zones` plus topology spread with an assertion, or a zone without Envoy pods produces a missing NEG and a failed apply.
 - Cold start: the NEG does not exist until Envoy pods are Ready. Split into three stacks (`aks`/`gke` → `gateway` → `edge`) with `after`, and rely on `--mock-on-fail` for PR previews.
+- **The backend leg is HTTP.** Public TLS terminates at the load balancer with the layer-1 certificate (Certificate Manager on GCP, ACM on AWS, App Gateway certificates on Azure); the load balancer speaks HTTP to Envoy. A certificate for that leg issued by `cert-manager` would make layer 1 depend on layer 3, and the load balancer does not validate it anyway. The only upward edge the edge keeps is the NEG name (AM §3). If authenticating the leg is ever required, the trust root must be a platform CA in layer 1 (`envoy-gateway-qa` proposal, DG14).
 
 ### 10.3 AWS — TargetGroupBinding
 
@@ -2310,7 +2311,7 @@ spec:
         type: ClusterIP                      # no per-Service cloud LB
         annotations:
           # GCP
-          cloud.google.com/neg: '{"exposed_ports":{"8443":{"name":"eg-demos-neg"}}}'
+          cloud.google.com/neg: '{"exposed_ports":{"8080":{"name":"eg-demos-neg"}}}'
       envoyDeployment:
         replicas: 3
         pod:
@@ -2323,7 +2324,7 @@ spec:
 
 Gateway API inverts the direction of the routing dependency. An `HTTPRoute` lives in the application's namespace and attaches to the Gateway with `parentRefs`; the Gateway controls who may attach via `allowedRoutes`. **The edge no longer needs to know its tenants.**
 
-That removes three things from the architecture: the URL map generated from a `global.tenants` list (§7.5), the listener-priority ledger, and the edge-routing stack that had to run after every instance. What remains a claim is the hostname, because only one tenant can own `alpha.demos.disasterproject.com`.
+That removes three things from the architecture: the URL map generated from a `global.tenants` list (§7.5), the listener-priority ledger, and the edge-routing stack that had to run after every instance. What remains a claim is the hostname, because only one tenant can own `alpha.mfrwzdp.disasterproject.com`.
 
 Use **one Gateway per environment** with `allowedRoutes.namespaces.from: Selector`, not one per tenant — each `Gateway` spawns its own Envoy Deployment, Service and NEG, so per-tenant Gateways reintroduce exactly the fan-in they were meant to remove. If you later need several (internal and external, for instance), `mergeGateways` in `EnvoyProxy` lets them share one proxy fleet.
 

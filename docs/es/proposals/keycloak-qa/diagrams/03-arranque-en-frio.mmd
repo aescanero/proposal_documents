@@ -3,8 +3,8 @@ flowchart LR
         direction TB
         GW["1 · gcp-qa-gateway<br/>Gateway qa"]
         KAPP["2 · keycloak · app<br/>Service keycloak-service:8443<br/>certificado de la CA interna"]
-        KFD["3 · keycloak · frontdoor<br/>HTTPRoute /realms/qa y /resources<br/><b>sin SecurityPolicy</b> (R22)"]
-        KRLM["4 · keycloak · realm<br/>realm qa · IdP entra"]
+        KFD["3 · keycloak · frontdoor<br/>HTTPRoute /realms/disasterproject y /resources<br/><b>sin SecurityPolicy</b> (R22)"]
+        KRLM["4 · keycloak · realm<br/>realm disasterproject · IdP entra"]
         GW --> KFD
         KAPP --> KFD
         KAPP --> KRLM

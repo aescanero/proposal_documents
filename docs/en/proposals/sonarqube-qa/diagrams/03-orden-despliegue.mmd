@@ -4,6 +4,7 @@ flowchart TD
         LZ["gcp-lz-* · landing zone project<br/>parent dns-zone · KMS · Artifact Registry<br/>GitHub WIF · project disasterproject-nonprod"] --> N["gcp-qa-network"]
         N --> CM["gcp-qa-cloudmon"]
         N --> C["gcp-qa-gke<br/>node pools: general + sonar"]
+        LZ --> EB["gcp-qa-edge-base<br/>IP · Cloud Armor · Certificate Manager wildcard<br/>records in tqbvzkr.disasterproject.com"]
     end
 
     subgraph P["Phase B · qa platform"]
@@ -13,7 +14,8 @@ flowchart TD
         PO --> M["gcp-qa-monitoring"]
         CE --> S1["gcp-qa-secrets<br/>ESO"]
         CE --> GW["gcp-qa-gateway"]
-        GW -. "NEG" .-> ED["gcp-qa-edge<br/>IP · Cloud Armor · cert · LB<br/>zone qa.disasterproject.com · wildcard"]
+        GW -. "NEG" .-> ED["gcp-qa-edge<br/>backend service · URL map · LB<br/>HTTP to Envoy"]
+        EB --> ED
         S1 --> DB["gcp-qa-postgres-operator<br/>CloudNativePG"]
         M --> DB
         DB --> KC["gcp-qa-keycloak<br/>+ its own CNPG Cluster"]

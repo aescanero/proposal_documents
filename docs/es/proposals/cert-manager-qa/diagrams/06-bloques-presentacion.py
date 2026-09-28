@@ -114,7 +114,7 @@ RX,RY,RW,RH=1570,160,310,670
 rect(RX,RY,RW,RH,pal['out'][0],'#a5f3fc',rx=18,sw=1.5)
 text(RX+24,RY+44,"Provee certs 1.1.0",22,700)
 text(RX+24,RY+70,"trait cert-manager",15,400,SUB,italic=True)
-items=[("Envoy Gateway","certificado de backend","el que ve el GLB"),("Keycloak","TLS del pod","keycloak-service.keycloak.svc"),
+items=[("Envoy Gateway","certificados xDS","nada hacia el GLB"),("Keycloak","TLS del pod","keycloak-service.keycloak.svc"),
        ("ESO · prometheus-op.","certificados de webhook","caBundle por cainjector"),("Confían en la CA","Envoy · Grafana · blackbox","reconciliador de Keycloak")]
 y=RY+92
 for t,a,b in items:

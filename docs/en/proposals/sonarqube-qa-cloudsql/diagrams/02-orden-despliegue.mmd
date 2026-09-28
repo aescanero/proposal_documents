@@ -4,6 +4,7 @@ flowchart TD
         LZ["gcp-lz-*<br/>parent dns-zone · KMS · Artifact Registry · WIF GitHub"] --> N["gcp-qa-network<br/><b>+ PSA: qa-psa range and<br/>servicenetworking connection</b>"]
         N --> CM["gcp-qa-cloudmon<br/><b>+ notification channel</b>"]
         N --> C["gcp-qa-gke<br/>node pools: general + sonar"]
+        LZ --> EB["gcp-qa-edge-base<br/>IP · Cloud Armor · wildcard"]
     end
 
     subgraph P["Phase B · qa platform"]
@@ -14,6 +15,7 @@ flowchart TD
         CE --> S1["gcp-qa-secrets"]
         CE --> GW["gcp-qa-gateway"]
         GW -. "NEG" .-> ED["gcp-qa-edge"]
+        EB --> ED
         S1 --> KC["gcp-qa-keycloak<br/><b>+ its own Cloud SQL</b>"]
         GW --> KC
         NOPG["gcp-qa-postgres-operator<br/><b>NOT DEPLOYED</b>"]

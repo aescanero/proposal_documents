@@ -3,13 +3,13 @@ sequenceDiagram
     actor U as Developer
     participant LB as GLB + Cloud Armor
     participant SQ as SonarQube
-    participant KC as Keycloak (realm qa)
+    participant KC as Keycloak (realm disasterproject)
     participant UP as Entra ID
     actor CI as GitHub Actions
 
     rect rgb(232, 240, 254)
     Note over U,UP: People: SAML 2.0 SP-initiated. No OIDC SecurityPolicy on the route
-    U->>LB: GET https://sonar.qa.disasterproject.com
+    U->>LB: GET https://sonar.tqbvzkr.disasterproject.com
     LB->>SQ: via Envoy Gateway
     SQ-->>U: 302 to Keycloak (AuthnRequest)
     U->>KC: sign in

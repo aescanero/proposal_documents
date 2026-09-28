@@ -158,7 +158,7 @@ The landing zone's `compute.restrictVpcPeering` org policy must allow `projects/
 | Outside the VPC | It does not resolve: neither from the hub nor from the internet. If there is ever peering with the hub, it is bound there on purpose (S1 §4.15) |
 | Client certificates | Certificates for those names are issued by `internal-ca` under the `private-names` policy (cert-manager DT10) |
 
-The public zone `qa.disasterproject.com` (delegated from the landing zone) belongs to the edge: next proposal.
+The public zone `tqbvzkr.disasterproject.com` (delegated from the landing zone) belongs to the edge: next proposal.
 
 ---
 

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Estado** | Propuesta · revisión 7 |
-| **Alcance** | El arquetipo de capa 4 `keycloak` en `qa`: instalación, datos, configuración, realm `qa` con Entra ID como IdP de origen, clientes de los consumidores como tenant resources, claves, publicación, red, disponibilidad, observabilidad, stacks, políticas, ejecución y plan |
+| **Alcance** | El arquetipo de capa 4 `keycloak` en `qa`: instalación, datos, configuración, realm `disasterproject` con Entra ID como IdP de origen, clientes de los consumidores como tenant resources, claves, publicación, red, disponibilidad, observabilidad, stacks, políticas, ejecución y plan |
 | **Supuesto de datos** | El proveedor global de `database-platform` del entorno ([`../postgres-cloudsql-qa/`](../postgres-cloudsql-qa/README.md)). En `qa`, `postgres-cloudsql`: Keycloak crea su propia instancia Cloud SQL (stack `data`, §3). Con `postgres-operator`, su propio `Cluster` CNPG (stack `data-tenant`) |
 | **Consumidores conocidos** | SonarQube por SAML ([`../sonarqube-qa/`](../sonarqube-qa/README.md), E1/E2), Grafana por OIDC, aplicaciones futuras con `SecurityPolicy` OIDC en el Gateway |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `developer-guide.md` (DG §n), `risk-register.md` |
@@ -20,8 +20,8 @@ Nada de este documento reabre decisiones de `CLAUDE.md`. Implementa dos de sus t
 |---|---|---|
 | Qué es | Arquetipo `keycloak`, `kind: catalog`, **capa 4**, provee **`oidc-idp` 4.2.0** con el trait `saml-idp` | Un proveedor por entorno (AM §7). Es lo que enlaza el binding de `qa` |
 | Instancia | `keycloak-main` → stacks `gcp-qa-keycloak-main-<stack>` en `stacks/archetypes/keycloak/instances/main/` | Misma convención que `sonarqube-main` |
-| Hostname | `sso.qa.disasterproject.com` — **claim** en el ledger | Ya lo usan E1 §4.6 y E2 §6.2 |
-| Realm | `qa`, uno por entorno | Todos los consumidores de `qa` lo comparten |
+| Hostname | `sso.tqbvzkr.disasterproject.com` — **claim** en el ledger | Ya lo usan E1 §4.6 y E2 §6.2 |
+| Realm | `disasterproject`, uno por entorno, **con el mismo nombre en todos** | Todos los consumidores de `qa` lo comparten. El nombre del realm sale en URLs públicas (issuer OIDC, metadatos y endpoints SAML, redirecciones de Entra ID): con `qa` delataría el entorno (edge-qa DL10) |
 | Origen de identidades | **Entra ID**, gestionado por el equipo de identidad; Keycloak hace de **broker** (E1 §4.6, D4) | Keycloak no guarda contraseñas de personas. MFA y acceso condicional ocurren en Entra |
 | Datos | Cloud SQL for PostgreSQL dedicado, `qa-keycloak-main-g1` (§3) | Mismo generador `gen_data.tm.hcl` que SonarQube |
 | Disponibilidad | **2 réplicas** repartidas entre zonas; BD zonal (§9) | Keycloak caído bloquea el login de todo `qa` salvo el CI de SonarQube |
@@ -43,11 +43,11 @@ Hechos de Keycloak 26.x. La versión exacta se fija en la fase 0; lo marcado **(
 | Health y métricas en el **puerto de gestión 9000**, no en el de servicio | `NetworkPolicy` y `PodMonitor` al 9000; ese puerto nunca se publica |
 | **Sesiones de usuario persistentes** por defecto: cada login escribe en la BD **(verificar en la versión)** | Las sesiones sobreviven a un reinicio de los pods; la BD dimensionada para escrituras de sesión, no solo configuración |
 | Caché distribuida con **`jdbc-ping`** por defecto: los pods se descubren a través de la BD **(verificar)** | Sin Service headless para descubrimiento; JGroups entre pods en 7800 y 57800 (§8.3) |
-| **Hostname v2**: `hostname` es la URL pública completa; el `iss` de los tokens sale de ella | El issuer es siempre `https://sso.qa.disasterproject.com/realms/qa`, llegue la petición por donde llegue |
+| **Hostname v2**: `hostname` es la URL pública completa; el `iss` de los tokens sale de ella | El issuer es siempre `https://sso.tqbvzkr.disasterproject.com/realms/disasterproject`, llegue la petición por donde llegue |
 | **Admin temporal de arranque** (`KC_BOOTSTRAP_ADMIN_*`) | Se crea una vez desde Secret Manager y queda como cuenta break-glass (§5.4) |
 | **Migraciones de BD al arrancar una versión nueva**, sin vuelta atrás | Mismo tratamiento que R52: backup bajo demanda antes de cada upgrade (§13.1) |
 | El Keycloak Operator solo **importa** realms completos (`KeycloakRealmImport`), sin reconciliar cambios | Configuración del realm con **keycloak-config-cli** (E2 §5.5), no con el operador (§6) |
-| La consola de administración y el realm `master` viven en el mismo hostname que el resto | La ruta pública solo expone `/realms/qa/` y `/resources/` (§8.1) |
+| La consola de administración y el realm `master` viven en el mismo hostname que el resto | La ruta pública solo expone `/realms/disasterproject/` y `/resources/` (§8.1) |
 | JVM con `MaxRAMPercentage=70` por defecto en la imagen oficial **(verificar)** | Límite de memoria = petición; sin `-Xmx` fijado a mano (DG §8.3) |
 
 ---
@@ -131,7 +131,7 @@ spec:
     httpEnabled: false
     tlsSecret: keycloak-tls                          # Certificate de la CA interna (§7)
   hostname:
-    hostname: https://sso.qa.disasterproject.com
+    hostname: https://sso.tqbvzkr.disasterproject.com
     strict: true
     backchannelDynamic: false
   proxy:
@@ -161,7 +161,7 @@ spec:
 
 | Elección | Por qué |
 |---|---|
-| Solo HTTPS en el pod (`httpEnabled: false`) | Por el back-channel viajan tokens y códigos de autorización. TLS con la CA interna de cert-manager, como GLB → Envoy (E1 §4.5) |
+| Solo HTTPS en el pod (`httpEnabled: false`) | Por el back-channel viajan tokens y códigos de autorización. TLS con la CA interna de cert-manager |
 | `hostname` público y `strict: true` | Un solo `iss`; una petición con otro `Host` no cambia las URLs de frontend |
 | `backchannelDynamic: false` | Envoy y Grafana llegan al Service interno pero piden las URLs públicas, que el enrutado interno resuelve (§8.2). Activarlo haría que el documento de discovery dependiera de por dónde llega la petición |
 | 2 réplicas repartidas por zona | Un nodo o una zona del cluster no tiran el login. La BD zonal queda como punto único (§9) |
@@ -169,7 +169,7 @@ spec:
 
 ---
 
-## 5. El realm `qa`
+## 5. El realm `disasterproject`
 
 La configuración base del realm es código: un documento en el chart del arquetipo que aplica el reconciliador (§6.3). Nada se configura a mano en la consola.
 
@@ -189,7 +189,7 @@ La configuración base del realm es código: un documento en el chart del arquet
 
 | Ajuste | Valor | Motivo |
 |---|---|---|
-| Tipo | OpenID Connect v1.0, alias `entra` | La redirect URI registrada en Entra es `https://sso.qa.disasterproject.com/realms/qa/broker/entra/endpoint` (E1 §4.6) |
+| Tipo | OpenID Connect v1.0, alias `entra` | La redirect URI registrada en Entra es `https://sso.tqbvzkr.disasterproject.com/realms/disasterproject/broker/entra/endpoint` (E1 §4.6) |
 | Discovery | `https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration` | Tenant único, no `common` |
 | Autenticación del cliente | **`private_key_jwt`** con certificado (E1 §4.6, R42) | Sin client secret que caduque en silencio |
 | `syncMode` | `FORCE` | Un cambio de app roles en Entra se refleja en el siguiente login |
@@ -212,7 +212,7 @@ Resultado: Keycloak no guarda una lista de roles. Dar de alta un equipo pasa de 
 
 | Quién | Cómo | Dónde |
 |---|---|---|
-| Reconciliador | Cliente de cuenta de servicio `keycloak-config-cli` en el realm `master`, con los roles de administración del cliente `qa-realm` (solo el realm `qa`, no `master`) | Secreto `qa-keycloak-config-cli` |
+| Reconciliador | Cliente de cuenta de servicio `keycloak-config-cli` en el realm `master`, con los roles de administración del cliente `qa-realm` (solo el realm `disasterproject`, no `master`) | Secreto `qa-keycloak-config-cli` |
 | Break-glass | Usuario admin de `master` creado por `bootstrapAdmin` | Secreto `qa-keycloak-admin`; lectura just-in-time para SRE (E1 §4.3) |
 | Consola | **No publicada.** `kubectl port-forward` al Service, con la identidad del SRE y el acceso al plano de control de E1 §4.13 | — |
 
@@ -240,7 +240,7 @@ tenant_resources:
     maxCount: 1
 ```
 
-Cada `ConfigMap` lleva las etiquetas `keycloak.disasterproject.com/realm: qa` y `archetype.disasterproject.com/instance: <instancia>`, y en `data.client.json` la representación del cliente. `KeycloakRealmRole` (AM §10.4) no se ofrece: los grupos vienen de Entra (§5.3).
+Cada `ConfigMap` lleva las etiquetas `keycloak.disasterproject.com/realm: disasterproject` y `archetype.disasterproject.com/instance: <instancia>`, y en `data.client.json` la representación del cliente. `KeycloakRealmRole` (AM §10.4) no se ofrece: los grupos vienen de Entra (§5.3).
 
 **El `ReferenceGrant`** solo lo crea un consumidor que protege sus rutas con una `SecurityPolicy` OIDC. Su `provider.backendRefs` apunta a `keycloak-service`, en **este** namespace, y Envoy Gateway rechaza una referencia entre namespaces si el destino no la autoriza con un `ReferenceGrant` (propuesta de Envoy Gateway §4.3, VG7). Forma única: nombre `sp-<instancia>`, `from` = `SecurityPolicy` del namespace de la instancia, `to` = el Service `keycloak-service`. Gatekeeper rechaza cualquier otra (§12.3).
 
@@ -328,7 +328,7 @@ Fuente: [`diagrams/07-claves.mmd`](diagrams/07-claves.mmd)
 
 | Elemento | Valor |
 |---|---|
-| `HTTPRoute` `keycloak` | Host `sso.qa.disasterproject.com`; `PathPrefix` **solo** `/realms/qa/` y `/resources/`; `parentRefs` al Gateway `qa` |
+| `HTTPRoute` `keycloak` | Host `sso.tqbvzkr.disasterproject.com`; `PathPrefix` **solo** `/realms/disasterproject/` y `/resources/`; `parentRefs` al Gateway `qa` |
 | `/admin/`, `/realms/master/`, puerto 9000 | **No enrutados**: 404 en Envoy |
 | `SecurityPolicy` | **Ninguna** (R22). Lo imponen un assert y Gatekeeper (§12) |
 | Envoy → Keycloak | `BackendTLSPolicy` con la CA interna y el hostname `keycloak-service.keycloak.svc` |
@@ -395,8 +395,8 @@ Default-deny de entrada y salida en `keycloak`:
 
 | Señal | Recogida | Alerta |
 |---|---|---|
-| Disponibilidad externa | Blackbox → `https://sso.qa.disasterproject.com/realms/qa/.well-known/openid-configuration` | ≠ 200 durante 5 min |
-| Disponibilidad interna | Blackbox → `https://keycloak-service.keycloak:8443/realms/qa/.well-known/openid-configuration` | ≠ 200 durante 2 min. Distingue un fallo de Keycloak de uno del borde |
+| Disponibilidad externa | Blackbox → `https://sso.tqbvzkr.disasterproject.com/realms/disasterproject/.well-known/openid-configuration` | ≠ 200 durante 5 min |
+| Disponibilidad interna | Blackbox → `https://keycloak-service.keycloak:8443/realms/disasterproject/.well-known/openid-configuration` | ≠ 200 durante 2 min. Distingue un fallo de Keycloak de uno del borde |
 | Errores de login y de broker | Métricas de eventos de Keycloak en el 9000 **(verificar nombres de métrica)** | Tasa de `LOGIN_ERROR` o `IDENTITY_PROVIDER_LOGIN_ERROR` > 20 % en 15 min — suele ser Entra o la credencial ante Entra |
 | JVM y contenedor | `PodMonitor` · kube-state-metrics | Heap > 90 %; `OOMKilled` |
 | Réplicas | kube-state-metrics | Menos de 2 listas durante 10 min |
@@ -518,7 +518,7 @@ Fuente: [`diagrams/02-stacks-arquetipo.mmd`](diagrams/02-stacks-arquetipo.mmd)
 
 | Stack | Generador | Contenido | Entradas por sharing |
 |---|---|---|---|
-| `iam` | `gen_tenant_namespace.tm.hcl` | Namespace `keycloak` (PSS `restricted`; etiquetas `trust.disasterproject.com/internal-ca: "true"` y `gateway.disasterproject.com/routes: "true"` y anotación `gateway.disasterproject.com/hostnames: sso.qa.disasterproject.com`, E2 §5.1); KSAs `keycloak`, `qa-eso-keycloak`, `keycloak-config` | `cluster_*` (gke) |
+| `iam` | `gen_tenant_namespace.tm.hcl` | Namespace `keycloak` (PSS `restricted`; etiquetas `trust.disasterproject.com/internal-ca: "true"` y `gateway.disasterproject.com/routes: "true"` y anotación `gateway.disasterproject.com/hostnames: sso.tqbvzkr.disasterproject.com`, E2 §5.1); KSAs `keycloak`, `qa-eso-keycloak`, `keycloak-config` | `cluster_*` (gke) |
 | `secrets` | `gen_secrets.tm.hcl` | `qa-keycloak-db` (sin versión), `-admin`, `-config-cli` (generados write-only), `-realm-signing`, `-entra-cert` (versión del script de arranque); `SecretStore` y `ExternalSecret` | `cluster_*`, `workload_identity_pool` |
 | `data` | `gen_data.tm.hcl` | §3.1 | `workload_identity_pool`, `notification_channel_id` |
 | `firewall` | `gen_helm_stack.tm.hcl` | §8.3 | `cluster_*` |
@@ -536,9 +536,9 @@ Todas son deterministas; se publican como salidas del contrato para que los cons
 
 | Salida | Valor en `qa` | Origen |
 |---|---|---|
-| `issuer_url` | `https://sso.qa.disasterproject.com/realms/qa` | Claim de hostname + realm |
-| `realm_name` | `qa` | Global |
-| `saml_sso_url` | `https://sso.qa.disasterproject.com/realms/qa/protocol/saml` | Idem |
+| `issuer_url` | `https://sso.tqbvzkr.disasterproject.com/realms/disasterproject` | Claim de hostname + realm |
+| `realm_name` | `disasterproject` | Global |
+| `saml_sso_url` | `https://sso.tqbvzkr.disasterproject.com/realms/disasterproject/protocol/saml` | Idem |
 | `saml_idp_certificate` | PEM del certificado público de firma | `instance.tm.hcl` (§7) |
 | `internal_service` | `keycloak-service.keycloak.svc:8443` | Nombre del Service que crea el operador |
 | `admin_secret_id` | `qa-keycloak-admin` | Obsoleta (§5.4) |
@@ -563,8 +563,8 @@ assert {
   message   = "keycloak: su propia ruta no lleva SecurityPolicy — ciclo de arranque (R22)"
 }
 assert {
-  assertion = tm_alltrue([for p in global.keycloak_values.frontdoor.paths : tm_contains(["/realms/qa/", "/resources/"], p)])
-  message   = "keycloak: la ruta pública solo expone /realms/qa/ y /resources/ (§8.1)"
+  assertion = tm_alltrue([for p in global.keycloak_values.frontdoor.paths : tm_contains(["/realms/disasterproject/", "/resources/"], p)])
+  message   = "keycloak: la ruta pública solo expone /realms/disasterproject/ y /resources/ (§8.1)"
 }
 assert {
   assertion = global.keycloak.hostname == "https://sso.${global.platform.dns_suffix}" && global.keycloak.realm == global.platform.env

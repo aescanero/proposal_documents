@@ -15,7 +15,7 @@
 <text x="78" y="428" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">gatekeeper · referential</text>
 <rect x="60" y="472" width="290" height="90" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="78" y="510" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">certs</text>
-<text x="78" y="538" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">backend y xDS · internal-ca</text>
+<text x="78" y="538" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">xDS · internal-ca</text>
 <rect x="60" y="582" width="290" height="90" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5" stroke-dasharray="5 4"/>
 <text x="78" y="620" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">monitoring</text>
 <text x="78" y="648" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">NO: requiere ingress (ciclo)</text>
@@ -72,9 +72,9 @@
 <text x="498" y="673" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#2563eb" text-anchor="start">Gateway qa</text>
 <text x="466" y="718" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">Uno por entorno</text>
 <circle cx="472" cy="741" r="3" fill="#2563eb"/>
-<text x="482" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">listener https 8443</text>
+<text x="482" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">listener http 8080</text>
 <circle cx="472" cy="765" r="3" fill="#2563eb"/>
-<text x="482" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">sin hostname (sin SNI)</text>
+<text x="482" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">sin hostname</text>
 <circle cx="472" cy="789" r="3" fill="#2563eb"/>
 <text x="482" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">allowedRoutes Selector</text>
 <rect x="720" y="274" width="245" height="170" rx="12" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>
@@ -116,7 +116,7 @@
 <circle cx="742" cy="741" r="3" fill="#c2410c"/>
 <text x="752" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">readiness de Envoy</text>
 <circle cx="742" cy="765" r="3" fill="#c2410c"/>
-<text x="752" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">GFE → 8443 y readiness</text>
+<text x="752" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">GFE → 8080 y readiness</text>
 <circle cx="742" cy="789" r="3" fill="#c2410c"/>
 <text x="752" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">drenaje 60 s</text>
 <rect x="990" y="274" width="245" height="170" rx="12" fill="#ffffff" stroke="#15803d" stroke-width="2"/>
@@ -204,15 +204,15 @@
 <text x="1594" y="230" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start" font-style="italic">gateway-api · http-route · backend-tls</text>
 <rect x="1590" y="252" width="270" height="128" rx="10" fill="#ffffff" stroke="#a5f3fc" stroke-width="1.5"/>
 <text x="1608" y="288" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="700" fill="#0e7490" text-anchor="start">Keycloak</text>
-<text x="1608" y="320" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">sso.qa · sin SecurityPolicy</text>
+<text x="1608" y="320" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">sso.tqbvzkr · sin SecurityPolicy</text>
 <text x="1608" y="348" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">BackendTLSPolicy a 8443</text>
 <rect x="1590" y="394" width="270" height="128" rx="10" fill="#ffffff" stroke="#a5f3fc" stroke-width="1.5"/>
 <text x="1608" y="430" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="700" fill="#0e7490" text-anchor="start">Grafana</text>
-<text x="1608" y="462" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">grafana.qa</text>
+<text x="1608" y="462" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">grafana.tqbvzkr</text>
 <text x="1608" y="490" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">OIDC propio, sin política</text>
 <rect x="1590" y="536" width="270" height="128" rx="10" fill="#ffffff" stroke="#a5f3fc" stroke-width="1.5"/>
 <text x="1608" y="572" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="700" fill="#0e7490" text-anchor="start">SonarQube</text>
-<text x="1608" y="604" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">sonar.qa · timeout 120 s</text>
+<text x="1608" y="604" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">sonar.tqbvzkr · timeout 120 s</text>
 <text x="1608" y="632" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">scanner con token propio</text>
 <rect x="1590" y="678" width="270" height="128" rx="10" fill="#ffffff" stroke="#a5f3fc" stroke-width="1.5"/>
 <text x="1608" y="714" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="700" fill="#0e7490" text-anchor="start">gcp-qa-edge</text>

@@ -75,7 +75,7 @@ stack(xs[0],by,colw,bh,'fund',1,"iam","Namespace e identidades",["namespace sona
 stack(xs[0],by+bh+bg,colw,bh,'fund',2,"secrets","Secretos por referencia",["5 secretos en Secret Manager","IAM por secreto (WI)","ESO → Secrets de K8s"])
 stack(xs[0],by+2*(bh+bg),colw,bh,'fund',3,"data-tenant","PostgreSQL dedicado",["CNPG · primaria + réplica","WAL + backup diario → GCS","bucket propio del arquetipo"])
 stack(xs[1],by,colw,bh,'prot',4,"firewall","Red cerrada por defecto",["default-deny entrada y salida","excepciones por etiqueta","sin egress a internet"])
-stack(xs[1],by+bh+bg,colw,bh,'prot',5,"sso","Cliente SAML",["realm qa en Keycloak","app roles Entra → grupos","antes de app: URL conocida"])
+stack(xs[1],by+bh+bg,colw,bh,'prot',5,"sso","Cliente SAML",["realm disasterproject en Keycloak","app roles Entra → grupos","antes de app: URL conocida"])
 # note in col2 bottom
 nx,ny=xs[1],by+2*(bh+bg)
 rect(nx,ny,colw,bh,'#fffaf3',pal['prot'][1],rx=12,sw=1.5,dash="6 5")
@@ -105,7 +105,7 @@ yy+=64
 rect(ax+16,yy,aw-32,74,'#f9fafb','#9ca3af',rx=8,sw=1.2)
 text(ax+30,yy+24,"node pool sonar",14,700,TXT,font=MONO); text(ax+30,yy+45,"n2-standard-8 · taint",13,400,SUB); text(ax+30,yy+64,"vm.max_map_count en nodo",13,400,SUB)
 # col4
-stack(xs[3],by,colw,bh,'ops',7,"frontdoor","Publicación",["HTTPRoute sonar.qa.…","timeout 120 s","cert. wildcard en el borde"])
+stack(xs[3],by,colw,bh,'ops',7,"frontdoor","Publicación",["HTTPRoute sonar.tqbvzkr.…","timeout 120 s","cert. wildcard en el borde"])
 stack(xs[3],by+bh+bg,colw,bh,'ops',8,"config","Configuración como código",["grupos y permisos: teams.yaml","quality gate por defecto","Job idempotente por hash"])
 stack(xs[3],by+2*(bh+bg),colw,bh,'ops',9,"observability","Operación",["métricas, alertas, dashboard","cola del compute engine","sonda externa blackbox"])
 # chevrons between columns
@@ -120,7 +120,7 @@ RX,RY,RW,RH=1570,160,310,670
 rect(RX,RY,RW,RH,pal['out'][0],'#a5f3fc',rx=18,sw=1.5)
 text(RX+24,RY+44,"Entrega",22,700)
 text(RX+24,RY+70,"sin capability: consumo por HTTP",15,400,SUB,italic=True)
-outs=[("Personas","UI con login SAML","sonar.qa.disasterproject.com"),
+outs=[("Personas","UI con login SAML","sonar.tqbvzkr.disasterproject.com"),
       ("GitHub Actions","análisis de main · quality gate","200 proyectos · token por repo"),
       ("CMDB","url · digest · versión","backup · ids de secretos")]
 y=RY+96

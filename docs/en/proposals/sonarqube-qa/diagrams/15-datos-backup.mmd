@@ -8,7 +8,7 @@ flowchart LR
         SB["ScheduledBackup<br/>daily"]
     end
     subgraph GCP["disasterproject-nonprod"]
-        BK[("gs://disasterproject-qa-<br/>sonarqube-main-pgbackup<br/>7-day soft delete · no versioning")]
+        BK[("gs://disasterproject-tqbvzkr-<br/>sonarqube-main-pgbackup<br/>7-day soft delete · no versioning")]
         SM[("Secret Manager<br/>qa-sonarqube-db")]
     end
     OP["CNPG operator<br/>+ barman-cloud plugin"]

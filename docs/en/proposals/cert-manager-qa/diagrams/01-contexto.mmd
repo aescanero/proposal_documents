@@ -1,6 +1,6 @@
 flowchart LR
     subgraph EDGE["Layer 1 · capability cert (NOT this proposal)"]
-        CM["Certificate Manager<br/>*.qa.disasterproject.com<br/>public certificate on the GLB"]
+        CM["Certificate Manager<br/>*.tqbvzkr.disasterproject.com<br/>public certificate on the GLB"]
     end
 
     subgraph L3["Layer 3 · capability certs · gcp-qa-certs"]
@@ -13,7 +13,7 @@ flowchart LR
 
     subgraph CONS["Consumers"]
         direction TB
-        GW["Envoy · backend certificate<br/>presented to the GLB"]
+        GW["Envoy Gateway · controller xDS<br/>certificates (nothing towards the GLB)"]
         KC["Keycloak · pod TLS<br/>keycloak-service.keycloak.svc"]
         WH["ESO and prometheus-operator<br/>webhooks"]
     end

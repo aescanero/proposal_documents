@@ -114,7 +114,7 @@ RX,RY,RW,RH=1570,160,310,670
 rect(RX,RY,RW,RH,pal['out'][0],'#a5f3fc',rx=18,sw=1.5)
 text(RX+24,RY+44,"Provides certs 1.1.0",22,700)
 text(RX+24,RY+70,"trait cert-manager",15,400,SUB,italic=True)
-items=[("Envoy Gateway","backend certificate","the one the GLB sees"),("Keycloak","pod TLS","keycloak-service.keycloak.svc"),
+items=[("Envoy Gateway","xDS certificates","nothing towards the GLB"),("Keycloak","pod TLS","keycloak-service.keycloak.svc"),
        ("ESO · prometheus-op.","webhook certificates","caBundle via cainjector"),("Trust the CA","Envoy · Grafana · blackbox","Keycloak reconciler")]
 y=RY+92
 for t,a,b in items:

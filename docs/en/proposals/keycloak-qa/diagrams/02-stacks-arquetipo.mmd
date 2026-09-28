@@ -14,7 +14,7 @@ flowchart TB
         FW["firewall<br/>NetworkPolicies"]
         OP["operator<br/>Keycloak Operator + CRDs"]
         APP["app<br/>Keycloak CR · Auth Proxy sidecar<br/>internal Certificate"]
-        RLM["realm<br/>realm qa · IdP entra · keys<br/>reconciler (CronJob)"]
+        RLM["realm<br/>realm disasterproject · IdP entra · keys<br/>reconciler (CronJob)"]
         FD["frontdoor<br/>HTTPRoute without SecurityPolicy<br/>BackendTLSPolicy"]
         OBS["observability<br/>PodMonitor · rules · Probe<br/>x509-certificate-exporter"]
     end

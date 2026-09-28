@@ -581,7 +581,7 @@ volumes:
 **La forma incorrecta, y es la que muestra cada tutorial:**
 
 ```bash
-VITE_API_URL=https://api.qa.disasterproject.com npm run build
+VITE_API_URL=https://api.tqbvzkr.disasterproject.com npm run build
 ```
 
 Vite sustituye `import.meta.env.VITE_API_URL` como un **literal de cadena en tiempo de build**. La URL queda horneada en el bundle. Eso produce **una imagen por environment**, y rompe la promoción: el artefacto que probaste en `qa` no es el artefacto que despliegas en `prod` — es un build distinto, del mismo código fuente, con bytes distintos y un digest distinto. Cada garantía de §5 se evapora, y la primera vez que te cueste algo será un bug solo-en-prod que qa no puede reproducir porque qa nunca corrió esa imagen.

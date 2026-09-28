@@ -206,7 +206,7 @@ El dead-man's switch no ve un Prometheus en marcha que no evalúa reglas o un Al
 | Recogida | Fluent Bit (DaemonSet en `monitoring-agents`) lee `/var/log/containers`; añade `namespace`, `pod`, `container` y las etiquetas `app.kubernetes.io/*` y `archetype` |
 | Procesado | Parsea JSON cuando la línea lo es (SonarQube, Keycloak, ESO la emiten así); elimina cabeceras sensibles y patrones de token; descarta las comprobaciones de salud de los probes |
 | Envío | Salida `loki` al Service `loki.monitoring:3100` |
-| Almacenamiento | Loki monolítico; chunks en `gs://disasterproject-qa-loki` (regional `europe-west1`, acceso uniforme, sin acceso público), por Workload Identity con `objectAdmin` **solo en ese bucket** |
+| Almacenamiento | Loki monolítico; chunks en `gs://disasterproject-tqbvzkr-loki` (regional `europe-west1`, acceso uniforme, sin acceso público), por Workload Identity con `objectAdmin` **solo en ese bucket** |
 | Retención | **30 días** con el compactor de Loki; regla de ciclo de vida del bucket a 35 días como red de seguridad. Sin retention lock ni versionado: impedirían que el compactor borre (mismo motivo que E1 §4.9) |
 | Etiquetas | Solo las de baja cardinalidad como etiquetas de Loki (`namespace`, `container`, `archetype`); el resto, en el contenido de la línea |
 
@@ -260,7 +260,7 @@ Fuente: [`diagrams/05-red.mmd`](diagrams/05-red.mmd)
 
 | Elemento | Valor |
 |---|---|
-| Hostname | `grafana.qa.disasterproject.com` — claim en el ledger |
+| Hostname | `grafana.tqbvzkr.disasterproject.com` — claim en el ledger |
 | `HTTPRoute` | Todo el host hacia Grafana; **sin `SecurityPolicy`**: Grafana hace su propio OIDC porque necesita la identidad para sus roles |
 | Rutas no publicadas | Prometheus, Alertmanager, Loki |
 | Anónimos | Prohibidos; sin dashboards públicos ni snapshots externos |
@@ -356,7 +356,7 @@ Fuente: [`diagrams/02-stacks-arquetipo.mmd`](diagrams/02-stacks-arquetipo.mmd)
 
 | Stack | Contenido | Entradas por sharing |
 |---|---|---|
-| `iam` | Namespaces `monitoring` (`restricted`; etiquetas `trust.disasterproject.com/internal-ca: "true"` y `gateway.disasterproject.com/routes: "true"` y anotación `gateway.disasterproject.com/hostnames: grafana.qa.disasterproject.com`, E2 §5.1) y `monitoring-agents` (`privileged`; `trust.disasterproject.com/internal-ca: "true"`, sin etiqueta de rutas porque no publica ninguna); KSAs `qa-eso-monitoring-oss`, `loki`, `grafana` | `cluster_*` |
+| `iam` | Namespaces `monitoring` (`restricted`; etiquetas `trust.disasterproject.com/internal-ca: "true"` y `gateway.disasterproject.com/routes: "true"` y anotación `gateway.disasterproject.com/hostnames: grafana.tqbvzkr.disasterproject.com`, E2 §5.1) y `monitoring-agents` (`privileged`; `trust.disasterproject.com/internal-ca: "true"`, sin etiqueta de rutas porque no publica ninguna); KSAs `qa-eso-monitoring-oss`, `loki`, `grafana` | `cluster_*` |
 | `secrets` | §8.2: contenedores, IAM por secreto, `SecretStore` y `ExternalSecret` | `cluster_*`, `workload_identity_pool` |
 | `storage` | Bucket de Loki, ciclo de vida, `objectAdmin` para `qa-loki`; `monitoring.viewer` para `qa-grafana` | `workload_identity_pool` |
 | `firewall` | §8.3 | `cluster_*` |

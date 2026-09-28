@@ -3,13 +3,13 @@ sequenceDiagram
     actor U as Person
     participant EG as Envoy (SecurityPolicy)
     participant KS as keycloak-service:8443 (internal)
-    participant KP as sso.qa.disasterproject.com (public)
+    participant KP as sso.tqbvzkr.disasterproject.com (public)
     participant A as App X
 
     Note over EG,KS: on policy load: discovery and JWKS<br/>via backendRefs to the internal Service
-    U->>EG: GET https://x.qa.disasterproject.com
+    U->>EG: GET https://x.tqbvzkr.disasterproject.com
     EG-->>U: 302 to the public authorization_endpoint
-    U->>KP: /realms/qa/protocol/openid-connect/auth
+    U->>KP: /realms/disasterproject/protocol/openid-connect/auth
     Note over KP: redirector → Entra ID (see 04)
     KP-->>U: 302 with code
     U->>EG: /oauth2/callback?code=…

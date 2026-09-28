@@ -10,21 +10,21 @@ flowchart LR
         CTRL["Envoy Gateway controller<br/>2 replicas · xDS"]
         NEG["NEG eg-qa-neg<br/>one per zone · created by GKE"]
         PX["Envoy proxies<br/>HPA 3–6 · one or more per zone"]
-        GW["Gateway qa · listener https 8443<br/>no hostname · allowedRoutes Selector"]
+        GW["Gateway qa · listener http 8080<br/>no hostname · allowedRoutes Selector"]
     end
 
     subgraph CONS["Consumers · one HTTPRoute each"]
         direction TB
-        KC["Keycloak<br/>sso.qa · BackendTLSPolicy"]
-        GF["Grafana<br/>grafana.qa"]
-        SQ["SonarQube<br/>sonar.qa · timeout 120 s"]
+        KC["Keycloak<br/>sso.tqbvzkr · BackendTLSPolicy"]
+        GF["Grafana<br/>grafana.tqbvzkr"]
+        SQ["SonarQube<br/>sonar.tqbvzkr · timeout 120 s"]
     end
 
-    CM["cert-manager<br/>backend and xDS certificates"]
+    CM["cert-manager<br/>xDS certificates"]
     GK["Gatekeeper<br/>hostnames, reserved kinds"]
 
     U --> GLB
-    GLB -->|"HTTPS · no SNI"| NEG
+    GLB -->|"HTTP · Google network encryption"| NEG
     NEG --> PX
     CTRL -. "xDS configuration" .-> PX
     GW -. "defines" .-> PX

@@ -104,7 +104,7 @@ text(ax+30,yy+24,"reglas de capa ≤ 3",14,700,TXT); text(ax+30,yy+45,"GKE · Ga
 
 stack(xs[3],by,colw,bh,'ops',7,"logs","Loki monolítico",["Fluent Bit en cada nodo","30 días · un tenant","sin tokens ni cookies"])
 stack(xs[3],by+bh+bg,colw,bh,'ops',8,"grafana","Dashboards como código",["OIDC con Keycloak","sre: Admin · equipos: Viewer","Explore solo para SRE"])
-stack(xs[3],by+2*(bh+bg),colw,bh,'ops',9,"frontdoor","Publicación",["grafana.qa.…","sin SecurityPolicy","Prometheus y Loki: no"])
+stack(xs[3],by+2*(bh+bg),colw,bh,'ops',9,"frontdoor","Publicación",["grafana.tqbvzkr.…","sin SecurityPolicy","Prometheus y Loki: no"])
 for i in range(3):
     cx=xs[i]+colw+gap/2; cy=by+ah/2
     o.append(f'<path d="M{cx-6},{cy-14} L{cx+6},{cy} L{cx-6},{cy+14}" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>')

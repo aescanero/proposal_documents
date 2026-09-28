@@ -158,7 +158,7 @@ La org policy `compute.restrictVpcPeering` de la landing zone debe permitir `pro
 | Fuera de la VPC | No resuelve: ni desde el hub ni desde internet. Si algún día hay peering con el hub, se enlaza allí a propósito (E1 §4.15) |
 | Registros de clientes | Los certificados de esos nombres los emite `internal-ca` con la política `private-names` (cert-manager DT10) |
 
-La zona pública `qa.disasterproject.com` (delegada desde la landing zone) es del borde: propuesta siguiente.
+La zona pública `tqbvzkr.disasterproject.com` (delegada desde la landing zone) es del borde: propuesta siguiente.
 
 ---
 

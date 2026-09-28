@@ -217,7 +217,7 @@ Las propuestas anteriores publican salidas "para la CMDB". El colector las recog
   "lastApply": { "at": "2026-10-05T09:12:44Z", "commit": "4730c06", "runId": "11873120455", "outcome": "ok" },
   "resourceCount": 14,
   "outputs": {
-    "url": "https://sonar.qa.disasterproject.com",
+    "url": "https://sonar.tqbvzkr.disasterproject.com",
     "image_digest": "sha256:9b1c…",
     "chart_version": "2025.4.2",
     "helm_revision": 7

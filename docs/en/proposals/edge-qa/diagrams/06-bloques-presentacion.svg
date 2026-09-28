@@ -44,7 +44,7 @@
 <text x="498" y="305" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#2563eb" text-anchor="start">dns</text>
 <text x="466" y="350" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">Environment records</text>
 <circle cx="472" cy="373" r="3" fill="#2563eb"/>
-<text x="482" y="378" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">*.qa → global IP</text>
+<text x="482" y="378" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">*.tqbvzkr → global IP</text>
 <circle cx="472" cy="397" r="3" fill="#2563eb"/>
 <text x="482" y="402" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">CAA: pki.goog, LE</text>
 <circle cx="472" cy="421" r="3" fill="#2563eb"/>
@@ -130,7 +130,7 @@
 <circle cx="1012" cy="373" r="3" fill="#15803d"/>
 <text x="1022" y="378" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">EXTERNAL_MANAGED</text>
 <circle cx="1012" cy="397" r="3" fill="#15803d"/>
-<text x="1022" y="402" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">HTTPS :8443 · 120 s</text>
+<text x="1022" y="402" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">HTTP :8080 · 120 s</text>
 <circle cx="1012" cy="421" r="3" fill="#15803d"/>
 <text x="1022" y="426" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">60 s draining</text>
 <rect x="990" y="458" width="245" height="170" rx="12" fill="#ffffff" stroke="#15803d" stroke-width="2"/>
@@ -160,7 +160,7 @@
 <circle cx="1012" cy="765" r="3" fill="#15803d"/>
 <text x="1022" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">HSTS at the edge</text>
 <circle cx="1012" cy="789" r="3" fill="#15803d"/>
-<text x="1022" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">no SNI to Envoy</text>
+<text x="1022" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">HTTP to Envoy (DL9)</text>
 <rect x="1260" y="274" width="245" height="170" rx="12" fill="#ffffff" stroke="#7e22ce" stroke-width="2"/>
 <rect x="1260" y="274" width="245" height="46" rx="12" fill="#f4ecff"/>
 <rect x="1260" y="308" width="245" height="12" fill="#f4ecff"/>
@@ -212,15 +212,15 @@
 <text x="1594" y="230" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start" font-style="italic">env-edge 1.0.0 · cert · waf · edge-ip</text>
 <rect x="1590" y="252" width="270" height="128" rx="10" fill="#ffffff" stroke="#a5f3fc" stroke-width="1.5"/>
 <text x="1608" y="288" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="700" fill="#0e7490" text-anchor="start">SonarQube</text>
-<text x="1608" y="320" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">sonar.qa</text>
+<text x="1608" y="320" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">sonar.tqbvzkr</text>
 <text x="1608" y="348" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">SAML excluded in Armor</text>
 <rect x="1590" y="394" width="270" height="128" rx="10" fill="#ffffff" stroke="#a5f3fc" stroke-width="1.5"/>
 <text x="1608" y="430" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="700" fill="#0e7490" text-anchor="start">Keycloak</text>
-<text x="1608" y="462" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">sso.qa</text>
+<text x="1608" y="462" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">sso.tqbvzkr</text>
 <text x="1608" y="490" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">public issuer</text>
 <rect x="1590" y="536" width="270" height="128" rx="10" fill="#ffffff" stroke="#a5f3fc" stroke-width="1.5"/>
 <text x="1608" y="572" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="700" fill="#0e7490" text-anchor="start">Grafana</text>
-<text x="1608" y="604" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">grafana.qa</text>
+<text x="1608" y="604" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">grafana.tqbvzkr</text>
 <text x="1608" y="632" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">login via Keycloak</text>
 <rect x="1590" y="678" width="270" height="128" rx="10" fill="#ffffff" stroke="#a5f3fc" stroke-width="1.5"/>
 <text x="1608" y="714" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="700" fill="#0e7490" text-anchor="start">exceptions</text>

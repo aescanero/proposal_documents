@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 6 |
+| **Status** | Proposal · revision 7 |
 | **Scope** | The layer 3 `gateway-envoy-gke` archetype on `qa`: the path of a request from the GLB to the pod, the environment's single Gateway, who may attach which route and with which policy, the Gateway API CRDs, the proxy fleet and its relationship with the NEG, timeouts, observability, network, the `ingress` contract, stacks, policies, execution and plan |
 | **Why now** | SonarQube (S1 §4.5, S2 §5.8), Keycloak (§8), monitoring (Grafana) and cert-manager (§1, §3) already publish routes on the `qa` Gateway or issue it certificates, and each one took it for granted. S2 §9 left it three open requirements |
 | **Reference specification** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -38,9 +38,9 @@ Source: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 
 | Segment or function | Who | Reason |
 |---|---|---|
-| Global IP, `*.qa.disasterproject.com` certificate, Cloud Armor, backend service, URL map | **`gcp-qa-edge`**, layer 1 (S1 §4.15) | Must share a project with the load balancer |
+| Global IP, `*.tqbvzkr.disasterproject.com` certificate, Cloud Armor, backend service, URL map | **`gcp-qa-edge`**, layer 1 (S1 §4.15) | Must share a project with the load balancer |
 | NEG `eg-qa-neg` | The **GKE NEG controller**, from the annotation on the Service that Envoy Gateway generates | Outside Terraform state (§10.2, R20); `gcp-qa-edge` reads it as a `data` source |
-| TLS GLB → Envoy | This archetype, with a certificate from the internal CA (cert-manager §1) | The GLB encrypts but does not validate (cert-manager DT7) |
+| GLB → Envoy leg | **HTTP**, no certificate (DG14) | Public TLS terminates at the GLB with the layer-1 certificate. A certificate from the internal CA on this leg made the edge (layer 1) depend on cert-manager (layer 3), and the GLB did not validate it: it encrypted without authenticating |
 | Routing by host and path, traffic policies | This archetype: the `qa` Gateway and the consumers' `HTTPRoute`s | Gateway API: the route lives with whoever publishes it (§10.6) |
 | User authentication | **Each application**; the OIDC `SecurityPolicy` only if the consumer asks for it (§4.3) | SonarQube (S1 §4.6), Grafana and Keycloak cannot carry one |
 | East-west traffic | **Nobody**: the Service's DNS name | `CLAUDE.md`; Envoy is not a mesh |
@@ -59,10 +59,10 @@ Source: [`diagrams/02-camino-peticion.mmd`](diagrams/02-camino-peticion.mmd)
 
 | Setting | Value | Reason |
 |---|---|---|
-| Listener | One, `https`, **port 8443**, `protocol: HTTPS`, `tls.mode: Terminate` | Above 1024: no port remapping and no capabilities in the container |
-| Listener `hostname` | **None** | The GLB sends no SNI to the backend unless explicitly configured to **(verify, VG1)**. A listener with a `hostname` produces a filter chain that requires SNI and would reject the handshake. The host is decided in the `HTTPRoute`s, by the `Host` header (DG2) |
-| Certificate | `Secret` `gateway-backend-tls`, issued by `internal-ca` for `envoy-qa.envoy-gateway-system.svc` | With neither SNI nor validation at the GLB, the name does not matter to the edge; one from its own namespace is covered by cert-manager's `namespace-services` policy (§11) |
-| HTTP listener | **No** | The redirect to HTTPS is done by the GLB's URL map |
+| Listener | One, `http`, **port 8080**, `protocol: HTTP` | Above 1024: no port remapping and no capabilities in the container. Only the GFE ranges reach it (§5.2, §9.3) |
+| Listener `hostname` | **None** | The host is decided in the `HTTPRoute`s, by the `Host` header (DG2): one place where which name goes to which service is declared |
+| Certificate | **None** on the listener | cert-manager still issues the controller's xDS certificates (DG9) and those for `BackendTLSPolicy` towards backends that require it; none goes towards the edge |
+| HTTPS listener | **No** | The client only speaks TLS to the GLB; the HTTP-to-HTTPS redirect is done by the GLB's URL map. The application knows the origin was HTTPS from `X-Forwarded-Proto` and from its pinned base URL (`sonar.core.serverBaseURL`, Keycloak's `hostname`) (VG1) |
 | `allowedRoutes` | `kinds: [HTTPRoute]`, `namespaces.from: Selector` with `gateway.disasterproject.com/routes: "true"` | §4.1 |
 
 ### 2.2 Timeouts
@@ -110,7 +110,7 @@ The GLB appends `<client IP>,<GLB IP>` to `X-Forwarded-For`. A `ClientTrafficPol
 
 Source: [`diagrams/03-tenencia.mmd`](diagrams/03-tenencia.mmd)
 
-With a shared Gateway, Gateway API precedence decides between routes **from different namespaces**. The most specific path match wins, wherever it comes from. A tenant's `HTTPRoute` with host `sso.qa.disasterproject.com` and `Exact: /realms/qa/protocol/openid-connect/auth` would take Keycloak's login page. An `HTTPRoute` **without `hostnames`** applies to every host on the listener. This is the archetype's main risk (RG1).
+With a shared Gateway, Gateway API precedence decides between routes **from different namespaces**. The most specific path match wins, wherever it comes from. A tenant's `HTTPRoute` with host `sso.tqbvzkr.disasterproject.com` and `Exact: /realms/disasterproject/protocol/openid-connect/auth` would take Keycloak's login page. An `HTTPRoute` **without `hostnames`** applies to every host on the listener. This is the archetype's main risk (RG1).
 
 ### 4.1 Attaching a route
 
@@ -256,7 +256,7 @@ Source: [`diagrams/05-despliegue.mmd`](diagrams/05-despliegue.mmd)
 
 | Setting | Value | Reason |
 |---|---|---|
-| Service | `type: ClusterIP` with `cloud.google.com/neg: '{"exposed_ports":{"8443":{"name":"eg-qa-neg"}}}'` | No load balancer per Service; deterministic NEG name (§10.2) |
+| Service | `type: ClusterIP` with `cloud.google.com/neg: '{"exposed_ports":{"8080":{"name":"eg-qa-neg"}}}'` | No load balancer per Service; deterministic NEG name (§10.2) |
 | Replicas | HPA **3–6**, CPU at 70 % | Zonal NEG: ≥ 1 pod per `europe-west1` zone (b, c, d); assert `minReplicas ≥ zones` (§10.2, RG3) |
 | Spread | `topologySpreadConstraints` by `topology.kubernetes.io/zone`, `maxSkew: 1`, `DoNotSchedule`; by node, `ScheduleAnyway` | A zone without pods leaves its NEG empty |
 | Node pool | The general one, not `sonar` | The `sonar` pool is single-zone and tainted (S1 §4.1) |
@@ -264,15 +264,15 @@ Source: [`diagrams/05-despliegue.mmd`](diagrams/05-despliegue.mmd)
 | Rollout | `maxUnavailable: 0`, `maxSurge: 1`, `minReadySeconds: 30` | The new pod takes time to show as healthy in the GLB. With a standalone NEG there is no *readiness gate* to wait for that **(verify, VG3)**, so a fast rollout leaves the GLB with no healthy backends for a few seconds (RG4) |
 | Draining | `shutdown.drainTimeout: 60s`; `terminationGracePeriodSeconds: 90`; `connection_draining_timeout_sec: 60` on the backend service | The GLB stops sending before Envoy closes |
 | Resources per pod | Request 500m / 512 MiB; memory limit 1 GiB | A starting point; tuned from the metrics of phase 3 |
-| Security | PSS `restricted`: non-root, `drop: [ALL]`, `seccompProfile: RuntimeDefault` | Port 8443 does not need `NET_BIND_SERVICE` **(verify the `shutdown-manager` sidecar, VG12)** |
+| Security | PSS `restricted`: non-root, `drop: [ALL]`, `seccompProfile: RuntimeDefault` | Port 8080 does not need `NET_BIND_SERVICE` **(verify the `shutdown-manager` sidecar, VG12)** |
 | Access log | JSON to stdout; path as **`%REQ_WITHOUT_QUERY(:PATH)%`**; `x-request-id`, route name, `%RESPONSE_FLAGS%`, client IP (§2.4) | The OIDC callback's query carries `code` and `state`, and Keycloak's carries session codes: they must not end up in Loki (RG8). No `Authorization` or `Cookie` headers |
 
 ### 5.2 Health as seen from the GLB
 
 | Setting | Value | Reason |
 |---|---|---|
-| Health check | HTTP, `USE_FIXED_PORT` to Envoy's readiness port, path `/ready` **(port to confirm on the pinned version, VG2)** | Against 8443, a request with no known host returns 404 and the GLB would mark every backend down |
-| VPC firewall | `35.191.0.0/16` and `130.211.0.0/22` → nodes, TCP 8443 and the readiness port | Both data traffic and GLB health checks arrive from those ranges. A legitimate `cidr:` selector (AM §6.3); declared by this manifest (§8.1) |
+| Health check | HTTP, `USE_FIXED_PORT` to Envoy's readiness port, path `/ready` **(port to confirm on the pinned version, VG2)** | Against 8080, a request with no known host returns 404 and the GLB would mark every backend down |
+| VPC firewall | `35.191.0.0/16` and `130.211.0.0/22` → nodes, TCP 8080 and the readiness port | Both data traffic and GLB health checks arrive from those ranges. A legitimate `cidr:` selector (AM §6.3); declared by this manifest (§8.1) |
 
 ### 5.3 The controller
 
@@ -297,7 +297,7 @@ The monitoring archetype declares the rules (monitoring §5.1): `monitoring` req
 | Routes not accepted | kube-state-metrics (custom resource state) on the `HTTPRoute`'s `status.parents[].conditions` | `Accepted=False` or `ResolvedRefs=False` > 10 min: almost always a wrong hostname or `parentRefs` |
 | Gateway not programmed | Same, on the `Gateway` | `Programmed=False` > 5 min |
 | Controller | Controller metrics (xDS translation errors) **(names to confirm, VG10)** | Any, sustained |
-| Backend and xDS certificates | cert-manager §6 | < 14 days |
+| xDS certificates | cert-manager §6 | < 14 days |
 | Backends down as seen from the GLB | Cloud Monitoring, `loadbalancing.googleapis.com/https/backend_request_count` by response class. A metric-based alert of **layer 1b** (`cloud-observability`) | 5xx of `backend` origin > 5 % for 10 min |
 
 The last one is the only alert that sees what Prometheus cannot: a GLB with no healthy backends never reaches Envoy.
@@ -342,7 +342,7 @@ metadata: { name: sonarqube, namespace: sonarqube }
 spec:
   parentRefs:
     - { name: qa, namespace: envoy-gateway-system, sectionName: https }   # = gateway_name, gateway_namespace, listener_name
-  hostnames: [sonar.qa.disasterproject.com]                               # = the instance's claim
+  hostnames: [sonar.tqbvzkr.disasterproject.com]                               # = the instance's claim
   rules:
     - matches: [{ path: { type: PathPrefix, value: / } }]
       backendRefs: [{ name: sonarqube, port: 9000 }]
@@ -410,11 +410,11 @@ firewall:                             # to the nodes where the proxies run (self
   - name: glb-gfe-to-envoy
     from: cidr:35.191.0.0/16
     to: self
-    ports: [8443, 19003]              # 19003: proxy readiness, to confirm (VG2)
+    ports: [8080, 19003]              # 19003: proxy readiness, to confirm (VG2)
   - name: glb-legacy-to-envoy
     from: cidr:130.211.0.0/22
     to: self
-    ports: [8443, 19003]
+    ports: [8080, 19003]
 
 capacity:
   cpu_millicores: 3200
@@ -430,7 +430,7 @@ capacity:
 | Stack | Contents | Inputs via sharing |
 |---|---|---|
 | `controller` | Namespace `envoy-gateway-system` (PSS `restricted`); `helm_release` of the CRDs (standard channel, `keep`) and of the Envoy Gateway controller (§5.3); xDS `Certificate`; `NetworkPolicy` (§9.3); the `ConstraintTemplate`s for the Gateway API and Envoy Gateway kinds | `cluster_endpoint`, `cluster_ca` |
-| `proxy` | Own chart with `GatewayClass` `envoy-qa`, `EnvoyProxy` `edge-proxy`, `Gateway` `qa`, `Certificate` `gateway-backend-tls`, `ClientTrafficPolicy`, default `BackendTrafficPolicy`, HPA, PDB and the `Constraint`s of §9.2; `prevent_destroy` on the `helm_release` | `cluster_*` |
+| `proxy` | Own chart with `GatewayClass` `envoy-qa`, `EnvoyProxy` `edge-proxy`, `Gateway` `qa`, `ClientTrafficPolicy`, default `BackendTrafficPolicy`, HPA, PDB and the `Constraint`s of §9.2; `prevent_destroy` on the `helm_release` | `cluster_*` |
 
 **Why two stacks.** Upgrading Envoy Gateway is routine; deleting the Gateway is not. Deleting it deletes the Service, the NEG controller deletes `eg-qa-neg`, and the GLB is left with no backends, taking the whole environment out of service. With separate stacks, a version PR never plans a change to the Gateway, and destroying it takes an explicit PR that removes `prevent_destroy`. This is the same reasoning as cert-manager's CA, §8.2.
 
@@ -457,7 +457,7 @@ assert {
 }
 assert {
   assertion = !tm_can(global.gateway_values.gateway.listeners[0].hostname)
-  message   = "ingress: the listener carries no hostname; the GLB sends no SNI (VG1)"
+  message   = "ingress: the listener carries no hostname; routes decide the host (DG2)"
 }
 assert {
   assertion = global.gateway_values.clientTrafficPolicy.idleTimeoutSeconds > 600
@@ -499,7 +499,7 @@ Default-deny ingress and egress `NetworkPolicy` in `envoy-gateway-system`:
 
 | Source | Destination | Port | Note |
 |---|---|---|---|
-| GLB GFEs (`35.191.0.0/16`, `130.211.0.0/22`) | Proxies | 8443 and readiness | `ipBlock`. The only ingress from outside the cluster |
+| GLB GFEs (`35.191.0.0/16`, `130.211.0.0/22`) | Proxies | 8080 and readiness | `ipBlock`. The only ingress from outside the cluster, and the only one that reaches the HTTP listener |
 | Prometheus | Proxies and controller | Metrics (19001 on the proxy) **(verify, VG10)** | |
 | Proxies | Controller | 18000 (xDS) | |
 | Proxies | Namespaces with `route_namespace_label` | Their Services' ports | Each consumer's `NetworkPolicy` restricts the port (§7.2) |
@@ -545,18 +545,19 @@ Default-deny ingress and egress `NetworkPolicy` in `envoy-gateway-system`:
 | # | Decision | Status | Recommendation | Alternative |
 |---|---|---|---|---|
 | DG1 | Gateways | Consequence of §10.6 | One, `qa`, in `envoy-gateway-system` | One per tenant (fan-in, one NEG per Gateway) |
-| DG2 | Listener | Proposal | HTTPS 8443 without `hostname`; routes decide the host | Listener with `*.qa.disasterproject.com` (requires SNI from the GLB) |
+| DG2 | Listener | Proposal | HTTP 8080 without `hostname`; routes decide the host | Listener with `*.tqbvzkr.disasterproject.com` |
 | DG3 | Gateway API CRDs | Proposal | Installed by the archetype, standard channel; GKE's Gateway API disabled | Managed by GKE |
 | DG4 | Hostname ownership | Proposal | Claim + namespace annotation + referential Gatekeeper + G1 | Trust the tenants |
 | DG5 | Envoy Gateway extensions | Proposal | `EnvoyPatchPolicy` and `Backend` disabled; `EnvoyExtensionPolicy` only in the Gateway's namespace | Available to tenants |
 | DG6 | Timeouts | Proposal | Idle 620 s; request 60 s by default on the Gateway, ≤ 120 s per route | Envoy's defaults (15 s request) |
 | DG7 | Fleet | Proposal | HPA 3–6, spread by zone, PDB 2, `maxUnavailable: 0`, 60 s drain | Fixed replicas |
-| DG8 | GLB health check | Proposal | Envoy's readiness port | 8443 with a direct-response `/healthz` route |
+| DG8 | GLB health check | Proposal | Envoy's readiness port | 8080 with a direct-response `/healthz` route |
 | DG9 | xDS certificates | Proposal, pending VG8 | cert-manager | `certgen` Job without renewal |
 | DG10 | Stacks | Proposal | `controller` and `proxy` separate, `prevent_destroy` on `proxy` | A single one |
 | DG11 | `backend-tls` trait | Proposal, applied to the registry | Yes | No trait (Keycloak could not ask for it) |
 | DG12 | Access log | Proposal | No query string and no credential headers | Default format |
 | DG13 | Non-HTTP traffic | **Decided**: pattern B | Exception by name, declared in `exposures`, with a business justification, a bounded source and an expiry; direct L4 communication through a passthrough load balancer in `gcp-qa-edge` (D as the internal variant) | Pattern C (TCP proxy with NEG); a `LoadBalancer` `Service` created by GKE |
+| DG14 | GLB → Envoy leg | **Approved** | HTTP: public TLS terminates at the GLB; the edge depends on no layer-3 certificate | HTTPS with the internal CA (an upward dependency, unvalidated); HTTPS with a platform CA (CAS) and a `TrustConfig`, if authenticating the leg is ever required |
 
 ---
 
@@ -582,7 +583,7 @@ Default-deny ingress and egress `NetworkPolicy` in `envoy-gateway-system`:
 
 | # | Verification | Result that closes it |
 |---|---|---|
-| VG1 | GLB → Envoy with a listener without `hostname` | Health check and traffic green; a capture confirms whether the GLB sends SNI |
+| VG1 | GLB → Envoy over HTTP to 8080 | Health check and traffic green; Google's current documentation confirms that GLB traffic to backends in the VPC is encrypted at the network level; SonarQube and Keycloak receive `X-Forwarded-Proto: https` and generate `https://` URLs (SAML and OIDC logins complete) |
 | VG2 | Proxy readiness port and path on the pinned version | GLB health check green through the firewall |
 | VG3 | Proxy rollout under constant load through the GLB | Zero 502s across a full upgrade; confirmed whether a *readiness gate* exists for standalone NEGs |
 | VG4 | Keepalive: 30-minute test with idle connections interleaved | Zero 502s |

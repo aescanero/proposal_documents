@@ -248,7 +248,7 @@ globals "platform" {
 }
 
 globals "claims" {
-  hostname = "sonar.qa.disasterproject.com"
+  hostname = "sonar.tqbvzkr.disasterproject.com"
 }
 
 globals {
@@ -347,7 +347,7 @@ import { source = "/imports/generators/v1/gen_app.tm.hcl" }
 |---|---|
 | **Propósito** | Namespace de la instancia y las cuentas de servicio de Kubernetes. Es el primer stack: todo lo demás vive dentro |
 | **Generador** | `gen_tenant_namespace.tm.hcl` (genérico, cloud-agnóstico salvo la anotación de identidad) |
-| **Recursos** | `kubernetes_namespace` `sonarqube` (etiquetas `archetype`, `instance`, `pod-security.kubernetes.io/enforce: restricted`, `trust.disasterproject.com/internal-ca: "true"` y `gateway.disasterproject.com/routes: "true"`; anotación `gateway.disasterproject.com/hostnames: sonar.qa.disasterproject.com`); KSA `qa-sonarqube`, `qa-eso-sonarqube`, `sonarqube-db`; `LimitRange` por defecto |
+| **Recursos** | `kubernetes_namespace` `sonarqube` (etiquetas `archetype`, `instance`, `pod-security.kubernetes.io/enforce: restricted`, `trust.disasterproject.com/internal-ca: "true"` y `gateway.disasterproject.com/routes: "true"`; anotación `gateway.disasterproject.com/hostnames: sonar.tqbvzkr.disasterproject.com`); KSA `qa-sonarqube`, `qa-eso-sonarqube`, `sonarqube-db`; `LimitRange` por defecto |
 | **No crea** | Cuentas de servicio GCP. Con Workload Identity directa se concede IAM al principal del KSA en el recurso que lo necesita, en el stack que crea ese recurso |
 | **Entradas** | `cluster_endpoint`, `cluster_ca` (de `gcp-qa-gke`) |
 | **Salidas (CMDB)** | `namespace` |
@@ -454,7 +454,7 @@ generate_hcl "_secrets.tf" {
 |---|---|
 | **Propósito** | Instancia PostgreSQL propia, sus backups y su bucket |
 | **Generador** | `gen_data_tenant_cnpg.tm.hcl`: rama GCP para bucket e IAM, parte común para el `helm_release` |
-| **Recursos GCP** | `google_storage_bucket` `disasterproject-qa-sonarqube-main-pgbackup` (regional, `uniform_bucket_level_access`, `public_access_prevention = "enforced"`, **sin** versionado ni retention lock — E1 §4.9, soft delete 7 días); `google_storage_bucket_iam_member` `objectAdmin` al principal de `qa-sonarqube-db` |
+| **Recursos GCP** | `google_storage_bucket` `disasterproject-tqbvzkr-sonarqube-main-pgbackup` (regional, `uniform_bucket_level_access`, `public_access_prevention = "enforced"`, **sin** versionado ni retention lock — E1 §4.9, soft delete 7 días); `google_storage_bucket_iam_member` `objectAdmin` al principal de `qa-sonarqube-db` |
 | **Recursos K8s** | `helm_release` con `database.enabled=true`: `Cluster` CNPG `sonarqube-db` (2 instancias, anti-afinidad por nodo, `bootstrap.initdb` con `secret: sonarqube-db`), backups con el plugin barman-cloud (`ObjectStore` + `ScheduledBackup` diario) **(verificar: API del plugin en la versión de CNPG fijada)** |
 | **Tenant resource** | `Cluster`, `ObjectStore`, `ScheduledBackup` y `Backup` en el propio namespace, autorizados por `postgres-operator` (propuesta `postgres-operator-qa` §1) |
 | **Entradas** | `cluster_*`, `workload_identity_pool` (gke). `operator_version` e `image_catalog` llegan como globales del contrato `database-platform`, no por sharing; `after` sigue apuntando a `gcp-qa-postgres-operator` para que los CRDs existan |
@@ -505,11 +505,11 @@ Fuente: [`diagrams/15-datos-backup.mmd`](diagrams/15-datos-backup.mmd)
 
 | | |
 |---|---|
-| **Propósito** | Registrar SonarQube como cliente SAML del realm `qa` y mapear roles de Entra ID → grupos |
+| **Propósito** | Registrar SonarQube como cliente SAML del realm `disasterproject` y mapear roles de Entra ID → grupos |
 | **Tenant resource** | `ConfigMap` `client-sonarqube-main-saml` en el namespace de Keycloak (`creates_tenant_resources: [oidc-idp]`; AM §10.4) |
 | **Implementación propuesta** | El arquetipo `keycloak` reconcilia clientes con **keycloak-config-cli** a partir de `ConfigMap` etiquetados `keycloak.disasterproject.com/realm=qa` en su namespace. Este stack crea ese `ConfigMap` con el JSON del cliente |
 | **Por qué no el proveedor de OpenTofu de Keycloak** | Necesita credenciales de administración de Keycloak en el pipeline: el pipeline leería un secreto, que es justo lo que E1 §4.3 prohíbe |
-| **Contenido del cliente** | `clientId: https://sonar.qa.disasterproject.com` · protocolo `saml` · ACS `https://sonar.qa.disasterproject.com/oauth2/callback/saml` · firma de aserciones · mappers `login`, `name`, `email`, `groups` (el atributo de usuario `entra_roles`, importado del claim `roles` de Entra, E1 §4.6) |
+| **Contenido del cliente** | `clientId: https://sonar.tqbvzkr.disasterproject.com` · protocolo `saml` · ACS `https://sonar.tqbvzkr.disasterproject.com/oauth2/callback/saml` · firma de aserciones · mappers `login`, `name`, `email`, `groups` (el atributo de usuario `entra_roles`, importado del claim `roles` de Entra, E1 §4.6) |
 | **Entradas** | `cluster_*` (gke) |
 | **Requisito al arquetipo `keycloak`** | Reconciliador de `ConfigMap` y **nuevas salidas** `saml_sso_url` y `saml_idp_certificate` (certificado público, se puede compartir): MINOR del contrato `oidc-idp` → 4.2.0 (AM §4.5) |
 
@@ -585,7 +585,7 @@ Alta de un equipo = app role en Entra ID (equipo de identidad) + una entrada en 
 
 | | |
 |---|---|
-| **Recursos** | `HTTPRoute` `sonarqube` (host `sonar.qa.disasterproject.com`, `parentRefs` al Gateway `qa`, sección `https`) con `timeouts.request: 120s` en la regla: canal estándar de Gateway API, sin un kind propio de Envoy (propuesta de Envoy Gateway §2.2, §7.2) |
+| **Recursos** | `HTTPRoute` `sonarqube` (host `sonar.tqbvzkr.disasterproject.com`, `parentRefs` al Gateway `qa`, sección `https`) con `timeouts.request: 120s` en la regla: canal estándar de Gateway API, sin un kind propio de Envoy (propuesta de Envoy Gateway §2.2, §7.2) |
 | **Lo que no lleva** | **`SecurityPolicy`** (E1 §4.6, R44) — lo impone un `assert` (§7.1) |
 | **Entradas** | Ninguna por sharing: nombre y namespace del Gateway son globals |
 | **Después de `app`** | La ruta apunta a un Service que existe |
@@ -594,7 +594,7 @@ Alta de un equipo = app role en Entra ID (equipo de identidad) + una entrada en 
 
 | | |
 |---|---|
-| **Recursos** | `PodMonitor` de SonarQube (cabecera `X-Sonar-Passcode` desde el Secret `sonarqube-passcode`); `PrometheusRule` con las alertas de E1 §4.7; `Probe` del blackbox exporter contra `https://sonar.qa.disasterproject.com/api/system/status`; `ConfigMap` de dashboard con la etiqueta que recoge el sidecar de Grafana |
+| **Recursos** | `PodMonitor` de SonarQube (cabecera `X-Sonar-Passcode` desde el Secret `sonarqube-passcode`); `PrometheusRule` con las alertas de E1 §4.7; `Probe` del blackbox exporter contra `https://sonar.tqbvzkr.disasterproject.com/api/system/status`; `ConfigMap` de dashboard con la etiqueta que recoge el sidecar de Grafana |
 | **Entradas** | Ninguna por sharing: `rules_selector` es global |
 | **Alertas del arquetipo** | Disponibilidad, cola del CE, tareas fallidas, heap, OOMKilled, PVC, retraso de réplica, último backup > 26 h. La de `ExternalSecret` sin sincronizar es de plataforma (propuesta de ESO §9.2) |
 
@@ -674,11 +674,11 @@ sonarqube:
 | `sonar.forceAuthentication` | `true` | Sin acceso anónimo (E1 §4.6) |
 | `sonar.updatecenter.activate` | `false` | Sin egress a internet (E1 §4.8) |
 | `sonar.telemetry.enable` | `false` | Sin egress; decisión de privacidad |
-| `sonar.core.serverBaseURL` | `https://sonar.qa.disasterproject.com` | Enlaces y SAML correctos detrás del proxy |
+| `sonar.core.serverBaseURL` | `https://sonar.tqbvzkr.disasterproject.com` | Enlaces y SAML correctos detrás del proxy |
 | `sonar.auth.saml.enabled` | `true` | |
-| `sonar.auth.saml.applicationId` | `https://sonar.qa.disasterproject.com` | = `clientId` del stack `sso` |
+| `sonar.auth.saml.applicationId` | `https://sonar.tqbvzkr.disasterproject.com` | = `clientId` del stack `sso` |
 | `sonar.auth.saml.providerName` | `Disasterproject SSO` | Texto del botón de login |
-| `sonar.auth.saml.providerId` | `https://sso.qa.disasterproject.com/realms/qa` | |
+| `sonar.auth.saml.providerId` | `https://sso.tqbvzkr.disasterproject.com/realms/disasterproject` | |
 | `sonar.auth.saml.loginUrl` / `certificate.secured` | de `keycloak` por sharing | §5.6 |
 | `sonar.auth.saml.user.login` / `.name` / `.email` / `.group.name` | `login` / `name` / `email` / `groups` | = mappers del cliente |
 | `sonar.log.jsonOutput` | `true` | Logs estructurados para Loki **(verificar disponibilidad)** |
@@ -829,7 +829,7 @@ Lo que este arquetipo necesita de otros y que todavía no está especificado:
 | Otros arquetipos | **Nada** | Sin `provides`; ningún stack consume sus salidas |
 | CMDB | `url`, `image_digest`, `chart_version`, `db_rw_service`, `backup_bucket`, `secret_ids` | Bloques `output` normales, recogidos por el sync de la CMDB |
 | Pipelines de aplicaciones | URL, token de proyecto por repositorio, quality gate | Onboarding automatizado (D9) y workflow reutilizable (E1 §4.11) — fuera de este repositorio |
-| Personas | UI con login SAML | `sonar.qa.disasterproject.com` |
+| Personas | UI con login SAML | `sonar.tqbvzkr.disasterproject.com` |
 
 ---
 

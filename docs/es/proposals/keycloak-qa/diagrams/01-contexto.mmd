@@ -7,12 +7,12 @@ flowchart LR
     end
 
     subgraph EDGE["disasterproject-nonprod · borde"]
-        GLB["GLB + Cloud Armor<br/>*.qa.disasterproject.com"]
+        GLB["GLB + Cloud Armor<br/>*.tqbvzkr.disasterproject.com"]
         GW["Envoy Gateway · Gateway qa"]
     end
 
     subgraph KC["ns keycloak · arquetipo keycloak (capa 4)"]
-        K["Keycloak × 2<br/>realm qa<br/>sso.qa.disasterproject.com"]
+        K["Keycloak × 2<br/>realm disasterproject<br/>sso.tqbvzkr.disasterproject.com"]
         R["Reconciliador<br/>keycloak-config-cli"]
     end
 
@@ -25,7 +25,7 @@ flowchart LR
     end
 
     U --> GLB --> GW
-    GW -->|"/realms/qa · sin SecurityPolicy"| K
+    GW -->|"/realms/disasterproject · sin SecurityPolicy"| K
     GW -->|"HTTPRoute + SecurityPolicy"| SP
     GW --> SQ
     GW --> GF

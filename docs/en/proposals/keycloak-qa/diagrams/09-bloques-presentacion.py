@@ -45,7 +45,7 @@ o.append(f'<rect width="{W}" height="{H}" fill="#ffffff"/>')
 
 # title
 text(60,72,"Keycloak — layer-4 archetype, oidc-idp provider",40,800)
-text(60,108,"Instance keycloak-main · environment qa · GCP disasterproject-nonprod · europe-west1 · 9 stacks · realm qa · Entra ID upstream",19,400,SUB)
+text(60,108,"Instance keycloak-main · environment qa · GCP disasterproject-nonprod · europe-west1 · 9 stacks · realm disasterproject · Entra ID upstream",19,400,SUB)
 o.append(f'<rect x="60" y="124" width="120" height="5" rx="2" fill="{pal["fund"][1]}"/>')
 
 # left panel: consumes
@@ -112,7 +112,7 @@ text(ax+30,yy+24,"node pool general",14,700,TXT,font=MONO); text(ax+30,yy+45,"sp
 
 # column 4
 stack(xs[3],by,colw,bh,'ops',7,"realm","Realm qa as code",["IdP entra · private_key_jwt","roles → entra_roles","reconciler every 5 min"])
-stack(xs[3],by+bh+bg,colw,bh,'ops',8,"frontdoor","Publishing",["sso.qa.disasterproject.com","only /realms/qa and /resources","no /admin, no master"])
+stack(xs[3],by+bh+bg,colw,bh,'ops',8,"frontdoor","Publishing",["sso.tqbvzkr.disasterproject.com","only /realms/disasterproject and /resources","no /admin, no master"])
 stack(xs[3],by+2*(bh+bg),colw,bh,'ops',9,"observability","Operations",["external and internal probes","login and broker errors","cert. expiry (R42)"])
 for i in range(3):
     cx=xs[i]+colw+gap/2; cy=by+ah/2

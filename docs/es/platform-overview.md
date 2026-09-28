@@ -358,7 +358,7 @@ flowchart LR
     style NEW fill:#e8f5e9
 ```
 
-Adoptar Gateway API elimina tres cosas: el URL map generado a partir de una lista de tenants, el ledger de prioridad de listeners, y el stack de edge-routing que tenía que correr al final. Lo que sobrevive como claim es el **hostname** — solo un tenant puede ser dueño de `alpha.demos.disasterproject.com`.
+Adoptar Gateway API elimina tres cosas: el URL map generado a partir de una lista de tenants, el ledger de prioridad de listeners, y el stack de edge-routing que tenía que correr al final. Lo que sobrevive como claim es el **hostname** — solo un tenant puede ser dueño de `alpha.mfrwzdp.disasterproject.com`.
 
 Especificado en: architecture §10.6.
 

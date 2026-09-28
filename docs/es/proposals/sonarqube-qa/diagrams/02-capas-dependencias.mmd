@@ -1,6 +1,6 @@
 flowchart BT
     subgraph L0["Capa 0 · proyecto de landing zone (nuevo)"]
-        DZ["dns-zone<br/>disasterproject.com, delega qa.disasterproject.com"]
+        DZ["dns-zone<br/>disasterproject.com, delega tqbvzkr.disasterproject.com"]
         CP["cidr-pool<br/>10.0.0.0/8"]
         KMS["Cloud KMS"]
         AR["Artifact Registry"]
@@ -10,7 +10,7 @@ flowchart BT
         CERT["cert<br/>Certificate Manager"]
         WAF["waf<br/>Cloud Armor"]
         EIP["edge-ip<br/>IP global"]
-        EE["env-edge<br/>backend service · URL map<br/>zona qa.disasterproject.com"]
+        EE["env-edge<br/>backend service · URL map<br/>zona tqbvzkr.disasterproject.com"]
     end
     subgraph L1B["Capa 1b"]
         CO["cloud-observability<br/>solo auditoría"]
