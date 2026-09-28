@@ -2956,7 +2956,7 @@ Como `generate_hcl` es compartido, un cambio en cómo se construye un cluster ll
 Terramate ofrece un inventario declarativo independiente del estado, que es una mejor fuente de CMDB que analizar los ficheros de estado. Dos comandos lo transportan:
 
 ```bash
-terramate list --json                                   # inventario lógico, pre-apply
+./ci/stacks-json.sh                                     # inventario lógico, pre-apply
 terramate run --changed -- tofu show -json              # inventario físico, post-apply
 ```
 
@@ -2990,7 +2990,7 @@ El resolver y OPA no deben implementar las mismas reglas dos veces.
 |---|---|---|
 | Naturaleza | **Computa** — cierre, asignación, ordenamiento | **Asegura** — invariantes sobre lo computado |
 | Estado | Escribe ledgers | Sin estado, sin efectos secundarios |
-| Entrada | Manifiestos, bindings, ledgers | `resolution.json`, `terramate list --json`, `.tf` generado, plan JSON |
+| Entrada | Manifiestos, bindings, ledgers | `resolution.json`, `stacks.json` (`ci/stacks-json.sh`), `.tf` generado, plan JSON |
 | Falla en | Pasos 1–17 | Después de la resolución y después de la generación |
 | Autoría | Equipo de plataforma, en código | Plataforma **y** seguridad, sin tocar el resolver |
 
@@ -3645,7 +3645,7 @@ El invariante de ordenamiento que antes dependía de un script de shell es ahora
   run: |
     registry-generate --check                 # el registro es la fuente de verdad
     archetypectl resolve --dry-run > resolution.json
-    terramate list --json > stacks.json
+    ./ci/stacks-json.sh > stacks.json         # Terramate 0.16 no tiene `list --json`
     archetypectl enrich stacks.json           # añade consumes[] y after_ids[]
 
 - name: G1 — structure and composition
@@ -3660,7 +3660,17 @@ El invariante de ordenamiento que antes dependía de un script de shell es ahora
     done
 ```
 
-`archetypectl enrich` es la única pieza a medida: `terramate list --json` no expone los bloques `input`, así que el enriquecedor escanea cada stack en busca de `from_stack_id` y `after`, produciendo los campos `consumes[]` y `after_ids[]` que la política compara. Mantener esa extracción en una pequeña herramienta, en lugar de en la política, mantiene el Rego portable y testable contra fixtures.
+`ci/stacks-json.sh` construye el inventario de stacks. Terramate 0.16 **no tiene `list --json`** (medido): `terramate list` solo imprime rutas, así que el script evalúa los metadatos de cada stack:
+
+```bash
+#!/usr/bin/env bash
+# ci/stacks-json.sh — id, ruta, tags y after de cada stack, como un único array JSON
+terramate run --quiet -- terramate experimental eval \
+  'tm_jsonencode({id = terramate.stack.id, path = terramate.stack.path.relative, tags = terramate.stack.tags, after = terramate.stack.after})' \
+  | jq -s .
+```
+
+`archetypectl enrich` es la única pieza a medida: el inventario no expone los bloques `input`, así que el enriquecedor escanea cada stack en busca de `from_stack_id` y `after`, produciendo los campos `consumes[]` y `after_ids[]` que la política compara. Mantener esa extracción en una pequeña herramienta, en lugar de en la política, mantiene el Rego portable y testable contra fixtures.
 
 
 ---
@@ -3743,7 +3753,7 @@ Secuenciada para que nada bloquee un despliegue real hasta que se haya observado
 
 **2c.1 — Registro (2–3 días).** `registry/{capabilities,traits,zones,labels}.yaml`, los tres generadores (`enum`s de schema, bundle `--data` de conftest, values del chart de Gatekeeper), y la puerta `registry-generate --check`. Esto va primero porque todo lo que sigue consume el registro. Retroadaptar una única fuente una vez existen tres copias es materialmente más difícil (R34).
 
-**2c.2 — `archetypectl enrich` (2 días).** `terramate list --json` no expone los bloques `input`, así que el enriquecedor escanea cada stack en busca de `from_stack_id` y `after` y emite `consumes[]` y `after_ids[]`. Mantén la extracción aquí, no en Rego, para que las políticas sigan siendo portables y testables contra fixtures.
+**2c.2 — `archetypectl enrich` (2 días).** El inventario de stacks (`ci/stacks-json.sh`, §14.4) no expone los bloques `input`, así que el enriquecedor escanea cada stack en busca de `from_stack_id` y `after` y emite `consumes[]` y `after_ids[]`. Mantén la extracción aquí, no en Rego, para que las políticas sigan siendo portables y testables contra fixtures.
 
 **2c.3 — Puerta G1, consultiva (3 días).** La política `input`↔`after` más las reglas de nombrado de stacks y de outputs secretos, ejecutándose **sin bloquear**. Mide la tasa de falsos positivos contra el repositorio existente antes de activarla.
 

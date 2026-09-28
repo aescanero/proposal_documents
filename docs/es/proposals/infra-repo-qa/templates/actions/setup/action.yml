@@ -1,0 +1,21 @@
+# Destino: .github/actions/setup/action.yml
+name: setup
+description: Herramientas fijadas por mise y, si se pide, identidad de GCP para un entorno
+inputs:
+  service-account:
+    description: Cuenta de servicio a suplantar. Vacío = sin credenciales de nube
+    required: false
+    default: ""
+  workload-identity-provider:
+    description: Proveedor de federación (variable de repositorio GCP_WIF_PROVIDER)
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - uses: jdx/mise-action@v2                 # fija terramate, tofu, checkov, conftest, archetypectl
+    - if: inputs.service-account != ''
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ inputs.workload-identity-provider }}
+        service_account: ${{ inputs.service-account }}

@@ -100,7 +100,7 @@ The same technology can be both. `postgres-operator` (archetype, provides `datab
 2. **Shared VPC or separate VPCs on GCP?** Peering non-transitivity plus the same-VPC backend rule may force Shared VPC. Address plan unchanged either way. Risk R23.
    **Settled for `qa`: separate VPC.** `qa` has its own VPC inside the shared non-prod project, so its edge load balancer lives in its own VPC next to the Envoy NEG and nothing routes through the hub; R23 does not arise. Still open for `demos` and any environment whose edge would sit in the hub. See `proposals/sonarqube-qa/README.md` §4.15.
 3. **Kafka partition ceiling** on the intended broker count. The 4000 budget in the `demos` binding is a placeholder.
-4. **Where does resolution run** — a CLI in the repo, or a reusable workflow? Determines whether the project office can validate a demo locally.
+4. **Where does resolution run** — a CLI in the repo, or a reusable workflow? Determines whether the project office can validate a demo locally. *Proposed* in `infra-repo-qa` DR3: a CLI from a separate `platform-tools` repository, pinned with `mise`, run by `ci/g1.sh` both locally and in CI.
 5. **How much Rego is genuinely shared** between conftest and `ConstraintTemplate`s. Measure before planning a single policy codebase.
 6. **Developer guide open questions** — scaffolding tool vs template repository, where the version bump is computed, ephemeral environments opt-in or automatic. Listed in `developer-guide.md` §13.
 
@@ -115,6 +115,8 @@ These are the failure modes that have already been identified. Do not rediscover
 **Globals do not resolve in `stack.after` — it is a parse error, not a silent one** (measured, Terramate 0.16.0, `poc/RESULTS.md`). The resolver must write literal values; prefer `after = ["tag:<capability>"]` over a path so a stack can move. The silent failure that remains is a *forgotten* `after`: a consumer with an `input` and no ordering generates cleanly and can be scheduled before its producer, with no error at any stage. That is R2, and G1 is what catches it.
 
 **Terramate tags cannot contain `:`** (measured, 0.16.0: only lowercase letters, digits, `.`, `_`, `-`, `/`). In a filter, `:` means AND and `,` means OR, and two `--tags` flags are OR. So instance and archetype tags are `instance/<id>` and `archetype/<name>`, and `--tags gcp:qa:network` selects stacks carrying all three tags. A tag written `instance:alpha` fails the whole configuration load.
+
+**`terramate list` has no `--json`** (0.16.0): it prints paths. The stack inventory (ids, tags, `after`) comes from `terramate run --quiet -- terramate experimental eval 'tm_jsonencode({...terramate.stack...})'`, wrapped as `ci/stacks-json.sh` (architecture §14.4).
 
 **The G0 flag is `terramate generate --detailed-exit-code`** (0 = up to date, 2 = drift, 1 = error). `--check` does not exist in Terramate and fails with `unknown flag`. A wrong-typed mock changes no generated file, so G0 cannot catch it; G1 checks mock shape against the contract.
 
@@ -157,7 +159,7 @@ registry/               SOURCE OF TRUTH for capabilities, traits, zones, labels
 .github/workflows/
 ```
 
-Planned, not yet present:
+Planned, not yet present — they belong to the deployment repository `disasterproject/infra`, not to this one (layout, branches and workflow templates in `proposals/infra-repo-qa/`; there is **no branch per environment**, DR2):
 
 ```
 policy/                 Rego for conftest, plus *_test.rego

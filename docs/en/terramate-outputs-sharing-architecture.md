@@ -2947,7 +2947,7 @@ Because `generate_hcl` is shared, a change to how a cluster is built lands in ev
 Terramate gives a declarative inventory independent of state, which is a better CMDB source than parsing state files. Two commands carry it:
 
 ```bash
-terramate list --json                                   # logical inventory, pre-apply
+./ci/stacks-json.sh                                     # logical inventory, pre-apply
 terramate run --changed -- tofu show -json              # physical inventory, post-apply
 ```
 
@@ -2981,7 +2981,7 @@ The resolver and OPA must not implement the same rules twice.
 |---|---|---|
 | Nature | **Computes** — closure, allocation, ordering | **Asserts** — invariants over what was computed |
 | State | Writes ledgers | Stateless, no side effects |
-| Input | Manifests, bindings, ledgers | `resolution.json`, `terramate list --json`, generated `.tf`, plan JSON |
+| Input | Manifests, bindings, ledgers | `resolution.json`, `stacks.json` (`ci/stacks-json.sh`), generated `.tf`, plan JSON |
 | Fails at | Steps 1–17 | After resolution and after generation |
 | Authored by | Platform team, in code | Platform **and** security, without touching the resolver |
 
@@ -3636,7 +3636,7 @@ The ordering invariant that previously relied on a shell script is now a Rego po
   run: |
     registry-generate --check                 # registry is the source of truth
     archetypectl resolve --dry-run > resolution.json
-    terramate list --json > stacks.json
+    ./ci/stacks-json.sh > stacks.json         # Terramate 0.16 has no `list --json`
     archetypectl enrich stacks.json           # adds consumes[] and after_ids[]
 
 - name: G1 — structure and composition
@@ -3651,7 +3651,17 @@ The ordering invariant that previously relied on a shell script is now a Rego po
     done
 ```
 
-`archetypectl enrich` is the only custom piece: `terramate list --json` does not expose `input` blocks, so the enricher scans each stack for `from_stack_id` and `after`, producing the `consumes[]` and `after_ids[]` fields the policy compares. Keeping that extraction in one small tool, rather than in the policy, keeps the Rego portable and testable against fixtures.
+`ci/stacks-json.sh` builds the stack inventory. Terramate 0.16 has **no `list --json`** (measured): `terramate list` prints paths only, so the script evaluates each stack's metadata instead:
+
+```bash
+#!/usr/bin/env bash
+# ci/stacks-json.sh — id, path, tags and after of every stack, as one JSON array
+terramate run --quiet -- terramate experimental eval \
+  'tm_jsonencode({id = terramate.stack.id, path = terramate.stack.path.relative, tags = terramate.stack.tags, after = terramate.stack.after})' \
+  | jq -s .
+```
+
+`archetypectl enrich` is the only custom piece: the inventory does not expose `input` blocks, so the enricher scans each stack for `from_stack_id` and `after`, producing the `consumes[]` and `after_ids[]` fields the policy compares. Keeping that extraction in one small tool, rather than in the policy, keeps the Rego portable and testable against fixtures.
 
 
 ---
@@ -3734,7 +3744,7 @@ Sequenced so that nothing blocks a real deployment until it has been observed in
 
 **2c.1 — Registry (2–3 days).** `registry/{capabilities,traits,zones,labels}.yaml`, the three generators (schema `enum`s, conftest `--data` bundle, Gatekeeper chart values), and the `registry-generate --check` gate. This comes first because everything after it consumes the registry. Retrofitting a single source once three copies exist is materially harder (R34).
 
-**2c.2 — `archetypectl enrich` (2 days).** `terramate list --json` does not expose `input` blocks, so the enricher scans each stack for `from_stack_id` and `after` and emits `consumes[]` and `after_ids[]`. Keep the extraction here, not in Rego, so the policies stay portable and testable against fixtures.
+**2c.2 — `archetypectl enrich` (2 days).** The stack inventory (`ci/stacks-json.sh`, §14.4) does not expose `input` blocks, so the enricher scans each stack for `from_stack_id` and `after` and emits `consumes[]` and `after_ids[]`. Keep the extraction here, not in Rego, so the policies stay portable and testable against fixtures.
 
 **2c.3 — G1 gate, advisory (3 days).** The `input`↔`after` policy plus stack-naming and secret-output rules, running **non-blocking**. Measure the false-positive rate against the existing repository before turning it on.
 

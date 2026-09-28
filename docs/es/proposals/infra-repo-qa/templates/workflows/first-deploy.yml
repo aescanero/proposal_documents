@@ -1,0 +1,83 @@
+# Destino: .github/workflows/first-deploy.yml — primer despliegue escalonado (arquitectura §4.11)
+name: first-deploy
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Entorno que se despliega por primera vez
+        type: choice
+        options: [landing-zone, qa, prod]      # se amplía en el alta de cada entorno
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env }}
+    concurrency:
+      group: deploy-${{ inputs.env }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Solo desde main, y solo si el entorno nunca se desplegó
+        run: |
+          [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::first-deploy solo se ejecuta desde main"; exit 1; }
+          git fetch origin cmdb-observed
+          if git show "origin/cmdb-observed:cmdb-data/observed/deployed/${{ inputs.env }}.json" >/dev/null 2>&1; then
+            echo "::error::${{ inputs.env }} ya tiene marcador de deploy: sus cambios los aplica deploy"
+            exit 1
+          fi
+
+      - uses: ./.github/actions/setup
+        with:
+          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service-account: ${{ vars.GCP_APPLY_SA }}
+
+      - name: El código generado está al día
+        run: terramate generate --detailed-exit-code
+
+      - name: Apply escalonado
+        env:
+          ENV: ${{ inputs.env }}
+        run: |
+          if [ "$ENV" = landing-zone ]; then
+            # sin clusters: una sola pasada ordenada, sin el bootstrap (DZ8)
+            terramate script run --tags landing-zone --no-tags bootstrap tofu deploy
+          else
+            # el provider de un consumidor no alcanza un cluster que aún no existe: por capas
+            for layer in network cluster platform-services; do
+              terramate script run --tags "gcp:$ENV:$layer" tofu deploy
+            done
+            terramate script run --tags "$ENV" tofu deploy   # instancias y lo que quede
+          fi
+
+      - name: Observaciones para la CMDB
+        if: ${{ !cancelled() }}
+        run: |
+          terramate run --tags "${{ inputs.env }}" --no-tags bootstrap -- \
+            archetypectl cmdb observe --out "$RUNNER_TEMP/observed"
+
+      - name: Primer marcador de deploy
+        if: ${{ success() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/observed/deployed"
+          jq -n --arg sha "$GITHUB_SHA" --argjson run "$GITHUB_RUN_NUMBER" '{sha: $sha, run: $run}' \
+            > "$RUNNER_TEMP/observed/deployed/${{ inputs.env }}.json"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: cmdb-observed-${{ github.run_id }}-${{ inputs.env }}
+          path: ${{ runner.temp }}/observed
+
+  cmdb:
+    needs: apply
+    if: ${{ !cancelled() }}
+    permissions: { contents: write }
+    uses: ./.github/workflows/cmdb-sync.yml
+    with:
+      pattern: cmdb-observed-${{ github.run_id }}-*

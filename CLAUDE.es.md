@@ -100,7 +100,7 @@ La misma tecnología puede ser ambas cosas. `postgres-operator` (archetype, prov
 2. **¿VPC compartida o VPCs separadas en GCP?** La no transitividad del peering más la regla del backend en la misma VPC pueden forzar Shared VPC. El plan de direccionamiento no cambia en ningún caso. Riesgo R23.
    **Asentado para `qa`: VPC separada.** `qa` tiene su propia VPC dentro del proyecto non-prod compartido, así que su load balancer de edge vive en su propia VPC junto al NEG de Envoy y nada enruta a través del hub; R23 no se presenta. Todavía abierto para `demos` y cualquier environment cuyo edge fuera a residir en el hub. Ver `proposals/sonarqube-qa/README.md` §4.15.
 3. **Techo de particiones de Kafka** para el número de brokers previsto. El presupuesto de 4000 en el binding de `demos` es un valor de relleno.
-4. **Dónde corre la resolución** — ¿un CLI en el repositorio, o un workflow reutilizable? Determina si la oficina de proyecto puede validar una demo localmente.
+4. **Dónde corre la resolución** — ¿un CLI en el repositorio, o un workflow reutilizable? Determina si la oficina de proyecto puede validar una demo localmente. *Propuesto* en `infra-repo-qa` DR3: un CLI de un repositorio aparte, `platform-tools`, fijado con `mise` y ejecutado por `ci/g1.sh` igual en local que en CI.
 5. **Cuánto Rego se comparte genuinamente** entre conftest y los `ConstraintTemplate`s. Medir antes de planear una única base de código de política.
 6. **Preguntas abiertas de la guía del desarrollador** — herramienta de scaffolding vs. repositorio plantilla, dónde se calcula el incremento de versión, environments efímeros opt-in o automáticos. Listadas en `developer-guide.md` §13.
 
@@ -115,6 +115,8 @@ Estos son los modos de fallo que ya se han identificado. No los redescubras.
 **Los globals no se resuelven en `stack.after` — es un error de análisis, no uno silencioso** (medido, Terramate 0.16.0, `poc/RESULTS.es.md`). El resolver debe escribir valores literales; preferir `after = ["tag:<capability>"]` a una ruta para que un stack pueda moverse. El fallo silencioso que queda es un `after` *olvidado*: un consumidor con un `input` y sin orden se genera limpiamente y puede programarse antes que su productor, sin error en ninguna fase. Eso es R2, y G1 es lo que lo detecta.
 
 **Los tags de Terramate no pueden contener `:`** (medido, 0.16.0: solo minúsculas, dígitos, `.`, `_`, `-`, `/`). En un filtro, `:` significa AND y `,` significa OR, y dos opciones `--tags` son OR. Por eso los tags de instancia y de arquetipo son `instance/<id>` y `archetype/<name>`, y `--tags gcp:qa:network` selecciona los stacks que llevan los tres tags. Un tag escrito `instance:alpha` hace fallar la carga entera de la configuración.
+
+**`terramate list` no tiene `--json`** (0.16.0): imprime rutas. El inventario de stacks (ids, tags, `after`) sale de `terramate run --quiet -- terramate experimental eval 'tm_jsonencode({...terramate.stack...})'`, envuelto como `ci/stacks-json.sh` (arquitectura §14.4).
 
 **La opción de G0 es `terramate generate --detailed-exit-code`** (0 = al día, 2 = deriva, 1 = error). `--check` no existe en Terramate y falla con `unknown flag`. Un mock de tipo incorrecto no cambia ningún fichero generado, así que G0 no puede detectarlo; G1 comprueba la forma del mock contra el contrato.
 
@@ -157,7 +159,7 @@ registry/               FUENTE DE VERDAD para capabilities, traits, zones, label
 .github/workflows/
 ```
 
-Planeado, aún no presente:
+Planeado, aún no presente — pertenece al repositorio de despliegue `disasterproject/infra`, no a este (estructura, ramas y plantillas de workflows en `proposals/infra-repo-qa/`; **no hay rama por entorno**, DR2):
 
 ```
 policy/                 Rego para conftest, más *_test.rego

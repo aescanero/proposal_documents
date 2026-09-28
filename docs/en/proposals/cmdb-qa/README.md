@@ -166,7 +166,7 @@ Claims are made by the archetype; in the file they are attributed to the stack t
 
 | Field | Source | Without the cloud |
 |---|---|---|
-| `id`, `path`, `tags` | `terramate list --json` | Yes |
+| `id`, `path`, `tags` | `ci/stacks-json.sh` (architecture §14.4) | Yes |
 | `environment`, `project`, `cloud`, `capability`, `archetype`, `instance`, `model` | Stack globals (`terramate debug show globals`) | Yes |
 | `produces` | `output` blocks of the imported contract | Yes |
 | `consumes` | `input` blocks of the contract, **with `from_stack_id` evaluated** | Yes, if the extractor evaluates globals (VI1) |

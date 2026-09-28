@@ -1,0 +1,67 @@
+# Destination: .github/workflows/cmdb-sync.yml — the only writer of cmdb-observed (architecture §14.2, cmdb-qa §4)
+name: cmdb-sync
+on:
+  workflow_call:
+    inputs:
+      pattern:                                 # artifact name pattern of this run
+        type: string
+        required: true
+
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    permissions: { contents: write }           # main's ruleset has no bypass for github-actions
+    concurrency:
+      group: cmdb-write
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: cmdb-observed, path: observed }
+      - uses: actions/checkout@v4
+        with: { path: main, sparse-checkout: schemas }
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ inputs.pattern }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/in
+
+      - name: Validate
+        run: |
+          pip install --quiet check-jsonschema
+          check-jsonschema --schemafile main/schemas/cmdb-observed.schema.json "$RUNNER_TEMP"/in/*.json
+
+      - name: Merge; deploy markers only move forward
+        run: |
+          cp "$RUNNER_TEMP"/in/*.json observed/cmdb-data/observed/ 2>/dev/null || true
+          mkdir -p observed/cmdb-data/observed/deployed
+          for m in "$RUNNER_TEMP"/in/deployed/*.json; do
+            [ -e "$m" ] || continue
+            cur="observed/cmdb-data/observed/deployed/$(basename "$m")"
+            if [ ! -e "$cur" ] || [ "$(jq .run "$m")" -gt "$(jq .run "$cur")" ]; then cp "$m" "$cur"; fi
+          done
+
+      - name: Commit and push, with rebase and retry
+        working-directory: observed
+        run: |
+          git add cmdb-data/observed
+          git diff --cached --quiet && exit 0
+          git -c user.name=cmdb-bot -c user.email=cmdb-bot@users.noreply.github.com \
+            commit -m "observed: run ${{ github.run_id }}"
+          for i in 1 2 3; do git pull --rebase && git push && exit 0; sleep $((i*5)); done
+          exit 1
+
+  publish:
+    needs: aggregate
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: ./.github/actions/setup
+      - run: git fetch origin cmdb-observed
+      - name: Join both halves
+        run: archetypectl cmdb publish --observed origin/cmdb-observed --out dist/   # index.json, graph.jsonld
+      - name: Replace the release asset
+        run: gh release upload cmdb-latest dist/index.json dist/graph.jsonld --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

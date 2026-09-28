@@ -166,7 +166,7 @@ Los claims los hace el arquetipo; en el fichero se atribuyen al stack que crea e
 
 | Campo | Fuente | Sin nube |
 |---|---|---|
-| `id`, `path`, `tags` | `terramate list --json` | Sí |
+| `id`, `path`, `tags` | `ci/stacks-json.sh` (arquitectura §14.4) | Sí |
 | `environment`, `project`, `cloud`, `capability`, `archetype`, `instance`, `model` | Globals del stack (`terramate debug show globals`) | Sí |
 | `produces` | Bloques `output` del contrato importado | Sí |
 | `consumes` | Bloques `input` del contrato, **con `from_stack_id` evaluado** | Sí, si el extractor evalúa globals (VI1) |

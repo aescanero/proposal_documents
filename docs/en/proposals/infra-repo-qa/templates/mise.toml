@@ -1,0 +1,13 @@
+# Destination: .mise.toml — the same versions on the workstation, in CI and in the bootstrap runbook
+[tools]
+terramate = "0.16.0"                           # the version measured in poc/
+opentofu = "1.10.6"
+checkov = "3"
+conftest = "0.56"
+opa = "1.4"                                    # opa test for the policies; gator for Gatekeeper
+crane = "0.20"
+yq = "4"
+"github:disasterproject/platform-tools" = "0.1.0"   # archetypectl and registry-generate, versioned separately
+
+[env]
+TF_IN_AUTOMATION = "1"

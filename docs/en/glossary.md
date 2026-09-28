@@ -364,7 +364,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 | **Reference counting (platform destroy)** | Counting instances still bound to a shared platform before allowing the platform itself to be destroyed. |
 | **Ephemeral environment** (`ephemeral-*`) | A short-lived platform (e.g. `ephemeral/conf-2026-q3`) created by copying `demos/` and changing three globals (`env`, `project_id`, `vpc_cidr`); expiry handled via a human-approved destroy PR, never automatic. |
 | **Environment promotion (globals diff)** | Moving config from `demos` → `dev` → `qa` → `prod` is purely a change in `config.tm.hcl` globals values (node counts, release channel, deletion protection, backup retention) — identical generators and contracts everywhere. |
-| **CMDB integration (Terramate)** | `terramate list --json` (logical, pre-apply inventory) and `terramate run --changed -- tofu show -json` (physical, post-apply inventory) as CMDB data sources — better than parsing state files directly. |
+| **CMDB integration (Terramate)** | `ci/stacks-json.sh` (logical, pre-apply inventory; Terramate 0.16 has no `list --json`) and `terramate run --changed -- tofu show -json` (physical, post-apply inventory) as CMDB data sources — better than parsing state files directly. |
 
 ---
 
@@ -383,7 +383,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 | **conftest** | Stateless CLI policy tool consuming `registry/*.json` as `--data`; chosen for CI policy checks instead of running an OPA server. |
 | **check-jsonschema** | CLI tool validating manifests, component files, environment bindings and pool ledgers against JSON Schemas before resolution runs. |
 | **`conftest verify`** | Runs the Rego policies' own unit tests (`policy/*_test.rego`) so a rule that never fires does not give false confidence (risk R36). |
-| **`archetypectl enrich`** | Custom tool scanning each stack for `from_stack_id`/`after` declarations, emitting `consumes[]` and `after_ids[]` fields, since `terramate list --json` does not itself expose `input` blocks — kept small and standalone so the Rego stays portable and testable against fixtures. |
+| **`archetypectl enrich`** | Custom tool scanning each stack for `from_stack_id`/`after` declarations, emitting `consumes[]` and `after_ids[]` fields, since the stack inventory (`ci/stacks-json.sh`) does not expose `input` blocks — kept small and standalone so the Rego stays portable and testable against fixtures. |
 | **`skip-check` (Checkov)** | Per-cloud config directive suppressing a specific check (e.g. `CKV_GCP_69` for an intentionally public demo cluster endpoint); every suppression requires a comment naming the reason/scope and must not leak into production config. |
 | **Self-managed Gatekeeper** | The chosen deployment model on all three clouds instead of managed add-ons, because managed alternatives are mutually exclusive with a self-managed install (AKS refuses its add-on if Gatekeeper v3 is present), restrict custom templates, and would mean three different behaviours to debug. |
 | **Gatekeeper, not Kyverno** | Chosen because the team already writes Rego for conftest — one policy language. Rules are **not** literally reusable between them, only the language and helper libraries, because Gatekeeper's input is an `AdmissionReview`, not `resolution.json`. |
@@ -407,7 +407,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 | **`fetch-depth: 0`** | Required checkout setting so Terramate's change detection (compares against `main`) has full git history; a shallow clone silently reports zero changed stacks. |
 | **Deployment workflow** | The merge-to-main pipeline. **One job per environment**, each bound to the GitHub Environment of that name (its reviewers, and the `environment` claim that alone can impersonate `tf-apply-<env>@`): the landing zone first, then non-production environments in parallel, then `prod`. Each runs `terramate script run --changed -B <last successful deploy> --tags <env> tofu deploy` with mocks off, then the CMDB sync, which also moves the environment's deploy marker. Architecture §14.2. |
 | **Drift workflow** | A scheduled job running `tofu plan -detailed-exitcode -lock=false` per environment, with that environment's plan identity, to detect configuration drift without applying. |
-| **Policy gate build inputs** | The chain producing conftest's evaluation inputs: `registry-generate --check` → `archetypectl resolve --dry-run > resolution.json` → `terramate list --json > stacks.json` → `archetypectl enrich stacks.json`. |
+| **Policy gate build inputs** | The chain producing conftest's evaluation inputs: `registry-generate --check` → `archetypectl resolve --dry-run > resolution.json` → `ci/stacks-json.sh > stacks.json` → `archetypectl enrich stacks.json`. |
 | **`mise`** | Tool-version pinning manager (`mise.toml`, `jdx/mise-action`) pinning Terramate, OpenTofu and Checkov versions consistently across developer machines and CI. |
 
 ---

@@ -1,0 +1,14 @@
+flowchart LR
+    PR["PR desde feat/… o lz/…"] --> GATES["gates · sin credenciales<br/>G0 · G1 · Checkov"]
+    GATES --> PLAN["plan · un job por entorno tocado<br/>tf-plan-&lt;env&gt;@"]
+    GATES --> PLANP["plan-prod · Environment prod-plan<br/>con aprobación"]
+    PLAN --> MERGE{{"revisión · CODEOWNERS · squash a main"}}
+    PLANP --> MERGE
+    MERGE --> CH["changes · base = último deploy con éxito de cada entorno"]
+    CH --> LZ["landing-zone · tf-apply-lz@"]
+    LZ --> NP["no productivos en paralelo · qa, dev…<br/>Environment &lt;env&gt; · tf-apply-&lt;env&gt;@"]
+    NP --> PROD["prod · Environment prod · revisores"]
+    LZ --> SYNC["cmdb-sync · rama cmdb-observed<br/>observaciones y marcadores"]
+    NP --> SYNC
+    PROD --> SYNC
+    SYNC --> DRIFT["drift diario por entorno"]
