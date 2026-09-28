@@ -112,11 +112,11 @@ Estos son los modos de fallo que ya se han identificado. No los redescubras.
 
 **Outputs sharing no crea orden de ejecución.** Cada bloque `input` necesita un `after` correspondiente en `stack.tm.hcl`. Un ordenamiento no resuelto aplica un valor obsoleto **sin ningún error**. Este es el riesgo R2, el riesgo principal, y la política conftest G1 existe específicamente para detectarlo.
 
-**Los globals no se resuelven en `stack.after` — es un error de análisis, no uno silencioso** (medido, Terramate 0.16.0, `poc/RESULTS.es.md`). El resolver debe escribir valores literales; preferir `after = ["tag:<capability>"]` a una ruta para que un stack pueda moverse. El fallo silencioso que queda es un `after` *olvidado*: un consumidor con un `input` y sin orden se genera limpiamente y puede programarse antes que su productor, sin error en ninguna fase. Eso es R2, y G1 es lo que lo detecta.
+**Los globals no se resuelven en `stack.after` — es un error de análisis, no uno silencioso** (medido, Terramate 0.16.0 y 0.17.3, `poc/RESULTS.es.md`). El resolver debe escribir valores literales; preferir `after = ["tag:<capability>"]` a una ruta para que un stack pueda moverse. El fallo silencioso que queda es un `after` *olvidado*: un consumidor con un `input` y sin orden se genera limpiamente y puede programarse antes que su productor, sin error en ninguna fase. Eso es R2, y G1 es lo que lo detecta.
 
-**Los tags de Terramate no pueden contener `:`** (medido, 0.16.0: solo minúsculas, dígitos, `.`, `_`, `-`, `/`). En un filtro, `:` significa AND y `,` significa OR, y dos opciones `--tags` son OR. Por eso los tags de instancia y de arquetipo son `instance/<id>` y `archetype/<name>`, y `--tags gcp:qa:network` selecciona los stacks que llevan los tres tags. Un tag escrito `instance:alpha` hace fallar la carga entera de la configuración.
+**Los tags de Terramate no pueden contener `:`** (medido, 0.16.0 y 0.17.3: solo minúsculas, dígitos, `.`, `_`, `-`, `/`). En un filtro, `:` significa AND y `,` significa OR, y dos opciones `--tags` son OR. Por eso los tags de instancia y de arquetipo son `instance/<id>` y `archetype/<name>`, y `--tags gcp:qa:network` selecciona los stacks que llevan los tres tags. Un tag escrito `instance:alpha` hace fallar la carga entera de la configuración.
 
-**`terramate list` no tiene `--json`** (0.16.0): imprime rutas. El inventario de stacks (ids, tags, `after`) sale de `terramate run --quiet -- terramate experimental eval 'tm_jsonencode({...terramate.stack...})'`, envuelto como `ci/stacks-json.sh` (arquitectura §14.4).
+**`terramate list` no tiene `--json`** (0.16.0, 0.17.3): imprime rutas. El inventario de stacks (ids, tags, `after`) sale de `terramate run --quiet -- terramate experimental eval 'tm_jsonencode({...terramate.stack...})'`, envuelto como `ci/stacks-json.sh` (arquitectura §14.4).
 
 **La opción de G0 es `terramate generate --detailed-exit-code`** (0 = al día, 2 = deriva, 1 = error). `--check` no existe en Terramate y falla con `unknown flag`. Un mock de tipo incorrecto no cambia ningún fichero generado, así que G0 no puede detectarlo; G1 comprueba la forma del mock contra el contrato.
 
@@ -212,7 +212,7 @@ El código generado **se commitea a git**, prefijado con `_`, y cubierto por `CO
 
 El roadmap está en `terramate-outputs-sharing-architecture.md` §16. Posición actual: **PoC local de la fase 0 hecha (`poc/`); nada desplegado; documentación completa**. Este repositorio contiene solo documentación y propuestas; el repositorio de despliegue que describe se organiza en `docs/es/proposals/infra-repo-qa/`.
 
-**Resultados de la fase 0** (Terramate 0.16.0, OpenTofu 1.10.6, medido el 2026-09-16, repetido el 2026-09-28 — `poc/RESULTS.es.md`):
+**Resultados de la fase 0** (Terramate 0.16.0, OpenTofu 1.10.6, medido el 2026-09-16; repetido el 2026-09-28 con 0.16.0 y con 0.17.3, la versión fijada, con salida idéntica — `poc/RESULTS.es.md`):
 
 | Suposición | Resultado |
 |---|---|

@@ -328,7 +328,7 @@ output "private_service_range" {
 | label | yes | Output name. This is the **public contract key** — treat renames as breaking changes. |
 | `backend` | yes | Must match a `sharing_backend` label. |
 | `value` | yes | Expression evaluated **in the generated OpenTofu code**, so it may reference `module.*`, `resource.*`, `data.*`. |
-| `description` | no | Documents the contract in `imports/contracts/`. **Not** emitted into the generated `output` block (measured, Terramate 0.16.0, `poc/RESULTS.md`), so it does not reach `tofu output`. Use it anyway — it is where a reviewer reads what the key means. |
+| `description` | no | Documents the contract in `imports/contracts/`. **Not** emitted into the generated `output` block (measured, Terramate 0.16.0 and 0.17.3, `poc/RESULTS.md`), so it does not reach `tofu output`. Use it anyway — it is where a reviewer reads what the key means. |
 | `sensitive` | no | Only emitted when set. See the warning below. |
 
 > **Sensitive values.** Outputs sharing resolves values into `TF_VAR_<name>` environment variables in the consumer's process. Environment variables are visible to anything in that process tree and are easy to leak into CI logs. **Do not share secrets through outputs sharing.** Share *references* — a Secret Manager secret ID, an SSM parameter name, a KMS key ARN — and let the consumer stack read the secret through a data source under its own IAM identity.
@@ -419,7 +419,7 @@ The archetype's `input` blocks are written **once**, in `imports/contracts/`, re
 > **Design decision: `from_stack_id` is an expression — measured.** This
 > architecture relies on `from_stack_id` resolving globals, which is what allows one
 > contract file per capability to serve every instance. The Phase 0 PoC (`poc/`,
-> Terramate 0.16.0) confirmed the three variants the basic form does not guarantee:
+> Terramate 0.16.0 and 0.17.3) confirmed the three variants the basic form does not guarantee:
 > globals **inherited** from a parent directory; **interpolation**
 > (`"${global.env}-gke"`); and `mock` behaviour under `--mock-on-fail` when the
 > producer has no state. It also showed that `--mock-on-fail` does **not** mask a
@@ -3636,7 +3636,7 @@ The ordering invariant that previously relied on a shell script is now a Rego po
   run: |
     registry-generate --check                 # registry is the source of truth
     archetypectl resolve --dry-run > resolution.json
-    ./ci/stacks-json.sh > stacks.json         # Terramate 0.16 has no `list --json`
+    ./ci/stacks-json.sh > stacks.json         # Terramate 0.17 has no `list --json`
     archetypectl enrich stacks.json           # adds consumes[] and after_ids[]
 
 - name: G1 — structure and composition
@@ -3651,7 +3651,7 @@ The ordering invariant that previously relied on a shell script is now a Rego po
     done
 ```
 
-`ci/stacks-json.sh` builds the stack inventory. Terramate 0.16 has **no `list --json`** (measured): `terramate list` prints paths only, so the script evaluates each stack's metadata instead:
+`ci/stacks-json.sh` builds the stack inventory. Terramate 0.17 has **no `list --json`** (measured): `terramate list` prints paths only, so the script evaluates each stack's metadata instead:
 
 ```bash
 #!/usr/bin/env bash
@@ -3686,7 +3686,7 @@ The five to act on first:
 
 ### Phase 0 — Validate assumptions (1 week)
 
-Build a throwaway repository with two stacks and confirm, against your pinned Terramate version. Expression support in `from_stack_id` is taken as a design decision; what remains is confirming its variants. **The first five were measured on 2026-09-16 (Terramate 0.16.0, OpenTofu 1.10.6) and re-run on 2026-09-28; the evidence is in `poc/RESULTS.md`.** The rest need a cloud project and are checked in the first `qa` deployment (`landing-zone-qa` VZ1–VZ5):
+Build a throwaway repository with two stacks and confirm, against your pinned Terramate version. Expression support in `from_stack_id` is taken as a design decision; what remains is confirming its variants. **The first five were measured on 2026-09-16 (Terramate 0.16.0, OpenTofu 1.10.6) and re-run on 2026-09-28 on 0.16.0 and on 0.17.3, with identical output; the evidence is in `poc/RESULTS.md`.** The rest need a cloud project and are checked in the first `qa` deployment (`landing-zone-qa` VZ1–VZ5):
 
 - [x] `from_stack_id` resolves a global **inherited from a parent directory**, not only one defined in the stack itself
 - [x] `from_stack_id` accepts **interpolation** (`"${global.env}-gke"`), not only a bare reference

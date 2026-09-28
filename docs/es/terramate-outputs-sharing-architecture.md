@@ -329,7 +329,7 @@ output "private_service_range" {
 | label | sí | Nombre del output. Es la **clave pública del contrato** — trata los renombrados como cambios disruptivos. |
 | `backend` | sí | Debe coincidir con un label de `sharing_backend`. |
 | `value` | sí | Expresión evaluada **en el código OpenTofu generado**, así que puede referenciar `module.*`, `resource.*`, `data.*`. |
-| `description` | no | Documenta el contrato en `imports/contracts/`. **No** se emite en el bloque `output` generado (medido, Terramate 0.16.0, `poc/RESULTS.es.md`), así que no llega a `tofu output`. Úsala igualmente — es donde un revisor lee qué significa la clave. |
+| `description` | no | Documenta el contrato en `imports/contracts/`. **No** se emite en el bloque `output` generado (medido, Terramate 0.16.0 y 0.17.3, `poc/RESULTS.es.md`), así que no llega a `tofu output`. Úsala igualmente — es donde un revisor lee qué significa la clave. |
 | `sensitive` | no | Solo se emite cuando se fija. Ver la advertencia más abajo. |
 
 > **Valores sensibles.** Outputs sharing resuelve valores en variables de entorno `TF_VAR_<name>` en el proceso del consumidor. Las variables de entorno son visibles para cualquier cosa en ese árbol de procesos y se filtran fácilmente a los logs de CI. **Nunca compartas secretos a través de outputs sharing.** Comparte *referencias* — un ID de secreto de Secret Manager, un nombre de parámetro SSM, un ARN de clave KMS — y deja que el stack consumidor lea el secreto mediante un data source bajo su propia identidad IAM.
@@ -420,7 +420,7 @@ Los bloques `input` del arquetipo se escriben **una sola vez**, en `imports/cont
 > **Decisión de diseño: `from_stack_id` es una expresión — medido.** Esta
 > arquitectura se apoya en que `from_stack_id` resuelva globals, que es lo que
 > permite que un único fichero de contrato por capability sirva a cada instancia.
-> La PoC de la fase 0 (`poc/`, Terramate 0.16.0) confirmó las tres variantes que la
+> La PoC de la fase 0 (`poc/`, Terramate 0.16.0 y 0.17.3) confirmó las tres variantes que la
 > forma básica no garantiza: globals **heredados** de un directorio padre;
 > **interpolación** (`"${global.env}-gke"`); y el comportamiento de `mock` bajo
 > `--mock-on-fail` cuando el productor no tiene estado. También mostró que
@@ -3645,7 +3645,7 @@ El invariante de ordenamiento que antes dependía de un script de shell es ahora
   run: |
     registry-generate --check                 # el registro es la fuente de verdad
     archetypectl resolve --dry-run > resolution.json
-    ./ci/stacks-json.sh > stacks.json         # Terramate 0.16 no tiene `list --json`
+    ./ci/stacks-json.sh > stacks.json         # Terramate 0.17 no tiene `list --json`
     archetypectl enrich stacks.json           # añade consumes[] y after_ids[]
 
 - name: G1 — structure and composition
@@ -3660,7 +3660,7 @@ El invariante de ordenamiento que antes dependía de un script de shell es ahora
     done
 ```
 
-`ci/stacks-json.sh` construye el inventario de stacks. Terramate 0.16 **no tiene `list --json`** (medido): `terramate list` solo imprime rutas, así que el script evalúa los metadatos de cada stack:
+`ci/stacks-json.sh` construye el inventario de stacks. Terramate 0.17 **no tiene `list --json`** (medido): `terramate list` solo imprime rutas, así que el script evalúa los metadatos de cada stack:
 
 ```bash
 #!/usr/bin/env bash
@@ -3695,7 +3695,7 @@ Los cinco sobre los que actuar primero:
 
 ### Fase 0 — Validar suposiciones (1 semana)
 
-Construye un repositorio desechable con dos stacks y confirma, contra tu versión fijada de Terramate. El soporte de expresiones en `from_stack_id` se toma como una decisión de diseño; lo que queda es confirmar sus variantes. **Las cinco primeras se midieron el 2026-09-16 (Terramate 0.16.0, OpenTofu 1.10.6) y se repitieron el 2026-09-28; la evidencia está en `poc/RESULTS.es.md`.** El resto necesita un proyecto en la nube y se comprueba en el primer despliegue de `qa` (`landing-zone-qa` VZ1–VZ5):
+Construye un repositorio desechable con dos stacks y confirma, contra tu versión fijada de Terramate. El soporte de expresiones en `from_stack_id` se toma como una decisión de diseño; lo que queda es confirmar sus variantes. **Las cinco primeras se midieron el 2026-09-16 (Terramate 0.16.0, OpenTofu 1.10.6) y se repitieron el 2026-09-28 con 0.16.0 y con 0.17.3, con salida idéntica; la evidencia está en `poc/RESULTS.es.md`.** El resto necesita un proyecto en la nube y se comprueba en el primer despliegue de `qa` (`landing-zone-qa` VZ1–VZ5):
 
 - [x] `from_stack_id` resuelve un global **heredado de un directorio padre**, no solo uno definido en el propio stack
 - [x] `from_stack_id` acepta **interpolación** (`"${global.env}-gke"`), no solo una referencia desnuda

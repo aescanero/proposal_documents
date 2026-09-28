@@ -8,7 +8,7 @@ cadena de herramientas fijada. Cada transcripción de abajo es salida real de
 
 | | |
 |---|---|
-| **Terramate** | `0.16.0` |
+| **Terramate** | `0.16.0`; repetida con `0.17.3` (2026-09-28) con salida idéntica |
 | **OpenTofu** | `v1.10.6` |
 | **Fecha** | 2026-09-16 (repetida el 2026-09-28, misma cadena, mismos resultados) |
 | **Arnés** | `./run-poc.sh` (ver [Por qué un arnés](#por-qué-un-arnés-y-no-solo-terramate-generate)) |

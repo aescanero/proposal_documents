@@ -8,7 +8,7 @@ not a reconstruction.
 
 | | |
 |---|---|
-| **Terramate** | `0.16.0` |
+| **Terramate** | `0.16.0`; re-run on `0.17.3` (2026-09-28) with identical output |
 | **OpenTofu** | `v1.10.6` |
 | **Date** | 2026-09-16 (re-run 2026-09-28, same toolchain, same results) |
 | **Harness** | `./run-poc.sh` (see [Why a harness](#why-a-harness-and-not-just-terramate-generate)) |

@@ -1,6 +1,6 @@
 # Destination: terramate.tm.hcl — the project's single root configuration (poc/: one root per repository)
 terramate {
-  required_version = "= 0.16.0"
+  required_version = "= 0.17.3"
 
   config {
     experiments = ["outputs-sharing"]            # scripts are no longer experimental

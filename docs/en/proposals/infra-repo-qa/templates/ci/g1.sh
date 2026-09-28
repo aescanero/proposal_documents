@@ -4,7 +4,7 @@ set -euo pipefail
 
 registry-generate --check                     # the registry is the source of truth
 archetypectl resolve --dry-run > resolution.json
-./ci/stacks-json.sh > stacks.json           # Terramate 0.16 has no list --json
+./ci/stacks-json.sh > stacks.json           # Terramate 0.17 has no list --json
 archetypectl enrich stacks.json               # adds consumes[] and after_ids[]
 archetypectl cmdb check                       # the CMDB's declared half is current (cmdb-qa DI2)
 
