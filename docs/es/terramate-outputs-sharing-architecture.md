@@ -3497,12 +3497,12 @@ jobs:
           service_account: ${{ vars.GCP_APPLY_SA }}      # variable del Environment: tf-apply-<env>@…
 
       - name: Apply changed stacks
-        run: terramate script run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" tofu deploy   # mocks DESACTIVADOS
+        run: terramate script run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" --no-tags bootstrap tofu deploy   # mocks DESACTIVADOS
 
       - name: Collect CMDB observations
         if: ${{ !cancelled() }}                          # también tras un apply fallido: registra outcome failed
         run: |
-          terramate run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" -- \
+          terramate run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" --no-tags bootstrap -- \
             archetypectl cmdb observe --out "$RUNNER_TEMP/observed"
       - name: Record the deploy marker
         if: ${{ success() }}                             # solo un apply completamente correcto lo mueve
@@ -3521,7 +3521,7 @@ Puntos clave:
 - **La base de cambios es el último deploy con éxito del entorno, no `HEAD^`.** Con `HEAD^`, una ejecución fallida o cancelada deja sus stacks sin aplicar y el siguiente merge ya no los ve; además GitHub mantiene solo una ejecución pendiente por grupo de concurrencia y cancela las demás, así que con una ráfaga de merges algunos commits nunca se despliegan por sí mismos. El marcador `deployed/<env>.json` en la rama `cmdb-observed` solo se escribe cuando el apply de un entorno tuvo éxito completo, y `cmdb-sync` solo lo mueve hacia delante (`run` mayor). La siguiente ejecución compara desde ahí y recoge todo lo posterior.
 - **Un entorno sin marcador no lo despliega este workflow.** Su primer apply es escalonado (§4.11) y se ejecuta desde `first-deploy`, un workflow manual con el mismo Environment; es el que escribe el primer marcador. `changes` informa de ese entorno como aviso, no como error.
 - **No productivo antes que producción.** Un cambio en un generador compartido llega primero a `qa` y `dev` en la misma ejecución; `prod` solo empieza si ninguno falló, y sus revisores ven el resultado. Es orden, no promoción — la promoción de imágenes de aplicación es asunto de la guía de desarrollo (`developer-guide.md` §5).
-- **La landing zone va primero y sola**, desde el Environment `landing-zone` con `tf-apply-lz@`. Los workflows de entorno seleccionan por `--tags <env>`, que nunca incluye los stacks de la landing zone, y sus identidades tampoco podrían aplicarlos (`landing-zone-qa` §5.2).
+- **La landing zone va primero y sola**, desde el Environment `landing-zone` con `tf-apply-lz@`. Los workflows de entorno seleccionan por `--tags <env>`, que nunca incluye los stacks de la landing zone, y sus identidades tampoco podrían aplicarlos (`landing-zone-qa` §5.2). El único stack de la landing zone que el pipeline nunca aplica es `gcp-lz-bootstrap`, que crea la propia federación e identidades del pipeline: `--no-tags bootstrap` lo excluye, y lo aplica una persona (`landing-zone-qa` §1, DZ8).
 
 Las observaciones llegan a la CMDB por un workflow reutilizable, el mismo para `deploy`, `drift` y `destroy`. Es el único punto del pipeline con `contents: write`, y nunca escribe en `main` (`archetype-model.md` §11.1):
 

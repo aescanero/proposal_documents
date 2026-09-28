@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 2 · DZ4, DZ5 and DZ6 approved and applied (§13) |
+| **Status** | Proposal · revision 3 · DZ4, DZ5 and DZ6 approved and applied (§13); §1 expanded into the bootstrap runbook, new DZ8 |
 | **Scope** | What layer 0 has to provide for `qa` to start: the landing zone's own bootstrap, projects and folders, org policies, the non-prod project's APIs, Cloud KMS keys, Artifact Registry, GitHub Actions federation and pipeline identities, the state bucket, the parent DNS zone and the delegated zone, the public identifier, the global address pool, Binary Authorization, budgets. `hub` and `prod` only where they change something |
 | **Why now** | Every `qa` proposal leaves it requirements (§0.1) and none describes it. It is the first thing applied and the only thing bootstrapped by hand |
 | **Basis** | S1 §4.13 (control plane access), §4.14 (KMS), §4.15 (separate VPC); architecture §11.2 (pipeline identity), §11.4 (segregation), §11.5 (state); AM §3 (layers), §7 (binding), §9.2 (global pool). What is already there is not repeated |
@@ -52,7 +52,7 @@ Source: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 
 ## 1. Bootstrapping the landing zone itself
 
-The landing zone is the one thing the pipeline cannot deploy, because it creates the pipeline: its state bucket, its state key and the federation GitHub authenticates with. It is bootstrapped **once**, by hand, and from then on managed like any other stack.
+The landing zone is the one thing the pipeline cannot deploy, because it creates the pipeline: its state bucket, its state key and the federation GitHub authenticates with. Before the bootstrap there is no identity a GitHub job could assume and nowhere to keep state. So it is bootstrapped **once**, by hand, with local state, and that state is then moved into the bucket the bootstrap has just created.
 
 ![Bootstrap](diagrams/02-arranque.svg)
 
@@ -60,12 +60,153 @@ Source: [`diagrams/02-arranque.mmd`](diagrams/02-arranque.mmd)
 
 | Step | Who | What | State |
 |---|---|---|---|
-| 1 | A person with `organizationAdmin` and `billing.admin`, from their workstation | Stack `gcp-lz-bootstrap`: project `disasterproject-lz`, bucket `disasterproject-tfstate-gcp`, key ring `lz` with `tofu-state`, federation pool `github-pool`, `tf-apply-lz@` and `tf-destroy-lz@` | **Local**, unencrypted: there is nowhere to keep it yet |
-| 2 | The same person | `tofu init -migrate-state` to the bucket, encrypted with the `lz/tofu-state` key | In the bucket, encrypted |
-| 3 | The same person | Deletes the local file and drops their organisation roles; remains as *break-glass* (§5.3) | — |
-| 4 | Pipeline, `tf-apply-lz@` | The remaining `gcp-lz-*` stacks (§2–§9) | In the bucket, encrypted |
+| 1 | Normal pull request review | The `gcp-lz-bootstrap` stack's code lands on `main` in its final form: `gcs` backend, encryption with `lz/tofu-state` plus an unencrypted *fallback* for the migration | — |
+| 2 | The *break-glass* account, from a workstation | `tofu apply` of the stack with a temporary local backend, unencrypted: project, bucket, key ring, federation, the landing zone's identities | **Local**, unencrypted: there is nowhere to keep it yet |
+| 3 | The same account | Restores the generated backend and runs `tofu init -migrate-state` to the bucket; the state is written encrypted | In the bucket, encrypted |
+| 4 | Normal pull request review | Removes the *fallback* and enforces encryption (`enforced = true`) | In the bucket, encrypted |
+| 5 | Repository administrator | Repository variables and the GitHub Environments `landing-zone`, `landing-zone-destroy` | — |
+| 6 | Pipeline, `tf-apply-lz@` | The rest of the `gcp-lz-*` stacks (§2–§10), through pull requests | In the bucket, encrypted |
 
-The bootstrap is never run again. A change to what it creates (an API, a role of the pipeline itself) is made by PR on the same stack, with remote state by then. The step-1 procedure lives as a runbook in the repository, because the next time it is needed will be to rebuild the organisation and nobody will remember it (RZ1).
+The procedure for steps 2 and 3 is kept in the deployment repository as `docs/runbooks/lz-bootstrap.md` (`infra-repo-qa` §2), because the next time it is needed will be to rebuild the organisation and nobody will remember it (RZ1). This section is that runbook.
+
+### 1.1 What the stack creates
+
+`stacks/landing-zone/gcp/bootstrap/`, id `gcp-lz-bootstrap`, tags `gcp`, `landing-zone`, `bootstrap`, `protected`. It creates **only** what the pipeline needs in order to exist; everything else belongs to the `gcp-lz-*` stacks the pipeline applies.
+
+| Resource | Name | Detail |
+|---|---|---|
+| Project | `disasterproject-lz` | Directly under the organisation, not in a folder: that way no later stack moves it and changes its org policy inheritance. The organisation's billing account |
+| APIs | `storage`, `cloudkms`, `iam`, `iamcredentials`, `sts`, `cloudresourcemanager`, `serviceusage`, `cloudbilling`, `orgpolicy` | Those used by steps 2–6 themselves. The environment projects' APIs are enabled by `gcp-lz-projects` (§2.1) |
+| State bucket | `disasterproject-tfstate-gcp` | `europe-west1`; uniform access; public access prevention enforced; versioning, noncurrent versions kept 30 days; `prevent_destroy` |
+| Key ring and key | `lz` / `tofu-state` | `europe-west1`; 90-day rotation; `prevent_destroy`. Environment key rings are created by `gcp-lz-kms` (§4) |
+| Federation pool and provider | `github-pool` / `github-oidc` | `attribute_condition` on the repository **and** the numeric `repository_owner_id` (architecture §11.2); mapping of `repository`, `environment` and `ref` |
+| Identities | `tf-plan-lz@`, `tf-apply-lz@`, `tf-destroy-lz@` | In `disasterproject-lz`. `tf-plan-lz@` ← `attribute.repository/disasterproject/infra`; `tf-apply-lz@` ← `attribute.environment/landing-zone`; `tf-destroy-lz@` ← `attribute.environment/landing-zone-destroy` |
+| Grants to `tf-apply-lz@` | Organisation: `resourcemanager.folderAdmin`, `resourcemanager.projectCreator`, `orgpolicy.policyAdmin`, `iam.organizationRoleAdmin`; billing account: `billing.user`; `disasterproject-lz`: `cloudkms.admin`, `artifactregistry.admin`, `dns.admin`, `iam.serviceAccountAdmin`; bucket: `storage.admin` | `storage.admin` on the bucket, not the project: it is what lets it set the per-prefix conditions on the environment identities (§5.1) |
+| Grants to `tf-plan-lz@` | Organisation: `browser`, `orgpolicy.policyViewer`, `iam.securityReviewer`; `disasterproject-lz`: `viewer`; bucket: read on the `lz/` prefix | Read-only, for the landing zone's preview and drift |
+| Grants on `tofu-state` | `cryptoKeyEncrypterDecrypter` to the three `lz` identities | Per key, never per key ring |
+
+The environment identities (`tf-*-qa@`) are **not** the bootstrap's: `gcp-lz-identities` creates them when the environment is onboarded (§10).
+
+The stack has two particularities in its code:
+
+```hcl
+# stacks/landing-zone/gcp/bootstrap/stack.tm.hcl
+stack {
+  id          = "gcp-lz-bootstrap"
+  name        = "GCP landing zone — bootstrap"
+  tags        = ["gcp", "landing-zone", "bootstrap", "protected"]
+  description = "Applied by a person only (DZ8). Runbook: docs/runbooks/lz-bootstrap.md"
+}
+```
+
+```hcl
+# _backend.tf, generated by imports/mixins/backend_gcp.tm.hcl for this stack
+terraform {
+  backend "gcs" {
+    bucket = "disasterproject-tfstate-gcp"
+    prefix = "lz/bootstrap"
+  }
+
+  encryption {
+    key_provider "gcp_kms" "lz" {
+      kms_encryption_key = "projects/disasterproject-lz/locations/europe-west1/keyRings/lz/cryptoKeys/tofu-state"
+      key_length         = 32
+    }
+    method "aes_gcm" "lz" {
+      keys = key_provider.gcp_kms.lz
+    }
+    method "unencrypted" "migrate" {}   # only until step 4
+
+    state {
+      method = method.aes_gcm.lz
+      fallback {                        # reads the plaintext state of step 2; step 4 removes it
+        method = method.unencrypted.migrate
+      }
+    }
+    plan {
+      method = method.aes_gcm.lz
+    }
+  }
+}
+```
+
+**The pipeline never applies it (DZ8).** `deploy` selects the landing zone with `--tags landing-zone --no-tags bootstrap`; preview and drift do plan it with `tf-plan-lz@`, so a divergence shows. A change to the bootstrap (one more API, a grant to `tf-apply-lz@`) is reviewed through a pull request and applied by the *break-glass* account from `main`, with remote state by then. The reason: `tf-apply-lz@` must not be able to widen its own permissions or touch the federation it authenticates with.
+
+### 1.2 Prerequisites
+
+| | |
+|---|---|
+| **Account** | The *break-glass* account (§5.3), not a day-to-day account: `organizationAdmin` on the organisation and `billing.admin` on the billing account. A physical security key |
+| **Temporary roles** | `organizationAdmin` does not create projects by itself: the account grants itself `resourcemanager.projectCreator` on the organisation before step 2 and removes it at the end. Creating the project makes it `owner` of `disasterproject-lz`, which is removed too |
+| **Workstation** | A clone of `disasterproject/infra` at step 1's commit on `main`; `mise install` (pinned `tofu` and `terramate`); `gcloud` |
+| **Data** | The organisation's numeric id, the billing account id, the GitHub organisation's numeric `repository_owner_id`. They go in the stack's `globals`, reviewed in step 1's pull request |
+| **Step 1 done** | The bootstrap pull request is merged. Its preview could plan nothing — there is no federation yet — and only G0 and G1 passed: the plan jobs are skipped while `GCP_WIF_PROVIDER` does not exist (`infra-repo-qa` §5) |
+
+### 1.3 Step by step
+
+```bash
+# --- 0. Preparation -----------------------------------------------------------
+git clone git@github.com:disasterproject/infra.git && cd infra
+git checkout <sha-of-step-1-merge>
+mise install
+gcloud auth login breakglass-1@disasterproject.com
+gcloud auth application-default login
+gcloud organizations add-iam-policy-binding "$ORG_ID" \
+  --member=user:breakglass-1@disasterproject.com --role=roles/resourcemanager.projectCreator
+
+terramate generate --detailed-exit-code    # 0: generated code is main's
+cd stacks/landing-zone/gcp/bootstrap
+
+# --- 2. Apply with local state ------------------------------------------------
+mv _backend.tf _backend.tf.final           # gcs backend + encryption: neither exists yet
+cat > _backend_local.tf <<'HCL'
+terraform {
+  backend "local" {}                       # temporary; never committed
+}
+HCL
+tofu init
+tofu apply                                 # review the plan: ~30 resources, all "create"
+
+# --- 3. Migration to the bucket, encrypted ------------------------------------
+rm _backend_local.tf
+mv _backend.tf.final _backend.tf
+tofu init -migrate-state                   # "Do you want to copy existing state to the new backend?" → yes
+tofu plan                                  # "No changes." — reads the state from the bucket, encrypted
+gcloud storage cat gs://disasterproject-tfstate-gcp/lz/bootstrap/default.tfstate | head -c 300
+                                           # must show "encrypted_data", not resources in plaintext
+shred -u terraform.tfstate*               # plaintext state: must not survive
+git status --porcelain                     # empty: nothing from step 2 is left in the tree
+
+# --- outputs for step 5 -------------------------------------------------------
+tofu output -raw workload_identity_provider
+tofu output -raw lz_project_id
+```
+
+After step 3, a pull request (step 4) changes the mixin for this stack: it removes `method "unencrypted" "migrate"` and the `fallback` block, and adds `enforced = true` to the `state` block. From then on OpenTofu refuses to write plaintext state. The *break-glass* account checks with `tofu plan` that it still reads it.
+
+**Step 5, in GitHub** (repository administrator, `infra-repo-qa` §5):
+
+| Where | Name | Value |
+|---|---|---|
+| Repository variable | `GCP_WIF_PROVIDER` | The `workload_identity_provider` output |
+| Repository variable | `GCP_LZ_PROJECT` | `disasterproject-lz` |
+| Environment `landing-zone` | Reviewers; variable `GCP_APPLY_SA` | Platform and security teams; `tf-apply-lz@disasterproject-lz.iam.gserviceaccount.com` |
+| Environment `landing-zone-destroy` | Reviewers; variable `GCP_DESTROY_SA` | A different approver group; `tf-destroy-lz@…` |
+
+**Closing.** The account removes its `projectCreator` and its `owner` on `disasterproject-lz`; it keeps `organizationAdmin` and is sealed again, with an alert on every sign-in (§5.3). The first pull request that touches `gcp-lz-org` checks the rest: preview with `tf-plan-lz@`, apply with `tf-apply-lz@` from the `landing-zone` Environment (VZ1, VZ3).
+
+> **Verify in VZ1.** That `tofu init -migrate-state` with the `fallback` block reads the local plaintext state and writes the remote one encrypted in a single operation. If this OpenTofu version does not, the known alternative is to migrate first without encryption (step 2's `_backend.tf` with a `gcs` backend and no `encryption` block) and encrypt afterwards with the `fallback` and a `tofu apply -refresh-only`. The result is the same; it is two steps instead of one.
+
+### 1.4 If something goes wrong
+
+| Situation | What to do |
+|---|---|
+| Step 2's `apply` fails halfway | Run `tofu apply` again: the local state has what was created. Do not delete `terraform.tfstate` until step 3 finishes |
+| The local state was lost before step 3 | The resources exist and the state does not. The stack carries `import.tf.example` with one `import` block per resource; copy it to `import.tf`, `tofu apply` with the local backend and continue at step 3. Never recreate the bucket or the key by hand |
+| Step 3's migration fails | The local state is still there; the bucket may hold a half-written object. Delete that object (versioned: it stays recoverable) and repeat `tofu init -migrate-state` |
+| The `tofu-state` key was lost | It should not be possible: `prevent_destroy`, 30 days minimum to destroy a version, and nobody with `cloudkms.admin` except `tf-apply-lz@` (RZ5). If it happens, the encrypted state is unrecoverable; rebuild it with `import.tf.example` |
+| The organisation must be rebuilt | The same runbook, from step 2, against the new organisation. The code does not change except for the id `globals` |
+| A later change to the bootstrap | Reviewed pull request; the *break-glass* account applies it from `main` with `tofu apply`, with the remote backend. Steps 2–4 are not repeated |
 
 ---
 
@@ -151,7 +292,9 @@ All in `disasterproject-lz`, not in the environment's project: so a `qa` identit
 | `tf-plan-qa@` | `attribute.repository/disasterproject/infra` (any branch) | `roles/viewer`; read of the state bucket's `qa/` prefix; `qa`'s `tofu-state` |
 | `tf-apply-qa@` | `attribute.environment/qa` (only with the GitHub Environment `qa`) | The roles of architecture §11.2; write on the `qa/` prefix; `dns.admin` **on `qa`'s zone**; `qa`'s `tofu-state` |
 | `tf-destroy-qa@` | `attribute.environment/qa-destroy` (an Environment with another approver group) | Like `tf-apply-qa@`, plus the `delete`s it does not have (architecture §11.4) |
-| `tf-apply-lz@`, `tf-destroy-lz@` | `attribute.environment/landing-zone` | Organisation, folders, projects, KMS, Artifact Registry, parent zone. Landing zone only |
+| `tf-plan-lz@` | `attribute.repository/disasterproject/infra` | Read on the organisation and the `lz/` prefix; the landing zone's preview and drift (§1.1) |
+| `tf-apply-lz@` | `attribute.environment/landing-zone` | Organisation, folders, projects, KMS, Artifact Registry, parent zone. Landing zone only; created by the bootstrap (§1.1) |
+| `tf-destroy-lz@` | `attribute.environment/landing-zone-destroy` | Like `tf-apply-lz@`, with a different approver group |
 | `cmdb-reader@` | Reconciliation job (`cmdb-qa` §7) | `cloudasset.viewer` on `disasterproject-nonprod` |
 | `image-mirror@` | Image copy workflow (§6.2) | `artifactregistry.writer` on the `third-party` repository |
 | `image-build@` | Build workflow | `artifactregistry.writer` on `apps`; `signerVerifier` on `cosign` |
@@ -164,7 +307,7 @@ Only `tf-apply-lz@`, from a GitHub Environment `landing-zone` with reviewers fro
 
 ### 5.3 Break-glass
 
-A personal account with `organizationAdmin`, not used day to day, with an alert on every sign-in (the landing zone's layer 1b). It is the one that ran the bootstrap and the only one that can redo it.
+A personal account with `organizationAdmin`, not used day to day, with an alert on every sign-in (the landing zone's layer 1b). It is the one that ran the bootstrap, the only one that can redo it and the only one that applies changes to `gcp-lz-bootstrap` (DZ8). Outside those moments it holds no `projectCreator` and no `owner` on any project (§1.3).
 
 ---
 
@@ -297,7 +440,7 @@ assert {
 
 | # | Verification | Result that closes it |
 |---|---|---|
-| VZ1 | Bootstrap and state migration | `gcp-lz-bootstrap` with state in the bucket, encrypted; the person who ran it without organisation roles |
+| VZ1 | Bootstrap and state migration (§1.3) | `gcp-lz-bootstrap` with state in the bucket, encrypted (`encrypted_data`, not plaintext resources), and `tofu plan` with no changes; `enforced = true` after step 4; the *break-glass* account without `projectCreator` or `owner` |
 | VZ2 | Forced service agents | The `gke-secrets` grant is applied before the first cluster, without "service account does not exist" |
 | VZ3 | Federation | `tf-apply-qa@` cannot be assumed from a job without `environment: qa`; `tf-plan-qa@` cannot read the bucket's `dev/` prefix |
 | VZ4 | Shared Binary Authorization | Two non-production clusters with different rules; a landing zone `apply` alters neither; a cluster without a rule admits no pods |
@@ -341,6 +484,7 @@ assert {
 | DZ5 | SAs with cross-project grants | **Approved** | Created by the landing zone | Created by layer 2 (an upward edge) |
 | DZ6 | Binary Authorization | **Approved** | The project's policy written only by the landing zone; `ALWAYS_DENY` by default | Each `gke` writes its rule |
 | DZ7 | Budgets | **Proposed** | Per environment, filtered by the `environment` label | One per project |
+| DZ8 | Who applies `gcp-lz-bootstrap` after the bootstrap | **Proposed** | Only the *break-glass* account, from `main` after a pull request; the pipeline plans it but never applies it (`--no-tags bootstrap`) | `tf-apply-lz@`, which could widen its own permissions and touch the federation it authenticates with |
 
 ---
 

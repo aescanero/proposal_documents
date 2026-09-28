@@ -1,16 +1,21 @@
 sequenceDiagram
     autonumber
-    participant P as Persona (break-glass)
+    participant R as Repositorio infra
+    participant P as Cuenta break-glass
     participant B as gcp-lz-bootstrap
-    participant G as GCS · KMS
+    participant G as GCS · KMS · IAM
     participant CI as GitHub Actions
     participant L as Stacks gcp-lz-*
-    P->>B: tofu apply con estado local
-    B->>G: proyecto lz · bucket · key ring lz · github-pool · tf-apply-lz@
-    P->>G: tofu init -migrate-state (cifrado con lz/tofu-state)
-    P->>P: borra el estado local · retira sus roles de organización
-    Note over P: queda como break-glass con alerta de inicio de sesión
-    CI->>L: PR con el Environment landing-zone · tf-apply-lz@
+    R->>R: PR del bootstrap fusionado · backend gcs + cifrado con fallback
+    Note over R,CI: la preview solo pasa G0 y G1 · aún no hay federación
+    P->>B: backend local temporal · tofu apply
+    B->>G: proyecto lz · bucket · key ring lz · github-pool · tf-plan/apply/destroy-lz@
+    P->>G: backend restaurado · tofu init -migrate-state → estado cifrado
+    P->>P: shred del estado local · tofu plan sin cambios
+    R->>R: PR quita el fallback · enforced = true
+    P->>CI: variables GCP_WIF_PROVIDER y GCP_LZ_PROJECT · Environments landing-zone
+    P->>P: retira projectCreator y owner · cuenta sellada
+    CI->>L: PR · Environment landing-zone · tf-apply-lz@
     L->>G: org policies · proyectos · APIs · identidades · KMS · registro · DNS
-    L->>L: alta de qa: cidr · public_id · zona · claves · SAs · regla BinAuthz
-    Note over CI,L: el bootstrap no se vuelve a ejecutar
+    L->>L: alta de qa · cidr · public_id · zona · claves · SAs · regla BinAuthz
+    Note over CI,L: el pipeline nunca aplica gcp-lz-bootstrap (DZ8)

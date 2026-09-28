@@ -3488,12 +3488,12 @@ jobs:
           service_account: ${{ vars.GCP_APPLY_SA }}      # Environment variable: tf-apply-<env>@…
 
       - name: Apply changed stacks
-        run: terramate script run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" tofu deploy   # mocks OFF
+        run: terramate script run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" --no-tags bootstrap tofu deploy   # mocks OFF
 
       - name: Collect CMDB observations
         if: ${{ !cancelled() }}                          # also after a failed apply: it records outcome failed
         run: |
-          terramate run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" -- \
+          terramate run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" --no-tags bootstrap -- \
             archetypectl cmdb observe --out "$RUNNER_TEMP/observed"
       - name: Record the deploy marker
         if: ${{ success() }}                             # only a fully successful apply moves it
@@ -3512,7 +3512,7 @@ Key points:
 - **The change base is the environment's last successful deploy, not `HEAD^`.** With `HEAD^`, a failed or cancelled run leaves its stacks unapplied and the next merge never sees them again; GitHub also keeps only one pending run per concurrency group and cancels the others, so under a burst of merges some commits are never deployed on their own. The marker `deployed/<env>.json` on the `cmdb-observed` branch is written only when an environment's apply fully succeeded, and `cmdb-sync` only moves it forward (higher `run`). The next run diffs from there and picks up everything since.
 - **An environment without a marker is not deployed by this workflow.** Its first apply is staged (§4.11) and runs from `first-deploy`, a manual workflow with the same Environment; it writes the first marker. `changes` reports such an environment as a warning, not as an error.
 - **Non-production before production.** A change to a shared generator reaches `qa` and `dev` first in the same run; `prod` starts only if none of them failed, and its reviewers see their result. That is ordering, not promotion — promotion of application images is the developer guide's business (`developer-guide.md` §5).
-- **The landing zone goes first and alone**, from the `landing-zone` Environment with `tf-apply-lz@`. Environment workflows select by `--tags <env>`, which never includes the landing zone's stacks, and their identities could not apply them anyway (`landing-zone-qa` §5.2).
+- **The landing zone goes first and alone**, from the `landing-zone` Environment with `tf-apply-lz@`. Environment workflows select by `--tags <env>`, which never includes the landing zone's stacks, and their identities could not apply them anyway (`landing-zone-qa` §5.2). The one landing zone stack the pipeline never applies is `gcp-lz-bootstrap`, which creates the pipeline's own federation and identities: `--no-tags bootstrap` excludes it, and a person applies it (`landing-zone-qa` §1, DZ8).
 
 The observations reach the CMDB through a reusable workflow, the same for `deploy`, `drift` and `destroy`. It is the only place in the pipeline with `contents: write`, and it never writes to `main` (`archetype-model.md` §11.1):
 
