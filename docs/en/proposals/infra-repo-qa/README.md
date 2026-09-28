@@ -15,7 +15,7 @@ It reopens no decision in `CLAUDE.md`. Taking the architecture to a real reposit
 1. **There is no `qa` branch, and there must not be one.** In the infrastructure repository an environment is a **directory** (`environments/qa/`, `stacks/platforms/gcp/qa/`) and a **GitHub Environment** (`qa`), not a branch. A branch per environment would make `qa` and `prod` run different versions of the same generators and modules, and the difference would surface at merge time (§3.2). The per-environment branches in the developer guide (`release/*` → `qa`) belong to **application** repositories, and remain valid there.
 2. **A Terramate project is one repository** (measured, `poc/RESULTS.md`). Everything that passes values through outputs sharing — the landing zone, the platforms, the archetypes and their instances — has to live in the same repository. That clashes with the developer guide, which puts an application's stacks in the application's repository (DR6, open, §8).
 3. **The architecture's deploy was a single job with `environment: production`**, while each environment's apply identity can only be impersonated from the Environment of that name (architecture §11.2). That job could not have applied `qa`. Fixed in architecture §14.2: one job per environment (§5.1).
-4. **Two Terramate 0.16 facts measured while writing the templates**: tags cannot contain `:` (`instance:alpha` breaks the configuration load; now `instance/alpha`), and `terramate list` has no `--json` (the inventory comes from `ci/stacks-json.sh`). Fixed in `CLAUDE.md`, the architecture, the glossary and the affected proposals (§12).
+4. **Two Terramate facts measured while writing the templates** (0.16.0 and 0.17.3): tags cannot contain `:` (`instance:alpha` breaks the configuration load; now `instance/alpha`), and `terramate list` has no `--json` (the inventory comes from `ci/stacks-json.sh`). Fixed in `CLAUDE.md`, the architecture, the glossary and the affected proposals (§12).
 
 ---
 
@@ -246,7 +246,7 @@ While `GCP_WIF_PROVIDER` does not exist, the plan jobs are skipped (`if: vars.GC
 | `templates/mise.toml` | `.mise.toml` |
 | `templates/terramate.tm.hcl` | `terramate.tm.hcl` |
 
-Validated on 2026-09-28: the workflows with `actionlint` 1.7 (with `shellcheck` 0.11 over every `run:`) and against GitHub's JSON Schema (`check-jsonschema --builtin-schema vendor.github-workflows`), with no errors; the `ci/` scripts with `shellcheck`; `terramate.tm.hcl` loaded by Terramate 0.16.0. They have not been **run** on GitHub: that is VR1–VR6. Actions appear by tag (`@v4`) for readability; in `infra` Renovate pins them by SHA (DR8).
+Validated on 2026-09-28: the workflows with `actionlint` 1.7 (with `shellcheck` 0.11 over every `run:`) and against GitHub's JSON Schema (`check-jsonschema --builtin-schema vendor.github-workflows`), with no errors; the `ci/` scripts with `shellcheck`; `terramate.tm.hcl` loaded by Terramate 0.17.3; the G1 Rego of the architecture evaluated by conftest 0.70.1. They have not been **run** on GitHub: that is VR1–VR6. Actions appear by tag (`@v4`) for readability; in `infra` Renovate pins them by SHA (DR8).
 
 What the templates do **not** include: the Checkov configuration (`.checkov/`), the Terramate scripts (`imports/scripts/`, architecture §4.8) and the `archetypectl` subcommands, which belong to `platform-tools`.
 

@@ -364,7 +364,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 | **Reference counting (platform destroy)** | Counting instances still bound to a shared platform before allowing the platform itself to be destroyed. |
 | **Ephemeral environment** (`ephemeral-*`) | A short-lived platform (e.g. `ephemeral/conf-2026-q3`) created by copying `demos/` and changing three globals (`env`, `project_id`, `vpc_cidr`); expiry handled via a human-approved destroy PR, never automatic. |
 | **Environment promotion (globals diff)** | Moving config from `demos` → `dev` → `qa` → `prod` is purely a change in `config.tm.hcl` globals values (node counts, release channel, deletion protection, backup retention) — identical generators and contracts everywhere. |
-| **CMDB integration (Terramate)** | `ci/stacks-json.sh` (logical, pre-apply inventory; Terramate 0.16 has no `list --json`) and `terramate run --changed -- tofu show -json` (physical, post-apply inventory) as CMDB data sources — better than parsing state files directly. |
+| **CMDB integration (Terramate)** | `ci/stacks-json.sh` (logical, pre-apply inventory; Terramate 0.17 has no `list --json`) and `terramate run --changed -- tofu show -json` (physical, post-apply inventory) as CMDB data sources — better than parsing state files directly. |
 
 ---
 
@@ -416,7 +416,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 
 | Phase | Focus |
 |---|---|
-| **Phase 0** | Validate assumptions — a one-week throwaway-repo spike confirming: `from_stack_id` resolves an inherited global and accepts interpolation; `stack.after` resolves globals-derived paths or falls back to tag filters; `--mock-on-fail` behaviour; cross-project/account state reads with OIDC roles; control-plane reachability from the chosen runner type. The local part was measured in `poc/` (Terramate 0.16.0): the first two and the mock behaviour hold, globals in `stack.after` are a parse error and tag filters are the answer; the cloud part is checked in the first `qa` deployment. |
+| **Phase 0** | Validate assumptions — a one-week throwaway-repo spike confirming: `from_stack_id` resolves an inherited global and accepts interpolation; `stack.after` resolves globals-derived paths or falls back to tag filters; `--mock-on-fail` behaviour; cross-project/account state reads with OIDC roles; control-plane reachability from the chosen runner type. The local part was measured in `poc/` (Terramate 0.16.0, re-run on 0.17.3): the first two and the mock behaviour hold, globals in `stack.after` are a parse error and tag filters are the answer; the cloud part is checked in the first `qa` deployment. |
 | **Phase 0b** | Resolver skeleton — JSON Schema validation, resolution steps 1–8 (no ledger writes), proving a resolver-generated `binding.tm.hcl` drives `terramate generate` unchanged. |
 | **Phase 1** | One cloud, one shared platform — root config, `sharing_backend`, mixins, `gen_network`/`gen_cluster`, first demos platform, preview/deploy workflows with G0/G1, one archetype instance. |
 | **Phase 2** | Second cloud — second mixin/generator set proving contract files are cloud-agnostic; adds G2 plan scanning and permission boundaries. |
