@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 1 |
+| **Estado** | Propuesta · revisión 2 · decisiones aprobadas y cambios aplicados a los documentos de referencia (§9) |
 | **Alcance** | La CMDB del entorno `qa`: qué se inventaría, qué ficheros se escriben, quién los escribe y cuándo, dónde se publica el modelo de lectura, qué identidades lo hacen, y las tres guardas que la usan (recuento de referencias antes de un destroy, contrato roto en el PR, radio de impacto en el PR). Niveles 0 y 1 de AM §11; los niveles 2 y 3 no se construyen en `qa` (DI4) |
 | **Por qué ahora** | Las propuestas anteriores publican salidas "para la CMDB" (SonarQube, variante Cloud SQL) y dejan el ledger en `cmdb-data/pools/qa.json` (red), pero nadie ha dicho cómo llegan ahí. La guarda 3 de la arquitectura (§12.4) remite a la CMDB para el recuento de referencias, y la CMDB no existe |
 | **Base** | AM §11 (modelo en tres niveles), §9.6 (ledger); arquitectura §11.4 (identidades), §12.4 (guardas de destroy), §12.7, §14.2 (despliegue), §14.3 (drift); `schemas/cmdb-stack.schema.json`. No se repite lo que ya está allí |
@@ -207,7 +207,7 @@ Las propuestas anteriores publican salidas "para la CMDB". El colector las recog
 |---|---|
 | Solo salidas sin `sensitive = true` | `tofu output -json` devuelve también las sensibles; el colector las descarta por la marca, no por el nombre |
 | Valores > 1 KiB se guardan como `sha256:` | `cluster_ca` y similares: no son secretos, pero inflan el fichero y no se consultan por valor |
-| Regla de G1 nueva: una `output` cuyo nombre contiene `password`, `token`, `secret` (salvo `secret_id`/`secret_ids`) o `private_key` debe llevar `sensitive = true` | La marca la pone una persona y se olvida (RI4). Los nombres de secreto (`secret_ids`) son referencias, no valores: se publican (`CLAUDE.md`, "Never share secrets through outputs sharing") |
+| La regla de nombres de secreto que G1 ya tiene (`terramate.contracts`, arquitectura §13.3) impide que una `output` llamada `password`, `token`, `private_key`… exista, salvo que acabe en `_id`, `_arn`, `_name` o `_uri` | La marca `sensitive` la pone una persona y se olvida (RI4); la regla no depende de ella. Los nombres de secreto (`secret_ids`) son referencias, no valores: se publican (`CLAUDE.md`, "Never share secrets through outputs sharing"). La revisión 1 proponía una regla nueva; la existente ya lo cubre |
 
 ```json
 {
@@ -314,13 +314,16 @@ Una sola CMDB para todos los entornos: el radio de impacto cruza entornos cuando
 
 | Documento | Cambio | Estado |
 |---|---|---|
-| AM §11.1 | Dos mitades: declarada en `main`, generada en el PR; observada en la rama `cmdb-observed` (DI1, DI2) | **Propuesto** |
-| AM §11.2 | GitHub Pages no sirve si el repositorio no es Enterprise; asset de release (DI3) | **Propuesto** |
-| Arquitectura §12.4, guarda 3 | Recuento por aristas de la CMDB, no por nombre (DI6) | **Propuesto** |
-| Arquitectura §14.2, §14.3 | Colector por stack + `cmdb-aggregate` + `cmdb-publish`; el drift escribe `drifted` | **Propuesto** |
-| `schemas/cmdb-stack.schema.json` | Añadir `project`; sacar `lastApply` y `resourceCount` a un schema nuevo `cmdb-observed.schema.json` (`kind: StackObserved`, con `outputs` y `outcome` que admite `destroyed`) | **Propuesto** |
-| G1 (arquitectura §13.3) | Regla de contrato (DI7) y regla de nombres de salida sensibles (DI5) | **Propuesto** |
-| `risk-register.md` | RI1, RI3 y RI4 como R55–R57 | **Propuesto** |
+| AM §11.1 | Dos mitades: declarada en `main`, generada en el PR; observada en la rama `cmdb-observed` (DI1, DI2) | **Aplicado** |
+| AM §11.2 | GitHub Pages no sirve si el repositorio no es Enterprise; asset de release (DI3) | **Aplicado** |
+| AM §16 | Fila de `schemas/cmdb-observed.schema.json` | **Aplicado** |
+| Arquitectura §12.4, guarda 3 | Recuento por aristas de la CMDB, no por nombre (DI6) | **Aplicado** |
+| Arquitectura §12.7 | Resumen de las dos mitades y referencia a esta propuesta | **Aplicado** |
+| Arquitectura §14.2, §14.3 | Colector por stack; workflow reutilizable `cmdb-sync` (`aggregate` + `publish`) llamado por `deploy` y `drift`; el drift escribe `drifted` | **Aplicado** |
+| `schemas/cmdb-stack.schema.json` | Añadir `project`; sacar `lastApply` y `resourceCount` a un schema nuevo `cmdb-observed.schema.json` (`kind: StackObserved`, con `driftAt`, `outputs` y `outcome` que admite `destroyed`) | **Aplicado** |
+| G1 (arquitectura §13.3) | Dos reglas en `terramate.contracts`: salida consumida que el productor no produce (DI7) y productor que no está en el inventario. La de nombres de secreto ya existía (DI5) | **Aplicado** |
+| `risk-register.md`, glosario | RI1 → R55, RI3 → R56, RI4 → R57; entradas de mitad declarada y observada | **Aplicado** |
+| `CLAUDE.md` | Decisión cerrada: dos mitades, publicación privada, guarda por aristas | **Aplicado** |
 
 ---
 
@@ -331,7 +334,7 @@ Una sola CMDB para todos los entornos: el radio de impacto cruza entornos cuando
 | RI1 | **El sync escribe en `main`**: bypass de la protección y bucle de `deploy` | Alta si se sigue AM §11.1 al pie de la letra | Media — un job que puede empujar a `main` sin revisión | DI1: lo observado en su propia rama |
 | RI2 | **Nivel 1 en Pages pública** | Media | Alta — mapa del entorno expuesto | DI3: asset de release |
 | RI3 | **Aristas vacías en silencio**: el extractor no evalúa un `from_stack_id` y el recuento da 0 | Media hasta cerrar VI1 | Crítico — permite destruir una plataforma con consumidores (R5) | `cmdb check` falla si un stack tiene bloques `input` y `consumes` vacío; VI1; el mismo extractor que G1 |
-| RI4 | **Una salida sensible sin `sensitive = true`** acaba en la CMDB | Media | Alta — un secreto en un fichero que lee cualquiera con acceso al repositorio | Regla de nombres en G1; publicación privada; el colector nunca lee secretos, solo salidas |
+| RI4 | **Una salida sensible sin `sensitive = true`** acaba en la CMDB | Media | Alta — un secreto en un fichero que lee cualquiera con acceso al repositorio | La regla de nombres de secreto de G1 que ya existe; publicación privada; el colector nunca lee secretos, solo salidas |
 | RI5 | **Consumidores fuera del repositorio** | Alta (SonarQube) | Media — el recuento da 0 con usuarios reales | Aprobación humana del destroy; los consumidores externos se listan en el manifiesto si hace falta (no se propone ahora) |
 | RI6 | **CMDB que miente con confianza**: lo observado se queda viejo si el agregador falla | Media | Media | `lastApply.at` en el índice; `cmdb-publish` avisa de stacks sin observación en los últimos N días; el drift diario refresca |
 
@@ -355,14 +358,14 @@ Una sola CMDB para todos los entornos: el radio de impacto cruza entornos cuando
 
 | # | Decisión | Estado | Recomendación | Alternativa |
 |---|---|---|---|---|
-| DI1 | Dónde vive lo observado | **Propuesta** | Rama `cmdb-observed`; lo declarado en `main` | Todo en `main` con bypass y `paths-ignore`; un PR automático por despliegue; una base de datos |
-| DI2 | Cuándo se escribe lo declarado | **Propuesta** | En el PR, generado y comprobado como G0 | Tras el merge; a mano |
-| DI3 | Publicación del nivel 1 | **Propuesta** | Asset del release `cmdb-latest`, privado | GitHub Pages; lectura directa de la rama |
-| DI4 | Niveles 2 y 3 en `qa` | **Propuesta** | No: ≈ 50 stacks, `jq` basta. Nivel 2 cuando `demos` tenga varias demos; nivel 3 cuando haya una consulta real que el 2 no resuelva (AM §11.4) | DuckDB desde el principio |
-| DI5 | Qué salidas se publican | **Propuesta** | Todas las no sensibles; > 1 KiB como hash; regla de nombres en G1 | Lista explícita por manifiesto (`cmdb_outputs`) |
-| DI6 | Recuento de referencias | **Propuesta** | Por aristas de la CMDB, excluyendo el propio set de destroy | `grep` por nombre (arquitectura §12.4) |
-| DI7 | Contrato en el PR | **Propuesta** | Cada `consumes.output` existe en el `produces` del productor | Descubrirlo en el apply |
-| DI8 | Reconciliación | **Propuesta** | Fase 4, opcional en `qa`, con `cmdb-reader@` | No reconciliar; usar `tf-plan-qa@` |
+| DI1 | Dónde vive lo observado | **Aprobada** | Rama `cmdb-observed`; lo declarado en `main` | Todo en `main` con bypass y `paths-ignore`; un PR automático por despliegue; una base de datos |
+| DI2 | Cuándo se escribe lo declarado | **Aprobada** | En el PR, generado y comprobado como G0 | Tras el merge; a mano |
+| DI3 | Publicación del nivel 1 | **Aprobada** | Asset del release `cmdb-latest`, privado | GitHub Pages; lectura directa de la rama |
+| DI4 | Niveles 2 y 3 en `qa` | **Aprobada** | No: ≈ 50 stacks, `jq` basta. Nivel 2 cuando `demos` tenga varias demos; nivel 3 cuando haya una consulta real que el 2 no resuelva (AM §11.4) | DuckDB desde el principio |
+| DI5 | Qué salidas se publican | **Aprobada** | Todas las no sensibles; > 1 KiB como hash; la regla de nombres de secreto de G1 que ya existe | Lista explícita por manifiesto (`cmdb_outputs`) |
+| DI6 | Recuento de referencias | **Aprobada** | Por aristas de la CMDB, excluyendo el propio set de destroy | `grep` por nombre (arquitectura §12.4) |
+| DI7 | Contrato en el PR | **Aprobada** | Cada `consumes.output` existe en el `produces` del productor | Descubrirlo en el apply |
+| DI8 | Reconciliación | **Aprobada** | Fase 4, opcional en `qa`, con `cmdb-reader@` | No reconciliar; usar `tf-plan-qa@` |
 
 ---
 
@@ -371,7 +374,7 @@ Una sola CMDB para todos los entornos: el radio de impacto cruza entornos cuando
 | Fase | Contenido | Criterio de salida | Estimación |
 |---|---|---|---|
 | **0 · Extractor** | **VI1**, junto con la fase 0 de `CLAUDE.md` | Aristas evaluadas de los stacks de prueba | 0,5 días |
-| **1 · Declarado** | `archetypectl cmdb generate` y `check`; ficheros de `qa`; reglas de G1 de DI5 y DI7; comentario de radio de impacto | El preview de un PR que toca `gcp-qa-gke` lista sus consumidores y falla si rompe un contrato | 2 días |
+| **1 · Declarado** | `archetypectl cmdb generate` y `check`; ficheros de `qa`; las dos reglas de contrato de G1 (DI7); comentario de radio de impacto | El preview de un PR que toca `gcp-qa-gke` lista sus consumidores y falla si rompe un contrato | 2 días |
 | **2 · Observado** | Colector, `cmdb-aggregate`, rama y su regla, drift; **VI2**, **VI3**, **VI5**, **VI6** | Tras un `deploy`, `cmdb-observed` tiene un commit con el `runId` | 2 días |
 | **3 · Publicación y guardas** | `cmdb-publish`, guarda de destroy; **VI4** | `index.json` en `cmdb-latest`; un destroy con consumidores vivos se para | 1,5 días |
 | **4 · Reconciliación** (opcional) | `cmdb-reader@`, informe de huérfanos; **VI7** | Informe semanal sin diferencias en `qa` | 1 día |

@@ -17,7 +17,7 @@ Una plataforma de infraestructura multi-nube construida sobre **Terramate CLI + 
 | **Resolve** | `archetype-model.md` | Qué se puede componer con qué — manifiestos, capabilities, traits, pools, CMDB, resolución |
 | **Generate** | `terramate-outputs-sharing-architecture.md` | Cómo se genera y se aplica — generadores, outputs sharing, IAM, política, CI/CD, guías por nube |
 
-Además `platform-overview.md` (mapa guiado por diagramas, léelo primero), `risk-register.md` (54 riesgos por dominio, 53 activos), `glossary.md` (cada término, definido) y `developer-guide.md` (la mitad del desarrollador de aplicaciones — branching, versionado, build, rollback). Cada uno de estos vive en **dos idiomas**: `docs/en/<archivo>.md` y `docs/es/<archivo>.md`. Más abajo, una referencia simple a `docs/<archivo>.md` significa "ese archivo, en el idioma que estés leyendo" — ambas copias dicen lo mismo, así que la ruta es neutral respecto al idioma por diseño.
+Además `platform-overview.md` (mapa guiado por diagramas, léelo primero), `risk-register.md` (57 riesgos por dominio, 56 activos), `glossary.md` (cada término, definido) y `developer-guide.md` (la mitad del desarrollador de aplicaciones — branching, versionado, build, rollback). Cada uno de estos vive en **dos idiomas**: `docs/en/<archivo>.md` y `docs/es/<archivo>.md`. Más abajo, una referencia simple a `docs/<archivo>.md` significa "ese archivo, en el idioma que estés leyendo" — ambas copias dicen lo mismo, así que la ruta es neutral respecto al idioma por diseño.
 
 **La costura entre las dos mitades es `binding.tm.hcl`.** El resolver escribe globals; los generadores los consumen. Ninguna de las dos conoce las internas de la otra.
 
@@ -77,6 +77,7 @@ Reglas que se derivan de "mantenerse sincronizados", no solo "traducido una vez"
 | **El tráfico este-oeste se resuelve por DNS** | Así las direcciones no necesitan ser reproducibles entre reconstrucciones. Lo que SÍ se requiere es **idempotencia**: la clave de asignación es `(pool, owner, purpose)` |
 | **Las reglas de firewall las escribe quien reclama el rango** | Preferir selectores de carga de trabajo (network tags, referencias a security groups) sobre CIDR para este-oeste |
 | **Un runtime crea sus propias subredes** | Las subredes de nodos, los rangos de pods y las subredes del plano de control son claims del runtime (AM §9.5), así que las crea su arquetipo en un primer stack `*-subnets`. `network` publica la VPC/VNet, la salida y el enrutamiento, y no conoce ningún runtime. Dueño del claim = creador = autor del firewall; reconstruir un cluster nunca toca la red; el ciclo de etiquetado de subredes de EKS no puede aparecer. Aplicado a las cinco guías de runtime: GKE, EKS, Cloud Run, ECS Fargate y AKS (arquitectura §5.2, §6.2, §7.2, §8.2, §9.2); en los runtimes serverless el claim es la subred de egress o las subredes de tareas, localizadas mediante `global.platform.runtime_subnet_stack_id` |
+| **La CMDB tiene dos mitades, separadas por quién las escribe** | La mitad **declarada** (stacks, aristas, claims) la genera `archetypectl cmdb` en la pull request, se comprueba como G0 y vive en `main`, así que el revisor ve una arista o un claim nuevo en el diff. La mitad **observada** (`lastApply`, `resourceCount`, salidas no sensibles, drift) la escribe tras el apply el workflow reutilizable `cmdb-sync` en la rama `cmdb-observed` — nunca en `main`, que necesitaría un bypass de su protección y volvería a disparar `deploy` (R55). El modelo de lectura es un asset de release privado (`cmdb-latest`): unas Pages públicas publicarían el mapa del entorno. La guarda de destroy cuenta **aristas** de la CMDB, nunca nombres de stack (AM §11, arquitectura §12.4, §14.2; propuesta `cmdb-qa`) |
 | **Kafka es un archetype, no un component** | Despliega un operador e impone un contrato multi-tenant. Bus común, datos separados |
 | **Neo4j, MongoDB son components** | Instancias dedicadas sin contrato con nadie más |
 
@@ -158,7 +159,7 @@ imports/scripts/        bloques script de terramate
 stacks/platforms/       capas 0-3 por nube y environment
 stacks/archetypes/      capas 4-5, con instances/
 components/             plantillas de stack reutilizables
-cmdb-data/              CMDB de nivel 0, un archivo por stack
+cmdb-data/              CMDB de nivel 0, mitad declarada, un archivo por stack (mitad observada: rama cmdb-observed)
 ```
 
 ---

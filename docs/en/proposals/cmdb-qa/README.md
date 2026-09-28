@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 1 |
+| **Status** | Proposal · revision 2 · decisions approved and changes applied to the reference documents (§9) |
 | **Scope** | The CMDB of the `qa` environment: what is inventoried, which files are written, who writes them and when, where the read model is published, which identities do it, and the three guards that use it (reference counting before a destroy, broken contract in the PR, blast radius in the PR). Levels 0 and 1 of AM §11; levels 2 and 3 are not built on `qa` (DI4) |
 | **Why now** | Earlier proposals publish outputs "for the CMDB" (SonarQube, the Cloud SQL variant) and leave the ledger in `cmdb-data/pools/qa.json` (network), but nobody has said how they get there. Guard rail 3 of the architecture (§12.4) defers to the CMDB for reference counting, and the CMDB does not exist |
 | **Basis** | AM §11 (three-level model), §9.6 (ledger); architecture §11.4 (identities), §12.4 (destroy guards), §12.7, §14.2 (deploy), §14.3 (drift); `schemas/cmdb-stack.schema.json`. What is already there is not repeated |
@@ -207,7 +207,7 @@ Earlier proposals publish outputs "for the CMDB". The collector gathers them lik
 |---|---|
 | Only outputs without `sensitive = true` | `tofu output -json` also returns the sensitive ones; the collector drops them by the flag, not by the name |
 | Values > 1 KiB are stored as `sha256:` | `cluster_ca` and the like: not secrets, but they inflate the file and are never queried by value |
-| New G1 rule: an `output` whose name contains `password`, `token`, `secret` (except `secret_id`/`secret_ids`) or `private_key` must carry `sensitive = true` | A person sets the flag, and forgets (RI4). Secret names (`secret_ids`) are references, not values: they are published (`CLAUDE.md`, "Never share secrets through outputs sharing") |
+| The secret-name rule G1 already has (`terramate.contracts`, architecture §13.3) stops an `output` named `password`, `token`, `private_key`… from existing, unless it ends in `_id`, `_arn`, `_name` or `_uri` | A person sets the `sensitive` flag, and forgets (RI4); the rule does not depend on it. Secret names (`secret_ids`) are references, not values: they are published (`CLAUDE.md`, "Never share secrets through outputs sharing"). Revision 1 proposed a new rule; the existing one already covers it |
 
 ```json
 {
@@ -314,13 +314,16 @@ One CMDB for all environments: the blast radius crosses environments where it cr
 
 | Document | Change | Status |
 |---|---|---|
-| AM §11.1 | Two halves: declared on `main`, generated in the PR; observed on the `cmdb-observed` branch (DI1, DI2) | **Proposed** |
-| AM §11.2 | GitHub Pages does not work unless the repository is Enterprise; release asset (DI3) | **Proposed** |
-| Architecture §12.4, guard rail 3 | Counting by CMDB edges, not by name (DI6) | **Proposed** |
-| Architecture §14.2, §14.3 | Per-stack collector + `cmdb-aggregate` + `cmdb-publish`; drift writes `drifted` | **Proposed** |
-| `schemas/cmdb-stack.schema.json` | Add `project`; move `lastApply` and `resourceCount` to a new schema `cmdb-observed.schema.json` (`kind: StackObserved`, with `outputs` and an `outcome` that admits `destroyed`) | **Proposed** |
-| G1 (architecture §13.3) | Contract rule (DI7) and sensitive-output-name rule (DI5) | **Proposed** |
-| `risk-register.md` | RI1, RI3 and RI4 as R55–R57 | **Proposed** |
+| AM §11.1 | Two halves: declared on `main`, generated in the PR; observed on the `cmdb-observed` branch (DI1, DI2) | **Applied** |
+| AM §11.2 | GitHub Pages does not work unless the repository is Enterprise; release asset (DI3) | **Applied** |
+| AM §16 | Row for `schemas/cmdb-observed.schema.json` | **Applied** |
+| Architecture §12.4, guard rail 3 | Counting by CMDB edges, not by name (DI6) | **Applied** |
+| Architecture §12.7 | Summary of the two halves and a pointer to this proposal | **Applied** |
+| Architecture §14.2, §14.3 | Per-stack collector; reusable `cmdb-sync` workflow (`aggregate` + `publish`) called by `deploy` and `drift`; drift writes `drifted` | **Applied** |
+| `schemas/cmdb-stack.schema.json` | Add `project`; move `lastApply` and `resourceCount` to a new schema `cmdb-observed.schema.json` (`kind: StackObserved`, with `driftAt`, `outputs` and an `outcome` that admits `destroyed`) | **Applied** |
+| G1 (architecture §13.3) | Two rules in `terramate.contracts`: a consumed output the producer does not produce (DI7), and a producer not in the inventory. The secret-name rule already existed (DI5) | **Applied** |
+| `risk-register.md`, glossary | RI1 → R55, RI3 → R56, RI4 → R57; entries for the declared and observed halves | **Applied** |
+| `CLAUDE.md` | Settled decision: two halves, private publication, guard by edges | **Applied** |
 
 ---
 
@@ -331,7 +334,7 @@ One CMDB for all environments: the blast radius crosses environments where it cr
 | RI1 | **The sync writes to `main`**: a protection bypass and a `deploy` loop | High if AM §11.1 is followed to the letter | Medium — a job that can push to `main` without review | DI1: the observed half on its own branch |
 | RI2 | **Level 1 on public Pages** | Medium | High — the environment's map exposed | DI3: release asset |
 | RI3 | **Silently empty edges**: the extractor does not evaluate a `from_stack_id` and the count is 0 | Medium until VI1 is closed | Critical — allows destroying a platform with consumers (R5) | `cmdb check` fails if a stack has `input` blocks and an empty `consumes`; VI1; the same extractor as G1 |
-| RI4 | **A sensitive output without `sensitive = true`** ends up in the CMDB | Medium | High — a secret in a file anyone with repository access reads | Name rule in G1; private publication; the collector never reads secrets, only outputs |
+| RI4 | **A sensitive output without `sensitive = true`** ends up in the CMDB | Medium | High — a secret in a file anyone with repository access reads | The existing G1 secret-name rule; private publication; the collector never reads secrets, only outputs |
 | RI5 | **Consumers outside the repository** | High (SonarQube) | Medium — the count is 0 with real users | Human approval of the destroy; external consumers listed in the manifest if needed (not proposed now) |
 | RI6 | **A CMDB that lies with confidence**: the observed half goes stale if the aggregator fails | Medium | Medium | `lastApply.at` in the index; `cmdb-publish` warns about stacks with no observation in the last N days; daily drift refreshes it |
 
@@ -355,14 +358,14 @@ One CMDB for all environments: the blast radius crosses environments where it cr
 
 | # | Decision | Status | Recommendation | Alternative |
 |---|---|---|---|---|
-| DI1 | Where the observed half lives | **Proposed** | The `cmdb-observed` branch; the declared half on `main` | Everything on `main` with a bypass and `paths-ignore`; an automatic PR per deployment; a database |
-| DI2 | When the declared half is written | **Proposed** | In the PR, generated and checked like G0 | After the merge; by hand |
-| DI3 | Level 1 publication | **Proposed** | Asset of the `cmdb-latest` release, private | GitHub Pages; reading the branch directly |
-| DI4 | Levels 2 and 3 on `qa` | **Proposed** | No: ≈ 50 stacks, `jq` is enough. Level 2 when `demos` has several demos; level 3 when a real query exists that level 2 answers badly (AM §11.4) | DuckDB from the start |
-| DI5 | Which outputs are published | **Proposed** | All non-sensitive ones; > 1 KiB as a hash; name rule in G1 | An explicit list per manifest (`cmdb_outputs`) |
-| DI6 | Reference counting | **Proposed** | By CMDB edges, excluding the destroy set itself | `grep` by name (architecture §12.4) |
-| DI7 | Contract in the PR | **Proposed** | Every `consumes.output` exists in the producer's `produces` | Finding out at apply |
-| DI8 | Reconciliation | **Proposed** | Phase 4, optional on `qa`, with `cmdb-reader@` | No reconciliation; using `tf-plan-qa@` |
+| DI1 | Where the observed half lives | **Approved** | The `cmdb-observed` branch; the declared half on `main` | Everything on `main` with a bypass and `paths-ignore`; an automatic PR per deployment; a database |
+| DI2 | When the declared half is written | **Approved** | In the PR, generated and checked like G0 | After the merge; by hand |
+| DI3 | Level 1 publication | **Approved** | Asset of the `cmdb-latest` release, private | GitHub Pages; reading the branch directly |
+| DI4 | Levels 2 and 3 on `qa` | **Approved** | No: ≈ 50 stacks, `jq` is enough. Level 2 when `demos` has several demos; level 3 when a real query exists that level 2 answers badly (AM §11.4) | DuckDB from the start |
+| DI5 | Which outputs are published | **Approved** | All non-sensitive ones; > 1 KiB as a hash; the secret-name rule G1 already has | An explicit list per manifest (`cmdb_outputs`) |
+| DI6 | Reference counting | **Approved** | By CMDB edges, excluding the destroy set itself | `grep` by name (architecture §12.4) |
+| DI7 | Contract in the PR | **Approved** | Every `consumes.output` exists in the producer's `produces` | Finding out at apply |
+| DI8 | Reconciliation | **Approved** | Phase 4, optional on `qa`, with `cmdb-reader@` | No reconciliation; using `tf-plan-qa@` |
 
 ---
 
@@ -371,7 +374,7 @@ One CMDB for all environments: the blast radius crosses environments where it cr
 | Phase | Content | Exit criterion | Estimate |
 |---|---|---|---|
 | **0 · Extractor** | **VI1**, together with phase 0 of `CLAUDE.md` | Evaluated edges for the test stacks | 0.5 days |
-| **1 · Declared** | `archetypectl cmdb generate` and `check`; the `qa` files; the G1 rules of DI5 and DI7; the blast-radius comment | The preview of a PR that touches `gcp-qa-gke` lists its consumers and fails if it breaks a contract | 2 days |
+| **1 · Declared** | `archetypectl cmdb generate` and `check`; the `qa` files; the two G1 contract rules (DI7); the blast-radius comment | The preview of a PR that touches `gcp-qa-gke` lists its consumers and fails if it breaks a contract | 2 days |
 | **2 · Observed** | Collector, `cmdb-aggregate`, the branch and its rule, drift; **VI2**, **VI3**, **VI5**, **VI6** | After a `deploy`, `cmdb-observed` has a commit with the `runId` | 2 days |
 | **3 · Publication and guards** | `cmdb-publish`, destroy guard; **VI4** | `index.json` in `cmdb-latest`; a destroy with live consumers stops | 1.5 days |
 | **4 · Reconciliation** (optional) | `cmdb-reader@`, orphan report; **VI7** | Weekly report with no differences on `qa` | 1 day |

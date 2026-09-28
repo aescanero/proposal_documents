@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://disasterproject.com/schemas/cmdb-observed.schema.json",
+  "title": "CMDB Stack observation",
+  "description": "One file per stack. Level 0 of the CMDB, observed half: written by the cmdb-aggregate job after deploy, drift and destroy, on the cmdb-observed branch. Never on main.",
+  "type": "object",
+  "required": [
+    "apiVersion",
+    "kind",
+    "id",
+    "lastApply"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "archetype/v1"
+    },
+    "kind": {
+      "const": "StackObserved"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,80}$",
+      "description": "Same id as the declared file cmdb-data/stacks/<id>.json."
+    },
+    "lastApply": {
+      "type": "object",
+      "required": [
+        "at",
+        "commit",
+        "runId",
+        "outcome"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "ok",
+            "failed",
+            "drifted",
+            "destroyed"
+          ]
+        }
+      }
+    },
+    "driftAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last scheduled plan that exited with 2."
+    },
+    "resourceCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "outputs": {
+      "type": "object",
+      "description": "Outputs without sensitive = true. Values over 1 KiB are stored as sha256:<hex>.",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean",
+          "array",
+          "object",
+          "null"
+        ]
+      }
+    }
+  }
+}

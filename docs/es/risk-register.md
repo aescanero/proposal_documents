@@ -6,7 +6,7 @@
 |---|---|
 | **Alcance** | Todos los modos de fallo identificados en generación, resolución, identidad, borde, políticas y multi-tenancy |
 | **Referencias de sección** | `§n` se refiere al documento de arquitectura salvo que lleve el prefijo `AM §n` (modelo de arquetipos) |
-| **Identificadores** | R1–R54. R28 está **retirado** (duplicado de R26); su número no se reutiliza |
+| **Identificadores** | R1–R57. R28 está **retirado** (duplicado de R26); su número no se reutiliza |
 | **Cadencia de revisión** | En cada fase del roadmap, y siempre que cambie la versión fijada de una herramienta |
 
 Los riesgos se agrupan por dominio, no por orden numérico, porque así es como se revisan. Los números R son identificadores estables y no deben reutilizarse si un riesgo se retira.
@@ -80,7 +80,7 @@ Un riesgo cuya mitigación es una puerta de CI solo está mitigado cuando esa pu
 
 | # | Riesgo | Probabilidad | Impacto | Mitigación |
 |---|---|---|---|---|
-| R5 | **Plataforma compartida destruida al desmontar una instancia** | Baja con salvaguardas, catastrófica sin ellas | Crítico | Etiqueta `protected` + comprobación del selector de destrucción + recuento de referencias en la CMDB (§12.4) |
+| R5 | **Plataforma compartida destruida al desmontar una instancia** | Baja con salvaguardas, catastrófica sin ellas | Crítico | Etiqueta `protected` + comprobación del selector de destrucción + recuento de referencias en la CMDB por aristas, no por nombre (§12.4); R56 |
 | R6 | **Renombrar una salida del productor rompe a N consumidores** | Media | Alta en plataformas compartidas | Tratar las salidas como un contrato versionado; añadir salidas nuevas junto a las viejas, deprecar en dos versiones; el grafo de relaciones de la CMDB dice a quién afecta |
 | R11 | **Reconstruir el cluster invalida todo binding IRSA/WI en una plataforma compartida** | Baja | Alta | Tratar la sustitución del cluster como un evento de flota; mantener la lista de consumidores en la CMDB; ensayarlo en un entorno efímero |
 | R13 | **Rol de ejecución de tarea compartido en un cluster ECS multi-tenant** | Alta por defecto | Alta — exposición de secretos entre tenants | Rol de ejecución por instancia, acotado a los ARN de secretos de esa instancia (§8.4) |
@@ -107,6 +107,9 @@ Un riesgo cuya mitigación es una puerta de CI solo está mitigado cuando esa pu
 |---|---|---|---|---|
 | R10 | **Comparativas de proveedores exageradas** | — | Media — elección de herramienta equivocada | Buena parte del material de Terramate frente a Terragrunt en circulación lo publica el propio Terramate. Validar uno mismo, en el PoC, las afirmaciones sobre detección de cambios y outputs sharing antes de comprometer a la organización |
 | R28 | *Retirado — duplicado de R26, fusionado ahí. El número no se reutiliza.* | — | — | — |
+| R55 | **El sync de la CMDB escribe en `main`**: un job con bypass de la protección de `main`, y un commit que vuelve a disparar `deploy` | Alta si la mitad observada se escribe en `main` | Media — un job que puede empujar a `main` sin revisión; un bucle de despliegue que solo contiene un `paths-ignore` | Mitad observada en su propia rama `cmdb-observed`, escrita solo por el workflow reutilizable `cmdb-sync`; el ruleset de `main` no tiene bypass (AM §11.1, §14.2) |
+| R56 | **Aristas de la CMDB vacías en silencio**: el extractor no evalúa un `from_stack_id` y el stack parece no tener consumidores | Media hasta verificar el extractor con la versión fijada de Terramate | Crítico — la guarda de destroy cuenta 0 y deja ir una plataforma con consumidores (R5) | `archetypectl cmdb check` falla cuando un stack tiene bloques `input` y ningún `consumes` evaluado; un único extractor compartido con la regla de R2 de G1, así que fallan juntos (§12.4) |
+| R57 | **Un valor secreto llega a la CMDB**: una salida que lo lleva no está marcada `sensitive` y acaba en la mitad observada y en el modelo de lectura | Media | Alta — un secreto en un fichero que cualquier lector del repositorio puede descargar | La regla de nombres de secreto de G1 (§13.3); el colector descarta las salidas `sensitive`; el modelo de lectura es un asset de release privado, nunca unas Pages públicas (AM §11.2) |
 
 ---
 

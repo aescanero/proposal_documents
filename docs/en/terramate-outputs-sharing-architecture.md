@@ -2874,16 +2874,19 @@ if terramate list --tags protected --tags instance:${INSTANCE} | grep -q .; then
 fi
 ```
 
-**Guard rail 3 — reference counting before platform destroy.** A shared platform must not be destroyed while instances are bound to it. Because bindings are just globals, you can count them:
+**Guard rail 3 — reference counting before platform destroy.** A shared platform must not be destroyed while stacks still consume it. Count **edges from the CMDB** (§12.7), not stack names: a name pattern such as `^gcp-demos-.*-app$` matches nothing in an environment whose consumers are called `gcp-qa-policy` or `gcp-qa-kafka-cluster`, the count comes out 0 and the destroy goes through.
 
 ```bash
-# How many instances are bound to this platform?
-terramate list --json \
-  | jq -r '.stacks[].id' \
-  | grep -c '^gcp-demos-.*-app$'
+# Live consumers of a stack: inbound edges whose origin is not in the destroy set itself
+jq -r --arg p "$STACK" --argjson set "$DESTROY_SET" '
+  . as $idx
+  | [.edges[] | select(.producer == $p) | .consumer]
+  | map(select(. as $c | ($set | index($c)) == null))
+  | map(select($idx.stacks[.].observed.lastApply.outcome != "destroyed"))
+  | .[]' index.json
 ```
 
-Wire this into the CMDB (§12.7) so the count is authoritative rather than inferred from the repository.
+Any name that comes out stops the destroy, with the list. Destroying the producer **together with** all its consumers is allowed: that is destroying the environment, and the destroy approver group signs it off (§11.4). The count only sees consumers that are stacks; a service reached over HTTP by pipelines outside the repository has users the CMDB does not know about, which is why the human approval stays. The count is only as good as the edges: `archetypectl cmdb check` fails when a stack has `input` blocks and no evaluated `consumes` (R56).
 
 ### 12.5 Ephemeral shared environments
 
@@ -2931,6 +2934,8 @@ terramate run --changed -- tofu show -json              # physical inventory, po
 ```
 
 The full model — file layout, the three levels, the edge types extracted statically from `input` blocks, and the reference counting that protects a shared platform from an instance teardown — is specified in the companion document, `archetype-model.md` §11. It is not repeated here.
+
+In short: the **declared** half (stacks, edges, claims) is generated and checked in the pull request, on `main`; the **observed** half (`lastApply`, `resourceCount`, non-sensitive outputs, drift) is written after each apply to the `cmdb-observed` branch by the reusable workflow of §14.2; the read model is a private release asset, `cmdb-latest`. The worked example for one environment is the `cmdb-qa` proposal.
 
 ## 13. Policy and security validation
 
@@ -3025,7 +3030,27 @@ deny contains msg if {
     every suffix in reference_suffixes { not endswith(o, suffix) }
     msg := sprintf("stack %q exports %q — share a reference, not a value", [s.id, o])
 }
+
+# Every consumed output exists in its producer's produces: R6 caught in the PR, naming the consumer.
+deny contains msg if {
+    some s in input.stacks
+    some dep in s.consumes
+    some p in input.stacks
+    p.id == dep.from_stack_id
+    not dep.output in p.produces
+    msg := sprintf("stack %q consumes %q from %q, which does not produce it", [s.id, dep.output, dep.from_stack_id])
+}
+
+# A producer that is not in the inventory: a typo in from_stack_id, or a stack removed under its consumers.
+deny contains msg if {
+    some s in input.stacks
+    some dep in s.consumes
+    not dep.from_stack_id in {p.id | some p in input.stacks}
+    msg := sprintf("stack %q consumes from %q, which is not in the inventory", [s.id, dep.from_stack_id])
+}
 ```
+
+The two contract rules run over the CMDB's declared half of the pull request (`index.json`), so the inventory is the same one the destroy guard reads. The collector that writes the observed half publishes only outputs without `sensitive = true`; the secret-name rule above is what keeps a secret value from being an output in the first place.
 
 ```rego
 package archetype.composition
@@ -3294,9 +3319,71 @@ jobs:
       - name: Apply changed stacks
         run: terramate script run --changed tofu deploy   # mocks OFF
 
-      - name: Sync CMDB
-        run: ./scripts/sync-cmdb.sh
+      - name: Collect CMDB observations
+        if: ${{ !cancelled() }}                          # also after a failed apply: it records outcome failed
+        run: terramate run --changed -- archetypectl cmdb observe --out "$RUNNER_TEMP/observed"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with: { name: "cmdb-observed-${{ github.run_id }}", path: "${{ runner.temp }}/observed" }
+
+  cmdb:
+    needs: deploy
+    if: ${{ !cancelled() }}
+    permissions: { contents: write }
+    uses: ./.github/workflows/cmdb-sync.yml
+    with: { pattern: "cmdb-observed-${{ github.run_id }}" }
 ```
+
+The observations reach the CMDB through a reusable workflow, the same for `deploy`, `drift` and `destroy`. It is the only place in the pipeline with `contents: write`, and it never writes to `main` (`archetype-model.md` §11.1):
+
+```yaml
+# .github/workflows/cmdb-sync.yml
+name: cmdb-sync
+on:
+  workflow_call:
+    inputs:
+      pattern: { type: string, required: true }   # artifact name pattern of this run
+
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    permissions: { contents: write }              # main's ruleset has no bypass for github-actions
+    concurrency: { group: cmdb-write, cancel-in-progress: false }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: cmdb-observed, path: observed }
+      - uses: actions/checkout@v4
+        with: { path: main, sparse-checkout: schemas }
+      - uses: actions/download-artifact@v4
+        with: { pattern: "${{ inputs.pattern }}", merge-multiple: true, path: observed/cmdb-data/observed }
+      - name: Validate
+        run: check-jsonschema --schemafile main/schemas/cmdb-observed.schema.json observed/cmdb-data/observed/*.json
+      - name: Commit and push, with rebase and retry
+        working-directory: observed
+        run: |
+          git add cmdb-data/observed
+          git diff --cached --quiet && exit 0
+          git -c user.name=cmdb-bot -c user.email=cmdb-bot@users.noreply.github.com \
+            commit -m "observed: run ${{ github.run_id }}"
+          for i in 1 2 3; do git pull --rebase && git push && exit 0; sleep $((i*5)); done
+          exit 1
+
+  publish:
+    needs: aggregate
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: git fetch origin cmdb-observed
+      - name: Join both halves
+        run: archetypectl cmdb publish --observed origin/cmdb-observed --out dist/   # index.json, graph.jsonld
+      - name: Replace the release asset
+        run: gh release upload cmdb-latest dist/index.json dist/graph.jsonld --clobber
+        env: { GH_TOKEN: "${{ github.token }}" }
+```
+
+`publish` warns about any stack whose last observation is older than the drift interval: an aggregator that stopped failing loudly is how a CMDB starts to lie with confidence.
 
 > **`terramate run --changed` respects the dependency order** derived from nesting and `after`. It does **not** derive order from `input` blocks. If a PR changes only the app stack but the platform's outputs also changed in a prior merge, the app stack will read the current (correct) outputs — but if both change in the same PR, ordering comes entirely from your `after` declarations. This is the reason §4.5 insists on the input↔after invariant.
 
@@ -3319,14 +3406,27 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: jdx/mise-action@v2
       # ... auth ...
-      - name: Detect drift
+      - name: Detect drift and record it
+        id: drift
         run: |
           terramate run --tags ${{ matrix.selector }} --enable-sharing -- \
-            tofu plan -detailed-exitcode -lock=false || \
-          if [ $? -eq 2 ]; then
+            archetypectl cmdb observe --drift --out "$RUNNER_TEMP/observed"
+          # per stack: tofu plan -detailed-exitcode -lock=false; exit 2 → outcome drifted, driftAt
+          if grep -rqs '"outcome": "drifted"' "$RUNNER_TEMP/observed"; then
             echo "::warning::Drift detected in ${{ matrix.selector }}"
-            exit 1
+            echo "drifted=true" >> "$GITHUB_OUTPUT"
           fi
+      - uses: actions/upload-artifact@v4
+        with: { name: "cmdb-observed-${{ github.run_id }}-${{ matrix.selector }}", path: "${{ runner.temp }}/observed" }
+      - if: steps.drift.outputs.drifted == 'true'
+        run: exit 1
+
+  cmdb:
+    needs: drift
+    if: ${{ !cancelled() }}
+    permissions: { contents: write }
+    uses: ./.github/workflows/cmdb-sync.yml
+    with: { pattern: "cmdb-observed-${{ github.run_id }}-*" }
 ```
 
 ### 14.4 Policy gate in the pipeline
@@ -3357,7 +3457,7 @@ The ordering invariant that previously relied on a shell script is now a Rego po
 
 ## 15. Risk register
 
-The full register — 54 risks grouped by domain (53 active; R28 retired as a duplicate of R26), with likelihood, impact, mitigation and the section that specifies each control — is maintained in its own document, `risk-register.md`. It is reviewed at every roadmap phase gate rather than read end to end.
+The full register — 57 risks grouped by domain (56 active; R28 retired as a duplicate of R26), with likelihood, impact, mitigation and the section that specifies each control — is maintained in its own document, `risk-register.md`. It is reviewed at every roadmap phase gate rather than read end to end.
 
 The five to act on first:
 

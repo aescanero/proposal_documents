@@ -6,7 +6,7 @@
 |---|---|
 | **Scope** | Every identified failure mode across generation, resolution, identity, edge, policy and multi-tenancy |
 | **Section references** | `§n` refers to the architecture document unless prefixed `AM §n` (archetype model) |
-| **Identifiers** | R1–R54. R28 is **retired** (duplicate of R26); its number is not reused |
+| **Identifiers** | R1–R57. R28 is **retired** (duplicate of R26); its number is not reused |
 | **Review cadence** | At each roadmap phase gate, and whenever a pinned tool version changes |
 
 Risks are grouped by domain rather than numbered order, because that is how they are reviewed. The original R-numbers are stable identifiers and must not be reused if a risk is retired.
@@ -80,7 +80,7 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|---|
-| R5 | **Shared platform destroyed by an instance teardown** | Low with guards, catastrophic without | Critical | `protected` tag + destroy-selector check + CMDB reference count (§12.4) |
+| R5 | **Shared platform destroyed by an instance teardown** | Low with guards, catastrophic without | Critical | `protected` tag + destroy-selector check + CMDB reference count by edges, not by name (§12.4); R56 |
 | R6 | **Producer output rename breaks N consumers** | Medium | High on shared platforms | Treat outputs as a versioned contract; add new outputs alongside old, deprecate over two releases; the CMDB relationship graph tells you who is affected |
 | R11 | **Cluster rebuild invalidates every IRSA/WI binding on a shared platform** | Low | High | Treat cluster replacement as a fleet event; maintain the consumer list in the CMDB; rehearse in an ephemeral environment |
 | R13 | **Shared task execution role on a multi-tenant ECS cluster** | High by default | High — cross-tenant secret exposure | Per-instance execution role scoped to that instance's secret ARNs (§8.4) |
@@ -107,6 +107,9 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 |---|---|---|---|---|
 | R10 | **Vendor-sourced comparisons overstated** | — | Medium — wrong tool choice | Much of the Terramate-vs-Terragrunt material in circulation is published by Terramate. Validate the change-detection and outputs-sharing claims yourself in the PoC before committing the organisation |
 | R28 | *Retired — duplicate of R26, merged there. Number not reused.* | — | — | — |
+| R55 | **The CMDB sync writes to `main`**: a job with a bypass of `main`'s protection, and a commit that triggers `deploy` again | High if the observed half is committed to `main` | Medium — a job that can push to `main` without review; a deploy loop held back only by a `paths-ignore` | Observed half on its own `cmdb-observed` branch, written only by the reusable `cmdb-sync` workflow; `main`'s ruleset has no bypass (AM §11.1, §14.2) |
+| R56 | **CMDB edges silently empty**: the extractor does not evaluate a `from_stack_id`, the stack appears to have no consumers | Medium until the extractor is verified against the pinned Terramate version | Critical — the destroy guard counts 0 and lets a platform with consumers go (R5) | `archetypectl cmdb check` fails when a stack has `input` blocks and no evaluated `consumes`; one extractor shared with the R2 rule of G1, so both fail together (§12.4) |
+| R57 | **A secret value reaches the CMDB**: an output carrying one is not marked `sensitive` and ends up in the observed half and the read model | Medium | High — a secret in a file every repository reader can fetch | The G1 secret-name rule (§13.3); the collector drops `sensitive` outputs; the read model is a private release asset, never public Pages (AM §11.2) |
 
 ---
 

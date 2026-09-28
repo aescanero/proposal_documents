@@ -6,7 +6,7 @@ Visual map of the two reference documents. Nothing here is normative; every diag
 |---|---|
 | `archetype-model.md` | *What may be composed with what?* Manifests, capabilities, traits, pools, CMDB, resolution |
 | `terramate-outputs-sharing-architecture.md` | *How is it generated and applied?* Generators, outputs sharing, IAM, policy, CI/CD, per-cloud guides |
-| `risk-register.md` | *What can go wrong, and is the control actually in place?* 54 risks by domain (53 active), reviewed at each phase gate |
+| `risk-register.md` | *What can go wrong, and is the control actually in place?* 57 risks by domain (56 active), reviewed at each phase gate |
 
 ---
 

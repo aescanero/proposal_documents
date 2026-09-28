@@ -987,7 +987,7 @@ cmdb-data/
 ├── components/neo4j@1.2.0.json
 ├── environments/demos.json                  # binding + cidr + capacity + utilisation
 ├── instances/demos-alpha.json               # versions, claims, stacks, expiry
-├── stacks/gcp-demos-alpha-app.json          # ONE FILE PER STACK
+├── stacks/gcp-demos-alpha-app.json          # ONE FILE PER STACK — declared half
 ├── edges/
 │   ├── depends-on.json                      # from input.from_stack_id — STATIC
 │   ├── provides.json                        # capability → provider stack
@@ -999,13 +999,20 @@ cmdb-data/
 └── index.json
 ```
 
-One file per stack is what allows parallel `terramate run` jobs to write without colliding. Even so, the robust pattern is each job uploading an artifact and one final job aggregating into a single commit, with `concurrency: { group: cmdb-write, cancel-in-progress: false }`.
+**Two halves, separated by who writes them.** A sync that commits to `main` after every apply needs a bypass of `main`'s protection, and its commit triggers the `deploy` workflow again. So level 0 is split:
+
+| Half | Carries | Written by | Where |
+|---|---|---|---|
+| **Declared** | Everything known without the cloud: identity, `environment`, `project`, archetype, tags, `produces`, `consumes`, claims, tenant resources, expiry; the edges; instances; resolved manifests | `archetypectl cmdb generate`, **in the pull request**, and checked by `archetypectl cmdb check` like G0 checks generated code | `cmdb-data/` on `main`, reviewed with the change that motivates it |
+| **Observed** | What only an apply knows: `lastApply` (`at`, `commit`, `runId`, `outcome`), `driftAt`, `resourceCount`, non-sensitive outputs | The `cmdb-aggregate` job, after `deploy`, `drift` and `destroy` | Branch **`cmdb-observed`**, `cmdb-data/observed/<id>.json`; only the bot pushes, no force-push, no deletion |
+
+`main` keeps no bypass, a push to `cmdb-observed` triggers nothing, and `git blame` works on both halves. One file per stack is what lets parallel `terramate run` jobs produce observations without colliding: each job uploads an artifact and `cmdb-aggregate` commits them together, with `concurrency: { group: cmdb-write, cancel-in-progress: false }`. The `ledger` files under `pools/` are neither half's output: they are written by the pull request that claims (§9.8), and their merge conflict is the lock.
 
 **Three edge types are extracted statically**, before deployment: dependency edges from `input.from_stack_id`, capability edges from `provides`, and tenant-resource edges from `creates_tenant_resources`. That last one is new and valuable: it answers "who can write into the Kafka namespace" from files, in a pull request.
 
 ### 11.2 Level 1 — published read model
 
-`index.json` plus a JSON-LD projection on GitHub Pages or as an artifact.
+`index.json` plus a JSON-LD projection, joining the declared half from `main` and the observed half from `cmdb-observed`. **Publish it as a release asset** (`cmdb-latest`, replaced on each publication) unless the repository is on Enterprise with private Pages: public Pages would expose internal ranges, project and secret names, versions and digests — the environment's map. History is the `cmdb-observed` branch.
 
 | Access path | Auth | Limits | Use |
 |---|---|---|---|
@@ -1451,7 +1458,8 @@ A scheduled job lists instances whose `expiresOn` has passed and opens a destroy
 | `schemas/component.schema.json` | `component.yaml` in every component |
 | `schemas/environment-binding.schema.json` | `environments/<env>/binding.yaml` |
 | `schemas/pool-ledger.schema.json` | `cmdb-data/pools/*.json` |
-| `schemas/cmdb-stack.schema.json` | `cmdb-data/stacks/*.json` |
+| `schemas/cmdb-stack.schema.json` | `cmdb-data/stacks/*.json` (declared half) |
+| `schemas/cmdb-observed.schema.json` | `cmdb-data/observed/*.json` (observed half, on the `cmdb-observed` branch; validated by `cmdb-aggregate` before it pushes) |
 
 Validate in the preview workflow, before resolution:
 
