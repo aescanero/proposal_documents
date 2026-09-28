@@ -219,7 +219,7 @@ Cuatro consecuencias que vale la pena decir con claridad:
 | **`metadata.version`** | **Generado** por el pipeline a partir del tag. Commiteado, para que el manifest sea autocontenido y Terramate pueda leerlo, pero no escrito a mano |
 | **Puerta de CI** | `archetypectl version --check` recalcula la versión a partir del ref y falla si `metadata.version` difiere |
 
-La puerta existe por la misma razón que existe G0 (`terramate generate --check`): el valor está commiteado, así que alguien lo editará. Cuando lo haga, tres cosas discrepan silenciosamente — el tag de imagen, el registro de CMDB, y la label obligatoria `app.kubernetes.io/version` de `registry/labels.yaml`, que Gatekeeper valida en la admisión. El deployment es entonces rechazado en el cluster, que es el peor sitio para descubrirlo.
+La puerta existe por la misma razón que existe G0 (`terramate generate --detailed-exit-code`): el valor está commiteado, así que alguien lo editará. Cuando lo haga, tres cosas discrepan silenciosamente — el tag de imagen, el registro de CMDB, y la label obligatoria `app.kubernetes.io/version` de `registry/labels.yaml`, que Gatekeeper valida en la admisión. El deployment es entonces rechazado en el cluster, que es el peor sitio para descubrirlo.
 
 Versiones de pre-release, por rama:
 

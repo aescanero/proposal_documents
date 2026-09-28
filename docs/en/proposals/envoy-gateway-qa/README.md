@@ -604,7 +604,7 @@ Default-deny ingress and egress `NetworkPolicy` in `envoy-gateway-system`:
 | Phase | Contents | Exit criterion | Estimate |
 |---|---|---|---|
 | **0 · Prerequisites** | `qa` GKE with Gateway API disabled; Gatekeeper; cert-manager; VG1, VG2, VG10 | Verifications closed | Depends on the platform |
-| **1 · Skeleton** | Manifest, charts, asserts, G1 rules and constraints | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 and preview with mocks green | 1 day |
+| **1 · Skeleton** | Manifest, charts, asserts, G1 rules and constraints | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 and preview with mocks green | 1 day |
 | **2 · Controller** | `controller` | Healthy controller; xDS certificates from cert-manager (**VG8**); **VG12** | 1 day |
 | **3 · Gateway** | `proxy`, then `gcp-qa-edge` | The criterion of §10; **VG4**, **VG5**, **VG6**, **VG9**, **VG11** | 2 days |
 | **4 · Consumers** | Keycloak, Grafana and SonarQube; **VG3** in an ephemeral environment under load | Three routes `Accepted`; **VG7** with a test application | With each consumer |

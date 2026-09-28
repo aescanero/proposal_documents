@@ -3,6 +3,8 @@ flowchart LR
         direction TB
         KMS["clave gke-secrets<br/>+ permiso al agente de GKE"]
         AR["Artifact Registry<br/>lector: SA de nodos"]
+        SAN["SA de nodos gke-nodes-qa@<br/>la crea la landing zone (DZ5)"]
+        BA["Binary Authorization<br/>regla del cluster (DZ6)"]
     end
     NET["gcp-qa-network · capa 1<br/>VPC · PSA · Cloud NAT · qa.internal"]
     subgraph GKE["gke · capa 2 · provee cluster 2.5.0"]
@@ -10,7 +12,7 @@ flowchart LR
         SUB["subnet<br/>nodos /24 · pods /18 · servicios /22"]
         CL["cluster<br/>Standard regional · nodos privados<br/>Dataplane V2 · Workload Identity"]
         NP["nodepools<br/>general · sonar · kafka"]
-        ACC["access<br/>open / close de la IP del runner"]
+        ACC["endpoint DNS del plano de control<br/>solo IAM · sin redes autorizadas"]
         BL["baseline<br/>PriorityClass platform-critical"]
     end
     subgraph CONS["Consumidores"]
@@ -24,6 +26,8 @@ flowchart LR
     CL --> ACC
     KMS -. "cifrado de etcd" .-> CL
     AR -. "imágenes" .-> NP
+    SAN -. "global" .-> CL
+    BA -. "admite imágenes" .-> CL
     CL -- "endpoint + CA por sharing" --> CONS
     NP -. "globals: pools, storage_class, WI pool" .-> CONS
 

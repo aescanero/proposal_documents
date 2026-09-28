@@ -1,0 +1,95 @@
+# Destino: .github/workflows/destroy.yml — destruir una instancia (arquitectura §12.4)
+name: destroy
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Entorno
+        type: choice
+        options: [qa, prod]
+      instance:
+        description: Id de la instancia (tag instance/<id>)
+        type: string
+        required: true
+      confirm:
+        description: Repite el id de la instancia
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  guards:                                      # sin credenciales: las tres guardas antes de pedir aprobación
+    runs-on: ubuntu-latest
+    outputs:
+      selector: ${{ steps.sel.outputs.selector }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - id: sel
+        env:
+          ENV: ${{ inputs.env }}
+          INSTANCE: ${{ inputs.instance }}
+          CONFIRM: ${{ inputs.confirm }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::destroy solo desde main"; exit 1; }
+          [[ "$INSTANCE" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "::error::id de instancia no válido"; exit 1; }
+          [ "$INSTANCE" = "$CONFIRM" ] || { echo "::error::la confirmación no coincide"; exit 1; }
+          sel="$ENV:instance/$INSTANCE"          # ":" es Y: el entorno y la instancia
+          # ids, no rutas: las aristas de la CMDB van por id de stack
+          set_json="$(terramate run --quiet --tags "$sel" -- \
+            terramate experimental get-config-value terramate.stack.id | jq -Rsc 'split("\n") | map(select(. != ""))')"
+          [ "$set_json" != "[]" ] || { echo "::error::ningún stack con $sel"; exit 1; }
+          # guarda 2: ningún stack protegido en el set
+          if terramate list --tags "protected:$sel" | grep -q .; then
+            echo "::error::el selector incluye un stack protegido"; exit 1
+          fi
+          # guarda 3: consumidores vivos fuera del set, por aristas de la CMDB (cmdb-qa §6.1)
+          gh release download cmdb-latest -p index.json
+          live="$(jq -r --argjson set "$set_json" '
+            . as $idx
+            | [.edges[] | select(.producer as $p | $set | index($p)) | .consumer]
+            | map(select(. as $c | ($set | index($c)) == null))
+            | map(select($idx.stacks[.].observed.lastApply.outcome != "destroyed"))
+            | unique | .[]' index.json)"
+          [ -z "$live" ] || { echo "::error::consumidores vivos fuera del set: $live"; exit 1; }
+          echo "selector=$sel" >> "$GITHUB_OUTPUT"
+
+  destroy:
+    needs: guards
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env }}-destroy     # otro grupo de aprobadores; tf-destroy-<env>@
+    concurrency:
+      group: deploy-${{ inputs.env }}          # nunca a la vez que un deploy del mismo entorno
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service-account: ${{ vars.GCP_DESTROY_SA }}
+      - name: Destroy en orden inverso, sharing activado, sin mocks
+        run: |
+          terramate run --tags "${{ needs.guards.outputs.selector }}" --reverse --enable-sharing -- \
+            tofu destroy -auto-approve
+      - name: Observaciones para la CMDB
+        if: ${{ !cancelled() }}
+        run: |
+          terramate run --tags "${{ needs.guards.outputs.selector }}" -- \
+            archetypectl cmdb observe --destroyed --out "$RUNNER_TEMP/observed"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: cmdb-observed-${{ github.run_id }}-${{ inputs.env }}
+          path: ${{ runner.temp }}/observed
+
+  cmdb:
+    needs: destroy
+    if: ${{ !cancelled() }}
+    permissions: { contents: write }
+    uses: ./.github/workflows/cmdb-sync.yml
+    with:
+      pattern: cmdb-observed-${{ github.run_id }}-*

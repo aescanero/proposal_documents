@@ -200,7 +200,7 @@ registry/
 | bundle `registry/*.json` | `conftest --data` |
 | `values.yaml` del chart de Gatekeeper | parámetros de `ConstraintTemplate` |
 
-El YAML es la fuente. Un esquema editado a mano es un bug, protegido por una comprobación `registry-generate --check` en CI exactamente igual que `terramate generate --check`.
+El YAML es la fuente. Un esquema editado a mano es un bug, protegido por una comprobación `registry-generate --check` en CI exactamente igual que `terramate generate --detailed-exit-code`.
 
 ### 4.5 Semántica de versión de capability
 

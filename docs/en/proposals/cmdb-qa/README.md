@@ -57,7 +57,7 @@ The stacks come from each proposal's manifests, with the providers of the `qa` b
 |---|---|---|---|
 | `environment` | 1 | `network`, `edge-base`, `edge`, `edge-l4` | — |
 | `cloud-monitoring-gcp` | 1b | `cloudmon` | — |
-| `gke` | 2 | `subnet`, `cluster`, `nodepools`, `access`, `baseline` | — |
+| `gke` | 2 | `subnet`, `cluster`, `nodepools`, `baseline` | — |
 | `policy-gatekeeper` | 2b | `controller`, `library`, `exemptions` | — |
 | `cert-manager` | 3 | `controllers`, `ca` | — |
 | `gateway-envoy-gke` | 3 | `controller`, `proxy` | — |
@@ -67,13 +67,13 @@ The stacks come from each proposal's manifests, with the providers of the `qa` b
 | `kafka` | 3 | `iam`, `operator`, `cluster`, `policy`, `vpc-access` | — |
 | `keycloak` | 3 | 9 (10 minus `data-tenant`) | `main` |
 | `sonarqube` | 5 | 9 (10 minus `data-tenant`) | `main` |
-| **Total** | | **≈ 51** | 2 |
+| **Total** | | **≈ 50** | 2 |
 
 This is a count from manifests: the definitive one is `terramate list --tags qa` once the stacks exist, and the generator writes it without anyone counting.
 
 | File | How many on `qa` | Approximate size |
 |---|---|---|
-| `stacks/<id>.json` | ≈ 51 | 2–4 KiB each |
+| `stacks/<id>.json` | ≈ 50 | 2–4 KiB each |
 | `archetypes/<name>@<version>.json` | 12 | 1–3 KiB |
 | `instances/qa-<archetype>-<instance>.json` | 2 | 1 KiB |
 | `environments/qa.json`, `pools/qa.json` | 2 | 2 KiB |
@@ -166,7 +166,7 @@ Claims are made by the archetype; in the file they are attributed to the stack t
 
 | Field | Source | Without the cloud |
 |---|---|---|
-| `id`, `path`, `tags` | `terramate list --json` | Yes |
+| `id`, `path`, `tags` | `ci/stacks-json.sh` (architecture §14.4) | Yes |
 | `environment`, `project`, `cloud`, `capability`, `archetype`, `instance`, `model` | Stack globals (`terramate debug show globals`) | Yes |
 | `produces` | `output` blocks of the imported contract | Yes |
 | `consumes` | `input` blocks of the contract, **with `from_stack_id` evaluated** | Yes, if the extractor evaluates globals (VI1) |
@@ -175,7 +175,7 @@ Claims are made by the archetype; in the file they are attributed to the stack t
 
 **One extractor for two consumers.** The G1 rule that checks every `input` has its `after` (R2) needs exactly the same `(stack, from_stack_id)` pairs. It is written once, in `archetypectl`, and used by G1 and the CMDB: if the extractor is wrong, both are wrong at once, and it shows sooner.
 
-**The check (DI2).** `archetypectl cmdb check` regenerates the declared half and fails if it differs from what is in the PR, like G0 with `terramate generate --check`. Without it, someone fixes a `consumes` by hand, the review approves it, and the next generation silently reverts it.
+**The check (DI2).** `archetypectl cmdb check` regenerates the declared half and fails if it differs from what is in the PR, like G0 with `terramate generate --detailed-exit-code`. Without it, someone fixes a `consumes` by hand, the review approves it, and the next generation silently reverts it.
 
 The tool does not exist yet. The branch `claude/fervent-goodall-m3r9eg` has an `archetypectl` with the `enrich` subcommand, not merged; `cmdb` would be a new subcommand.
 
@@ -301,7 +301,7 @@ In the shared project, an orphaned `qa` resource — created by hand, or one tha
 
 | Setting | `qa` | `prod` | `demos` |
 |---|---|---|---|
-| Stacks | ≈ 51 | Similar to `qa` | Platform + one set per demo |
+| Stacks | ≈ 50 | Similar to `qa` | Platform + one set per demo |
 | Level 2 (DuckDB) | No (DI4) | No | **Yes** once there are several demos: the expiry query (AM §11.3) is the one that keeps the environment habitable |
 | Reconciliation | Optional | Recommended: `prod` has its own project, and everything in it should be in some state | Recommended: demos expire and leave remnants |
 | `cmdb-observed` branch | The same one for all environments | The same | The same |

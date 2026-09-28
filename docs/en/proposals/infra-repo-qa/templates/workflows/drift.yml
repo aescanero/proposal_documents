@@ -1,0 +1,84 @@
+# Destination: .github/workflows/drift.yml — architecture §14.3
+name: drift
+on:
+  schedule:
+    - cron: "17 5 * * *"                       # daily, off minute 0
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  drift:                                       # one job per environment, with its read-only identity
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: ${{ fromJSON(vars.DRIFT_ENVS) }}  # repository variable: ["landing-zone","qa"]; prod runs separately
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: ./.github/actions/setup
+        with:
+          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service-account: tf-plan-${{ matrix.env == 'landing-zone' && 'lz' || matrix.env }}@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
+
+      - name: Detect drift and record it
+        id: drift
+        run: |
+          # the bootstrap is included: drift in the federation is wanted too
+          terramate run --tags ${{ matrix.env }} --enable-sharing -- \
+            archetypectl cmdb observe --drift --out "$RUNNER_TEMP/observed"
+          # per stack: tofu plan -detailed-exitcode -lock=false; exit 2 → outcome drifted, driftAt
+          if grep -rqs '"outcome": "drifted"' "$RUNNER_TEMP/observed"; then
+            echo "::warning::drift in ${{ matrix.env }}"
+            echo "drifted=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cmdb-observed-${{ github.run_id }}-${{ matrix.env }}
+          path: ${{ runner.temp }}/observed
+
+      - if: steps.drift.outputs.drifted == 'true'
+        run: exit 1
+
+  drift-prod:                                  # prod: no approval, but from main only (DR7)
+    runs-on: ubuntu-latest
+    environment: prod-drift                    # branch policy: main only
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: ./.github/actions/setup
+        with:
+          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service-account: tf-plan-prod@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
+
+      - name: Detect drift and record it
+        id: drift
+        run: |
+          # the bootstrap is included: drift in the federation is wanted too
+          terramate run --tags prod --enable-sharing -- \
+            archetypectl cmdb observe --drift --out "$RUNNER_TEMP/observed"
+          # per stack: tofu plan -detailed-exitcode -lock=false; exit 2 → outcome drifted, driftAt
+          if grep -rqs '"outcome": "drifted"' "$RUNNER_TEMP/observed"; then
+            echo "::warning::drift in prod"
+            echo "drifted=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cmdb-observed-${{ github.run_id }}-prod
+          path: ${{ runner.temp }}/observed
+
+      - if: steps.drift.outputs.drifted == 'true'
+        run: exit 1
+
+  cmdb:
+    needs: [drift, drift-prod]
+    if: ${{ !cancelled() }}
+    permissions: { contents: write }
+    uses: ./.github/workflows/cmdb-sync.yml
+    with:
+      pattern: cmdb-observed-${{ github.run_id }}-*

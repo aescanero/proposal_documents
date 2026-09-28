@@ -58,7 +58,7 @@ T=dict(
   [("general","n2-standard-8",["1-3 per zone","≈ 13 vCPU requested","survives a zone loss"]),
    ("dedicated","sonar and kafka",["taint dedicated=pool","sysctl on sonar","only its owner tolerates"]),
    ("disk","standard-rwo",["pd-balanced on n2","no hyperdisk on N2 (VN1)","storage_class global"])],
-  [("access","Authorised networks",["open / close per job","15-min reconciler","role: clusters.update only"]),
+  [("endpoint","Control plane DNS",["IAM only","no authorised networks","landing zone DZ4"]),
    ("upgrades","Surge 1/0 per pool",["qa one week earlier","PDB honoured for 1 h","sonar: outage accepted"]),
    ("baseline","platform-critical",["PriorityClass","layers 2b-4","no evictions"])]],
  right="Provides", right_sub="cluster 2.5.0 · sysctl-max-map-count · …",

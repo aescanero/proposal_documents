@@ -203,8 +203,8 @@ Términos técnicos y definiciones extraídos de `platform-overview.md`, `archet
 | **Versionado de generadores** | Los generadores viven bajo `imports/generators/v1/`, etc., condicionados por `condition = global.generators.version == "v1"`, de modo que un cambio incompatible se publica como `v2/` y migra entorno por entorno cambiando un global. |
 | **Bloque `script`** (`terramate script`) | Nombra un workflow de varios pasos (init/plan/apply) invocable de forma idéntica desde un portátil o desde CI; las flags de sharing (`enable_sharing`, `mock_on_fail`) se fijan aquí por comando. Scripts `preview`/`deploy` separados evitan que se intercambie el comportamiento de los mocks. |
 | **Bloque `assert`** | Falla `terramate generate` cuando se viola un invariante, imponiendo reglas arquitectónicas (p. ej. los clusters de producción deben tener protección de borrado) en vez de limitarse a documentarlas. |
-| **`terramate generate`** | Ejecuta todos los generadores y escribe los ficheros generados. **`terramate generate --check`** es la puerta **G0**: garantiza que nadie ha editado a mano un fichero generado, ya que el siguiente `generate` revertiría la corrección en silencio. |
-| **`terramate run`** | Orquesta las invocaciones reales de `tofu` a través de los stacks (p. ej. `terramate run --tags <cloud>:<env>:network --enable-sharing -- tofu apply`). Admite `--changed` para ejecuciones incrementales y selección por `--tags` como mecanismo de orden de respaldo cuando el `stack.after` derivado de globals no se resuelve (lo cual falla **en silencio** — probarlo deliberadamente). |
+| **`terramate generate`** | Ejecuta todos los generadores y escribe los ficheros generados. **`terramate generate --detailed-exit-code`** es la puerta **G0**: garantiza que nadie ha editado a mano un fichero generado, ya que el siguiente `generate` revertiría la corrección en silencio. |
+| **`terramate run`** | Orquesta las invocaciones reales de `tofu` a través de los stacks (p. ej. `terramate run --tags <cloud>:<env>:network --enable-sharing -- tofu apply`). Admite `--changed` para ejecuciones incrementales y selección por `--tags`. El orden viene de `stack.after`, que solo acepta rutas literales o filtros `tag:`: un global ahí es un error de análisis (medido, `poc/RESULTS.es.md`). |
 | **`--enable-sharing`** | La flag de `terramate run` que activa la resolución de outputs sharing para esa invocación. |
 | **`--mock-on-fail`** | Recurre al `mock` declarado del input tras una lectura fallida de outputs sharing; nunca debe aparecer en una ruta de deploy real. |
 | **`terramate.tm.hcl`** | Configuración de raíz del repositorio: fija `required_version`, declara `experiments` (necesario para desbloquear `sharing_backend`/`input`/`output`), fija los valores por defecto de `config.git` para la detección de cambios, y `config.run.env`. |
@@ -359,12 +359,12 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 | **`global.platform.model`** | La flag global (`"dedicated"` o `"shared"`) que condiciona la salida del generador — p. ej. las salvaguardas de tenancy solo se emiten cuando es `"shared"`. |
 | **Salvaguardas de tenancy (modelo compartido)** | Recursos por instancia generados solo para instancias de modelo compartido: un `kubernetes_namespace` dedicado con `pod-security.kubernetes.io/enforce: restricted`, un `kubernetes_resource_quota`, un `kubernetes_limit_range`, una `kubernetes_network_policy` default-deny. |
 | **`global.quota`** | Objeto de globals requerido (cpu, memoria, pods, loadbalancers) que las instancias de modelo compartido deben definir, forzado por assertion. |
-| **Destroy acotado por etiqueta** | La destrucción obligatoria en entornos compartidos (`terramate run --tags instance:<name> --reverse ...`) — nunca un selector basado en ruta/`--changed`, que podría arrastrar stacks de plataforma. |
+| **Destroy acotado por etiqueta** | La destrucción obligatoria en entornos compartidos (`terramate run --tags instance/<name> --reverse ...`) — nunca un selector basado en ruta/`--changed`, que podría arrastrar stacks de plataforma. |
 | **Etiqueta `protected`** | Marca los stacks de plataforma para que CI se niegue a destruirlos fuera de un workflow de break-glass. |
 | **Recuento de referencias (destrucción de plataforma)** | Contar las instancias que todavía están enlazadas a una plataforma compartida antes de permitir destruir la propia plataforma. |
 | **Entorno efímero** (`ephemeral-*`) | Una plataforma de vida corta (p. ej. `ephemeral/conf-2026-q3`) creada copiando `demos/` y cambiando tres globals (`env`, `project_id`, `vpc_cidr`); la caducidad se gestiona con un PR de destrucción aprobado por humano, nunca automático. |
 | **Promoción de entorno (diff de globals)** | Mover la configuración de `demos` → `dev` → `qa` → `prod` es puramente un cambio en los valores de globals de `config.tm.hcl` (número de nodos, canal de release, protección de borrado, retención de backups) — generadores y contratos idénticos en todas partes. |
-| **Integración de CMDB (Terramate)** | `terramate list --json` (inventario lógico, previo al apply) y `terramate run --changed -- tofu show -json` (inventario físico, posterior al apply) como fuentes de datos de la CMDB — mejor que parsear los ficheros de estado directamente. |
+| **Integración de CMDB (Terramate)** | `ci/stacks-json.sh` (inventario lógico, previo al apply; Terramate 0.16 no tiene `list --json`) y `terramate run --changed -- tofu show -json` (inventario físico, posterior al apply) como fuentes de datos de la CMDB — mejor que parsear los ficheros de estado directamente. |
 
 ---
 
@@ -383,7 +383,7 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 | **conftest** | Herramienta de política CLI sin estado que consume `registry/*.json` como `--data`; elegida para las comprobaciones de política en CI en vez de correr un servidor OPA. |
 | **check-jsonschema** | Herramienta CLI que valida manifiestos, ficheros de componente, bindings de entorno y ledgers de pool contra JSON Schemas antes de que se ejecute la resolución. |
 | **`conftest verify`** | Ejecuta los tests unitarios propios de las políticas Rego (`policy/*_test.rego`) para que una regla que nunca se dispara no dé una falsa confianza (riesgo R36). |
-| **`archetypectl enrich`** | Herramienta a medida que escanea cada stack en busca de declaraciones `from_stack_id`/`after`, emitiendo los campos `consumes[]` y `after_ids[]`, ya que `terramate list --json` no expone por sí mismo los bloques `input` — se mantiene pequeña e independiente para que el Rego siga siendo portable y testeable contra fixtures. |
+| **`archetypectl enrich`** | Herramienta a medida que escanea cada stack en busca de declaraciones `from_stack_id`/`after`, emitiendo los campos `consumes[]` y `after_ids[]`, ya que el inventario de stacks (`ci/stacks-json.sh`) no expone los bloques `input` — se mantiene pequeña e independiente para que el Rego siga siendo portable y testeable contra fixtures. |
 | **`skip-check` (Checkov)** | Directiva de configuración por cloud que suprime una comprobación concreta (p. ej. `CKV_GCP_69` para un endpoint de cluster de demo intencionadamente público); toda supresión requiere un comentario que nombre el motivo/alcance y no debe filtrarse a la configuración de producción. |
 | **Gatekeeper autogestionado** | El modelo de despliegue elegido en las tres clouds en vez de add-ons gestionados, porque las alternativas gestionadas son mutuamente excluyentes con una instalación autogestionada (AKS rechaza su add-on si Gatekeeper v3 está presente), restringen los templates personalizados, y supondrían tres comportamientos distintos que depurar. |
 | **Gatekeeper, no Kyverno** | Elegido porque el equipo ya escribe Rego para conftest — un solo lenguaje de política. Las reglas **no** son literalmente reutilizables entre ambos, solo el lenguaje y las librerías auxiliares, porque la entrada de Gatekeeper es un `AdmissionReview`, no `resolution.json`. |
@@ -395,7 +395,7 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 | **`exemptNamespaces`** | Configuración de Gatekeeper que excluye `kube-system` y el namespace de Gatekeeper de la aplicación, para que `failurePolicy: Fail` no pueda bloquear la propia recuperación de la plataforma. |
 | **Capa 2b (policy)** | La ubicación arquitectónica del control de admisión — entre el cluster (capa 2) y los servicios de plataforma (capa 3) — porque la admisión debe preceder a todo lo que gobierna. |
 | **El registro único** (`registry/{capabilities,traits,zones,labels}.yaml`) | La única fuente de verdad de la que se generan los bloques `enum` de JSON Schema, el paquete JSON de `conftest --data`, y el `values.yaml` del chart de Gatekeeper. **Nunca editar a mano un `enum` en `schemas/`** — eso es un bug (riesgo R34). |
-| **`registry-generate`** | La herramienta (todavía no escrita) que genera los enums de esquema, el paquete de datos de conftest y los valores del chart de Gatekeeper a partir de `registry/*.yaml`; protegida en CI por `registry-generate --check`, análoga a `terramate generate --check`. Primera tarea de la fase 2c del roadmap. |
+| **`registry-generate`** | La herramienta (todavía no escrita) que genera los enums de esquema, el paquete de datos de conftest y los valores del chart de Gatekeeper a partir de `registry/*.yaml`; protegida en CI por `registry-generate --check`, análoga a `terramate generate --detailed-exit-code`. Primera tarea de la fase 2c del roadmap. |
 
 ---
 
@@ -403,11 +403,11 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 
 | Término | Definición |
 |---|---|
-| **Workflow de preview** | El pipeline de PR: G0 → escaneo estático de Checkov → autenticación OIDC cloud → `terramate script run --changed tofu preview` (sharing y mocks activados) → escaneo del plan con Checkov → comentario en el PR con los stacks cambiados. |
+| **Workflow de preview** | El pipeline de PR: G0, G1 y el escaneo estático de Checkov una vez, sin credenciales; después **un job de plan por cada entorno que toca el PR**, cada uno con la identidad de solo lectura de ese entorno (`tf-plan-<env>@`): `terramate script run --changed --tags <env> tofu preview` (sharing y mocks activados) → escaneo del plan con Checkov → resumen de los stacks cambiados. |
 | **`fetch-depth: 0`** | Ajuste de checkout requerido para que la detección de cambios de Terramate (compara contra `main`) tenga el historial de git completo; un clon superficial informa en silencio de cero stacks cambiados. |
-| **Workflow de despliegue** | El pipeline de merge a main, protegido por un `environment: production` de GitHub (revisores obligatorios), que ejecuta `terramate script run --changed tofu deploy` con los mocks desactivados, y luego un script de sincronización de la CMDB. |
-| **Workflow de drift** | Un job programado que ejecuta `tofu plan -detailed-exitcode -lock=false` por selector de cloud para detectar drift de configuración sin aplicar. |
-| **Entradas de construcción de la puerta de política** | La cadena que produce las entradas de evaluación de conftest: `registry-generate --check` → `archetypectl resolve --dry-run > resolution.json` → `terramate list --json > stacks.json` → `archetypectl enrich stacks.json`. |
+| **Workflow de despliegue** | El pipeline de merge a main. **Un job por entorno**, cada uno ligado al GitHub Environment de ese nombre (sus revisores, y el claim `environment` que es lo único que puede suplantar a `tf-apply-<env>@`): primero la landing zone, después los entornos no productivos en paralelo, después `prod`. Cada uno ejecuta `terramate script run --changed -B <último deploy con éxito> --tags <env> tofu deploy` con los mocks desactivados, y luego la sincronización de la CMDB, que además mueve el marcador de deploy del entorno. Arquitectura §14.2. |
+| **Workflow de drift** | Un job programado que ejecuta `tofu plan -detailed-exitcode -lock=false` por entorno, con la identidad de plan de ese entorno, para detectar drift de configuración sin aplicar. |
+| **Entradas de construcción de la puerta de política** | La cadena que produce las entradas de evaluación de conftest: `registry-generate --check` → `archetypectl resolve --dry-run > resolution.json` → `ci/stacks-json.sh > stacks.json` → `archetypectl enrich stacks.json`. |
 | **`mise`** | Gestor de fijación de versiones de herramientas (`mise.toml`, `jdx/mise-action`) que fija las versiones de Terramate, OpenTofu y Checkov de forma consistente entre las máquinas de los desarrolladores y CI. |
 
 ---
@@ -416,7 +416,7 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 
 | Fase | Foco |
 |---|---|
-| **Fase 0** | Validar suposiciones — un pico de una semana en un repositorio desechable que confirma: `from_stack_id` resuelve un global heredado y acepta interpolación; `stack.after` resuelve rutas derivadas de globals o recurre a filtros de etiqueta (y falla en silencio si no — probarlo deliberadamente); el comportamiento de `--mock-on-fail`; lecturas de estado entre proyectos/cuentas con roles OIDC; alcanzabilidad del plano de control privado desde el tipo de runner elegido. **Es el trabajo de una tarde y condiciona todo lo demás.** |
+| **Fase 0** | Validar suposiciones — un pico de una semana en un repositorio desechable que confirma: `from_stack_id` resuelve un global heredado y acepta interpolación; `stack.after` resuelve rutas derivadas de globals o recurre a filtros de etiqueta; el comportamiento de `--mock-on-fail`; lecturas de estado entre proyectos/cuentas con roles OIDC; alcanzabilidad del plano de control desde el tipo de runner elegido. La parte local se midió en `poc/` (Terramate 0.16.0): las dos primeras y el comportamiento de los mocks se cumplen, los globals en `stack.after` son un error de análisis y los filtros por tag son la respuesta; la parte en la nube se comprueba en el primer despliegue de `qa`. |
 | **Fase 0b** | Esqueleto del resolver — validación por JSON Schema, pasos de resolución 1–8 (sin escrituras del ledger), demostrando que un `binding.tm.hcl` generado por el resolver hace funcionar `terramate generate` sin cambios. |
 | **Fase 1** | Una cloud, una plataforma compartida — configuración raíz, `sharing_backend`, mixins, `gen_network`/`gen_cluster`, primera plataforma de demos, workflows de preview/deploy con G0/G1, una instancia de arquetipo. |
 | **Fase 2** | Segunda cloud — segundo conjunto de mixin/generador que demuestra que los ficheros de contrato son agnósticos de cloud; añade el escaneo de plan G2 y permission boundaries. |
@@ -552,7 +552,7 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 
 ---
 
-## 26. Registro de riesgos (`risk-register.md`) — 57 riesgos por dominio (56 activos)
+## 26. Registro de riesgos (`risk-register.md`) — 60 riesgos por dominio (57 activos)
 
 Cada riesgo tiene un número R estable y nunca reutilizado, una probabilidad, un impacto y una mitigación ligada a una sección del documento.
 
@@ -595,8 +595,8 @@ Cada riesgo tiene un número R estable y nunca reutilizado, una probabilidad, un
 | **R35** | Se adopta un add-on de política gestionado y luego hacen falta templates personalizados, pero ambos son mutuamente excluyentes. Mitigado estandarizando en Gatekeeper autogestionado en las tres clouds, con un trait `custom-templates`. |
 | **R36** | Una regla Rego se escribe pero nunca se dispara, produciendo falsa confianza. Mitigado ejecutando `conftest verify` sobre `policy/*_test.rego` en el mismo job de CI que la puerta. |
 | **R37** | Se asume que los runtimes serverless tienen la misma cobertura de políticas que los runtimes de Kubernetes, pero ahí no existe la capa de admisión. Mitigado declarando explícitamente el hueco de paridad de cobertura, con la política del plano de control cloud sustituyendo al control de admisión. |
-| **R38** | Las redes autorizadas de GKE se editan por cada job de CI: jobs concurrentes se sobrescriben la entrada y un runner muerto deja su IP abierta. Mitigado con un único grupo de `concurrency`, un paso de cierre `if: always()` y un reconciliador que caduca entradas obsoletas. |
-| **R39** | `container.clusters.update` concedido a una identidad de pipeline para abrir la IP del runner — permite que cualquier PR reconfigure el cluster. Mitigado con un servicio intermedio mínimo que solo abre y cierra una /32. |
+| **R38** | *Retirado* — el endpoint DNS del plano de control elimina las redes autorizadas de GKE (`landing-zone-qa` DZ4). |
+| **R39** | *Retirado* — con el endpoint DNS ninguna identidad del pipeline necesita `container.clusters.update` (`landing-zone-qa` DZ4). |
 | **R40** | Valores de secreto guardados en el estado de OpenTofu, convirtiendo el estado en un segundo almacén de secretos. Mitigado con recursos ephemeral y atributos write-only. |
 | **R41** | Destrucción de la clave de cifrado de estado del entorno; GCP carece de un equivalente escrito de la SCP de AWS. Mitigado sin permiso de destrucción para pipelines, `prevent_destroy` y una duración mínima programada de destrucción. |
 | **R42** | Caduca la credencial de federación del IdP (Keycloak en el IdP superior) y nadie puede iniciar sesión. Mitigado con una credencial de certificado y una alerta de caducidad al equipo propietario. |
@@ -606,6 +606,7 @@ Cada riesgo tiene un número R estable y nunca reutilizado, una probabilidad, un
 | **R46** | El chart Helm de origen trae un init container privilegiado o como root. Mitigado desactivándolo y trasladando el requisito al nodo, expresado como un trait. |
 | **R47–R53** | SonarQube en `qa`: saturación de la cola del compute engine, un análisis de pull request registrado como `main`, OOMKill multi-JVM, pérdida de la clave de cifrado de settings, token global de análisis filtrado, migración de upgrade irreversible, pérdida del volumen zonal. Ver `risk-register.md` §8. |
 | **R55–R57** | CMDB: el sync que escribe en `main`; aristas vacías en silencio, con lo que la guarda de destroy cuenta 0; un valor secreto que llega a la CMDB. Ver `risk-register.md` §7. |
+| **R58–R60** | Landing zone: arranque irrepetible; una política singleton del proyecto (Binary Authorization) escrita por un entorno; un grant de proyecto donde bastaba uno de recurso. Ver `risk-register.md`. |
 
 **Los cinco principales riesgos** (ordenados por probabilidad × impacto, mitigación aún no implantada): 1) R2 (falta `after`), 2) R12 (`sub` comodín OIDC), 3) R26 (rango de pods dimensionado para pocos nodos), 4) R34 (divergencia del registro), 5) R5 (plataforma compartida destruida al desmontar una instancia).
 

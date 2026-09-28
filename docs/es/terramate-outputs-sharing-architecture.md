@@ -329,7 +329,7 @@ output "private_service_range" {
 | label | sí | Nombre del output. Es la **clave pública del contrato** — trata los renombrados como cambios disruptivos. |
 | `backend` | sí | Debe coincidir con un label de `sharing_backend`. |
 | `value` | sí | Expresión evaluada **en el código OpenTofu generado**, así que puede referenciar `module.*`, `resource.*`, `data.*`. |
-| `description` | no | Se emite en el bloque `output` generado. Úsala — se convierte en la documentación de tu contrato. |
+| `description` | no | Documenta el contrato en `imports/contracts/`. **No** se emite en el bloque `output` generado (medido, Terramate 0.16.0, `poc/RESULTS.es.md`), así que no llega a `tofu output`. Úsala igualmente — es donde un revisor lee qué significa la clave. |
 | `sensitive` | no | Solo se emite cuando se fija. Ver la advertencia más abajo. |
 
 > **Valores sensibles.** Outputs sharing resuelve valores en variables de entorno `TF_VAR_<name>` en el proceso del consumidor. Las variables de entorno son visibles para cualquier cosa en ese árbol de procesos y se filtran fácilmente a los logs de CI. **Nunca compartas secretos a través de outputs sharing.** Comparte *referencias* — un ID de secreto de Secret Manager, un nombre de parámetro SSM, un ARN de clave KMS — y deja que el stack consumidor lea el secreto mediante un data source bajo su propia identidad IAM.
@@ -417,20 +417,22 @@ globals "platform" {
 
 Los bloques `input` del arquetipo se escriben **una sola vez**, en `imports/contracts/`, referenciando `global.platform.cluster_stack_id`. Ligar una instancia a una plataforma demo compartida o a una plataforma de producción dedicada es entonces un **fichero de cinco líneas**. Esto es lo que reemplaza la capa de "configuración del componente wrapper del stack" del patrón HCP Stacks — binding tardío mediante globals en lugar de anidamiento.
 
-> **Decisión de diseño: `from_stack_id` es una expresión.** Esta arquitectura asume
-> que `from_stack_id` resuelve globals, que es lo que permite que un único fichero
-> de contrato por capability sirva a cada instancia. Tres variantes aún necesitan
-> confirmarse contra tu versión fijada de Terramate, porque que la forma básica
-> funcione no las garantiza: globals **heredados** de un directorio padre en lugar
-> de definidos en el stack; **interpolación** (`"${global.env}-gke"`) en lugar de
-> una referencia desnuda; y el comportamiento de `mock` bajo `--mock-on-fail` cuando
-> el productor todavía no tiene estado.
+> **Decisión de diseño: `from_stack_id` es una expresión — medido.** Esta
+> arquitectura se apoya en que `from_stack_id` resuelva globals, que es lo que
+> permite que un único fichero de contrato por capability sirva a cada instancia.
+> La PoC de la fase 0 (`poc/`, Terramate 0.16.0) confirmó las tres variantes que la
+> forma básica no garantiza: globals **heredados** de un directorio padre;
+> **interpolación** (`"${global.env}-gke"`); y el comportamiento de `mock` bajo
+> `--mock-on-fail` cuando el productor no tiene estado. También mostró que
+> `--mock-on-fail` **no** enmascara un `from_stack_id` que nombra un stack
+> inexistente, así que un error tipográfico en un contrato falla en la preview.
 >
-> Los globals en `stack.after` siguen siendo una cuestión abierta, y falla **de
-> forma silenciosa** — una expresión no resuelta deja el ordenamiento vacío en
-> lugar de lanzar un error, así que un consumidor puede ejecutarse antes que su
-> productor. Ese es el riesgo R2. El lint de §14.4 lo detecta; si los globals no
-> se resuelven ahí, recurre al ordenamiento basado en tags (§4.5).
+> **Los globals no se resuelven en `stack.after`** — es un error de análisis que
+> aborta todos los comandos de Terramate, no uno silencioso. El resolver escribe
+> ahí valores literales, preferiblemente `after = ["tag:<capability>"]` (§4.5). El
+> fallo silencioso que queda es un `after` *olvidado*: un consumidor con un
+> `input` y sin orden se genera limpiamente y puede programarse antes que su
+> productor. Ese es el riesgo R2; el lint de §14.4 lo detecta.
 
 #### Los mocks no son opcionales
 
@@ -671,6 +673,15 @@ output se mantengan.
 
 ### 4.11 Primer despliegue de un entorno nuevo
 
+**Paso 0 — antes de la secuencia, y no con la identidad del entorno.** Dos cosas preceden al primer apply de un entorno:
+
+| | Qué | Quién lo aplica | Dónde se especifica |
+|---|---|---|---|
+| **0a** | **La landing zone existe.** El stack `gcp-lz-bootstrap` (bucket de estado, key ring `lz` con `tofu-state`, el pool de federación, `tf-plan-lz@`, `tf-apply-lz@`, `tf-destroy-lz@`) lo aplica **una vez por organización** una persona, con estado local, y su estado se migra al bucket; después el resto de la landing zone lo aplica el pipeline | Una persona con `organizationAdmin` y `billing.admin`, una vez; después el job `landing-zone` | `landing-zone-qa` §1 |
+| **0b** | **El entorno se da de alta en la landing zone.** Una pull request añade el entorno a `global.lz.environments`: key ring de KMS y clave `tofu-state`, el prefijo de estado, `tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@` con sus vínculos de federación, la zona delegada y el `public_id`, el bloque de direcciones del pool global, la regla de Binary Authorization y la SA de nodos del runtime. La misma pull request añade `environments/<env>/binding.yaml`. Fuera del repositorio, un administrador crea los GitHub Environments `<env>` y `<env>-destroy` con sus revisores y las variables `GCP_APPLY_SA` / `GCP_DESTROY_SA` | El job `landing-zone` (`tf-apply-lz@`); los GitHub Environments, un administrador del repositorio | `landing-zone-qa` §10; `infra-repo-qa` |
+
+La identidad propia del entorno no puede hacer ninguna de las dos: no existe antes de 0b, y después no tiene ningún rol sobre la landing zone. Solo cuando ambas están hechas se ejecuta la secuencia de abajo — desde `first-deploy`, un workflow manual ligado al Environment `<env>`, que escribe el primer marcador de deploy del entorno (§14.2).
+
 La misma secuencia aplica a cada cloud y runtime; solo cambian los selectores de tag.
 
 ```bash
@@ -685,7 +696,7 @@ terramate run --tags <cloud>:<env>:cluster  --enable-sharing -- tofu apply -auto
 terramate run --tags <cloud>:<env>:platform-services --enable-sharing -- tofu apply -auto-approve
 
 # Una vez que la plataforma existe, una instancia se despliega en una sola ejecución ordenada.
-terramate run --tags instance:<name> --enable-sharing -- tofu apply -auto-approve
+terramate run --tags instance/<name> --enable-sharing -- tofu apply -auto-approve
 ```
 
 El escalonamiento solo se requiere en un **primer** apply de un entorno nuevo, porque
@@ -980,7 +991,7 @@ Nótese `global.platform.namespace` — esto es lo que permite que dos instancia
 | **Los rangos secundarios son inmutables** | Cambiar los CIDR de pods/servicios requiere recrear el cluster | Dimensiona generosamente en globals desde el primer día; calcula con `tm_cidrsubnet` para que sea revisable |
 | **El provider de Kubernetes necesita un cluster vivo en el momento del plan** | `tofu plan` en el stack de services falla si el cluster todavía no se ha aplicado | Usa `--mock-on-fail` para las previews de PR; acepta que un primer despliegue de un entorno nuevo requiere un apply escalonado (network → cluster → services) |
 | **`tofu output -json` en el stack de network requiere acceso de lectura al estado** | El job de CI que aplica el cluster debe leer el objeto de estado GCS del stack de network | Concede al job del cluster `roles/storage.objectViewer` sobre el prefijo de estado de network. Si network y cluster viven en proyectos distintos, esto es una concesión entre proyectos |
-| **Endpoints de cluster privados** | Si el plano de control es privado, el runner de CI no puede alcanzar `cluster_endpoint` | O ejecuta la CI en un runner privado dentro de la VPC, o autoriza la IP de salida del runner en `master_authorized_networks` |
+| **Endpoints de cluster privados** | Si el plano de control es privado, el runner de CI no puede alcanzar `cluster_endpoint` | O ejecuta la CI en un runner privado dentro de la VPC, o autoriza la IP de salida del runner en `master_authorized_networks`, o —en GKE, la opción de `qa`— usa el endpoint DNS del plano de control, alcanzable desde cualquier sitio y controlado solo por IAM (`landing-zone-qa` DZ4) |
 | **`cluster_ca` es base64** | Un mock de `"mock"` rompe `base64decode()` en el momento del plan | Usa un mock con una cadena base64 válida (`"bW9jaw=="`) |
 | **Protección contra borrado** | `deletion_protection = true` bloquea `tofu destroy` | Fíjala desde `global.cluster.deletion_protection`; `false` para demos, `true` para prod, reforzado con un `assert` |
 
@@ -991,7 +1002,7 @@ Nótese `global.platform.namespace` — esto es lo que permite que dos instancia
 | Service account del nodo | SA dedicada con `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/stackdriver.resourceMetadata.writer`, `roles/artifactregistry.reader` | La SA de compute por defecto tiene `roles/editor`; cada nodo llevaría escritura a nivel de proyecto |
 | Workload Identity | Habilitado a nivel de cluster y en cada node pool | Sin ello, los pods caen en la SA del nodo y todos los tenants comparten una identidad |
 | Ocultación de metadatos | Endpoints de metadatos legacy deshabilitados (`metadata.disable-legacy-endpoints = true`) | Los endpoints legacy dejan que un pod lea directamente el token de la SA del nodo, anulando Workload Identity |
-| Plano de control | Cluster privado, `master_authorized_networks` restringido | |
+| Plano de control | Nodos privados; endpoint IP público desactivado y endpoint DNS solo IAM, o `master_authorized_networks` restringido | `landing-zone-qa` DZ4 |
 | Nodos | Nodos GKE blindados (shielded), Container-Optimized OS, secure boot, monitorización de integridad | |
 | Node pool | `enable_private_nodes = true`, sin IPs externas | |
 | Secretos | Cifrado de secretos a nivel de aplicación con una clave de Cloud KMS | Cifrado de etcd en reposo con una clave que controlas |
@@ -2430,6 +2441,8 @@ resource "google_service_account_iam_member" "apply" {
 
 **En el proyecto non-prod compartido**, `tf-apply-qa@` y `tf-apply-dev@` son identidades distintas, pero un rol concedido a nivel de proyecto alcanza a todos los entornos del proyecto. Concede a nivel de recurso donde el servicio lo admita (secretos, buckets, claves, cuentas de servicio, instancias de Cloud SQL con condiciones IAM sobre el prefijo del nombre); donde solo existe un rol de proyecto (`roles/container.admin`, `roles/compute.networkAdmin`), acepta que una identidad de apply no productiva puede tocar otro entorno no productivo, y apóyate en los prefijos de estado por entorno, CODEOWNERS y la puerta de entorno. Esa exposición nunca llega a `prod`, que es otro proyecto.
 
+**Dónde viven las identidades.** Las cuentas de servicio del pipeline (`tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@`) se crean en el proyecto de la landing zone, no en el del entorno: así una identidad de entorno no puede editar su propia política IAM ni la de otra. El acceso al estado es por prefijo, con una condición IAM sobre el bucket (`resource.name.startsWith("projects/_/buckets/<bucket-de-estado>/objects/<env>/")`), de modo que `tf-plan-qa@` lee el estado de los productores de `qa` y no el de `dev`. Las cuentas de servicio que reciben grants entre proyectos —la SA de nodos de un runtime, por ejemplo— también las crea la landing zone, para que la capa 0 nunca espere a la capa 2 (`landing-zone-qa` §5, §6.3).
+
 El claim `attribute.environment` solo está presente cuando el job del workflow declara `environment:`. Ligar la SA de apply a ese atributo significa que **el rol de apply es inalcanzable desde un job sin la puerta de entorno**, lo que hace que el control de required-reviewers de GitHub sea un límite de seguridad real en lugar de una conveniencia de UI.
 
 | Identidad | Roles | Alcance |
@@ -2529,9 +2542,10 @@ Deny  kms:ScheduleKeyDeletion para las claves de cifrado de estado
 | Job | Identidad GCP | Identidad AWS | Puerta de entorno de GitHub | Acceso al estado |
 |---|---|---|---|---|
 | `preview` (PR) | `tf-plan-<env>@` | `tf-plan-<env>` | ninguna | lectura |
-| `deploy` (main) | `tf-apply-<env>@` | `tf-apply-<env>` | **reviewers requeridos** | lectura + escritura |
+| `deploy` (main), landing zone | `tf-apply-lz@` | — | **Environment `landing-zone`**: revisores de plataforma y de seguridad | lectura + escritura, prefijo `lz/` |
+| `deploy` (main) | `tf-apply-<env>@` | `tf-apply-<env>` | **Environment `<env>`**: reviewers requeridos | lectura + escritura |
 | `drift` (cron) | `tf-plan-<env>@` | `tf-plan-<env>` | ninguna | lectura |
-| `destroy` (manual) | `tf-destroy-<env>@` | `tf-destroy-<env>` | **reviewers requeridos + grupo aprobador separado** | lectura + escritura |
+| `destroy` (manual) | `tf-destroy-<env>@` | `tf-destroy-<env>` | **Environment `<env>-destroy`**: reviewers requeridos + grupo aprobador separado | lectura + escritura |
 
 El destroy merece su propia identidad. En una plataforma compartida es la operación que puede tumbar a cada tenant (§12.4), y separarla significa que un camino de deploy comprometido no puede borrar infraestructura.
 
@@ -2651,7 +2665,7 @@ Nunca escribas un comodín en una condición de confianza de workload identity. 
 
 | Control | GKE | EKS | AKS | Cloud Run | ECS Fargate |
 |---|---|---|---|---|
-| Plano de control privado | Cluster privado + redes autorizadas | Endpoint privado + `public_access_cidrs` | Cluster privado + rangos de IP autorizados | n/a | n/a |
+| Plano de control privado | Cluster privado + endpoint DNS (solo IAM) o redes autorizadas | Endpoint privado + `public_access_cidrs` | Cluster privado + rangos de IP autorizados | n/a | n/a |
 | Egress de workload | Cloud NAT, sin IPs externas | NAT, `assign_public_ip=false` | NAT gateway, sin IPs públicas de nodo | `PRIVATE_RANGES_ONLY` | `assign_public_ip=false` |
 | Acceso privado a servicios | Rango PSA para Cloud SQL | Endpoints de VPC | Endpoints privados + zonas DNS privadas | PSA + Direct VPC egress | Endpoints de VPC |
 | Política este-oeste | NetworkPolicy default-deny | NetworkPolicy default-deny | NetworkPolicy (Cilium o Calico) | IAM servicio-a-servicio | Referencias a security groups |
@@ -2861,7 +2875,7 @@ La operación más peligrosa en un entorno compartido es desmontar una demo. `te
 ```bash
 # CORRECTO: destruye solo los stacks propios de la instancia
 terramate run \
-  --tags instance:alpha \
+  --tags instance/alpha \
   --reverse \
   --enable-sharing \
   -- tofu destroy -auto-approve
@@ -2880,7 +2894,8 @@ stack {
 
 ```bash
 # En el job de destroy, antes de ejecutar nada:
-if terramate list --tags protected --tags instance:${INSTANCE} | grep -q .; then
+# --tags a:b es a Y b. Dos opciones --tags son O: la guarda casaría con todo stack protegido y bloquearía cualquier destroy
+if terramate list --tags protected:instance/${INSTANCE} | grep -q .; then
   echo "::error::El selector de destroy coincidió con un stack de plataforma protegido. Abortando."
   exit 1
 fi
@@ -2941,7 +2956,7 @@ Como `generate_hcl` es compartido, un cambio en cómo se construye un cluster ll
 Terramate ofrece un inventario declarativo independiente del estado, que es una mejor fuente de CMDB que analizar los ficheros de estado. Dos comandos lo transportan:
 
 ```bash
-terramate list --json                                   # inventario lógico, pre-apply
+./ci/stacks-json.sh                                     # inventario lógico, pre-apply
 terramate run --changed -- tofu show -json              # inventario físico, post-apply
 ```
 
@@ -2975,7 +2990,7 @@ El resolver y OPA no deben implementar las mismas reglas dos veces.
 |---|---|---|
 | Naturaleza | **Computa** — cierre, asignación, ordenamiento | **Asegura** — invariantes sobre lo computado |
 | Estado | Escribe ledgers | Sin estado, sin efectos secundarios |
-| Entrada | Manifiestos, bindings, ledgers | `resolution.json`, `terramate list --json`, `.tf` generado, plan JSON |
+| Entrada | Manifiestos, bindings, ledgers | `resolution.json`, `stacks.json` (`ci/stacks-json.sh`), `.tf` generado, plan JSON |
 | Falla en | Pasos 1–17 | Después de la resolución y después de la generación |
 | Autoría | Equipo de plataforma, en código | Plataforma **y** seguridad, sin tocar el resolver |
 
@@ -3022,8 +3037,8 @@ deny contains msg if {
 deny contains msg if {
     some s in input.stacks
     s.capability == "app"
-    count({t | some t in s.tags; startswith(t, "instance:")}) == 0
-    msg := sprintf("el stack de aplicación %q no tiene tag instance:", [s.id])
+    count({t | some t in s.tags; startswith(t, "instance/")}) == 0
+    msg := sprintf("el stack de aplicación %q no tiene tag instance/", [s.id])
 }
 ```
 
@@ -3063,6 +3078,42 @@ deny contains msg if {
 ```
 
 Las dos reglas de contrato se ejecutan sobre la mitad declarada de la CMDB de la pull request (`index.json`), así que el inventario es el mismo que lee la guarda de destroy. El colector que escribe la mitad observada solo publica salidas sin `sensitive = true`; la regla de nombres de secreto de arriba es la que impide que un valor secreto llegue a ser una salida.
+
+**Los nombres públicos nunca llevan el nombre del entorno** (propuesta `edge-qa`, DL10). Todo lo visible sin credenciales usa el `network.public_id` aleatorio del entorno. La regla se comprueba dos veces, porque los nombres viven en dos sitios: G1 comprueba el binding, donde se declaran el identificador y el sufijo público; G3 comprueba el plan, donde aparecen por fin los nombres de bucket, los registros DNS públicos y los dominios de los certificados (§13.4). El realm del proveedor de identidad, que sale en las URLs públicas de OIDC/SAML, es un global y lo guarda un `assert` en su propio arquetipo.
+
+```rego
+package environment.public_names
+
+# Palabras que nombran un entorno. Ningún nombre público puede contener una.
+env_words := {"prod", "prd", "production", "qa", "dev", "develop", "test", "tst", "uat",
+              "stg", "stage", "staging", "pre", "preprod", "demo", "demos", "sandbox", "sbx",
+              "ephemeral", "nonprod"}
+
+words := env_words | {input.metadata.name}
+
+# El identificador público es aleatorio; si una tirada contiene por azar una palabra de entorno, se repite.
+deny contains msg if {
+    input.kind == "EnvironmentBinding"
+    some w in words
+    contains(input.network.public_id, w)
+    msg := sprintf("public_id %q contains %q: generate a new one", [input.network.public_id, w])
+}
+
+# El sufijo público es <public_id>.<dominio>...
+deny contains msg if {
+    input.kind == "EnvironmentBinding"
+    not startswith(input.network.dns_suffix, sprintf("%s.", [input.network.public_id]))
+    msg := sprintf("dns_suffix %q must start with public_id %q", [input.network.dns_suffix, input.network.public_id])
+}
+
+# ...y ninguna de sus etiquetas nombra un entorno.
+deny contains msg if {
+    input.kind == "EnvironmentBinding"
+    some label in split(input.network.dns_suffix, ".")
+    label in words
+    msg := sprintf("dns_suffix %q carries the environment word %q", [input.network.dns_suffix, label])
+}
+```
 
 ```rego
 package archetype.composition
@@ -3110,6 +3161,47 @@ terramate run --changed -- \
           --config-file "${TM_ROOT}/.checkov/${TM_CLOUD}.yaml"
 
 conftest test --policy policy/ --data registry/ --namespace terraform plan.json
+```
+
+En G3 el plan lleva los nombres que G1 no ve. `env_words` se importa del paquete de G1, así que las dos comprobaciones usan la misma lista:
+
+```rego
+package terraform.public_names
+
+import data.environment.public_names.env_words
+
+# Todo recurso gestionado del plan, a cualquier profundidad de módulo.
+resources contains r if {
+    walk(input.planned_values, [_, r])
+    is_object(r)
+    r.mode == "managed"
+}
+
+# Nombres que cualquiera ve sin credenciales.
+public_names contains [r.address, r.values.name] if {
+    some r in resources
+    r.type == "google_storage_bucket"                       # espacio de nombres global, se puede sondear
+}
+
+public_names contains [r.address, r.values.name] if {
+    some r in resources
+    r.type == "google_dns_record_set"
+    not endswith(r.values.name, ".internal.")              # las zonas privadas (qa.internal) conservan el nombre
+}
+
+public_names contains [r.address, d] if {
+    some r in resources
+    r.type == "google_certificate_manager_certificate"     # queda en los logs de Certificate Transparency
+    some m in r.values.managed
+    some d in m.domains
+}
+
+deny contains msg if {
+    some [addr, name] in public_names
+    some token in split(replace(name, ".", "-"), "-")
+    token in env_words
+    msg := sprintf("%s: public name %q carries the environment word %q (edge-qa DL10)", [addr, name, token])
+}
 ```
 
 Configuración de Checkov por cloud, ya que las comprobaciones difieren:
@@ -3210,13 +3302,15 @@ Todo lo demás se **genera** a partir de estos:
 | Bundle `registry/*.json` | `conftest --data` |
 | `values.yaml` del chart de Gatekeeper | Parámetros de `ConstraintTemplate`: etiquetas obligatorias, registros permitidos y los namespaces con un nivel de Pod Security distinto de `restricted` (propuesta de Gatekeeper §7.1) |
 
-Protégelo con una puerta `registry-generate --check` en CI, exactamente igual que `terramate generate --check`. El YAML es la fuente; un schema editado a mano es un bug.
+Protégelo con una puerta `registry-generate --check` en CI, exactamente igual que `terramate generate --detailed-exit-code`. El YAML es la fuente; un schema editado a mano es un bug.
 
 ---
 
 ## 14. CI/CD con GitHub Actions
 
 ### 14.1 Workflow de preview (pull request)
+
+**Cada job de workflow que toca una nube actúa para exactamente un entorno**, con la identidad de ese entorno. Las identidades del pipeline son por entorno (§11.2, §11.4) y la identidad de apply está ligada al GitHub Environment del mismo nombre, así que un solo job no puede aplicar dos entornos, y no debe intentarlo. Por eso la preview va en dos partes: las puertas que no necesitan credenciales, una vez; después, un job de plan por cada entorno que toca la pull request.
 
 ```yaml
 name: preview
@@ -3227,71 +3321,81 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  id-token: write            # OIDC hacia GCP y AWS
+  id-token: write            # OIDC hacia la nube, solo lo usan los jobs de plan
 
 jobs:
-  preview:
+  gates:                     # G0 y G1 — sin credenciales de nube
     runs-on: ubuntu-latest
+    outputs:
+      envs: ${{ steps.envs.outputs.envs }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0     # la detección de cambios necesita historial
 
-      - uses: jdx/mise-action@v2       # fija terramate, tofu, checkov
+      - uses: jdx/mise-action@v2       # fija terramate, tofu, checkov, conftest
 
       # --- G0: integridad de la generación ---
       - name: Check generated code is current
         run: |
-          terramate generate
-          git diff --exit-code || {
+          terramate generate --detailed-exit-code || {
             echo "::error::El código generado está obsoleto. Ejecuta 'terramate generate' y commitea."
             exit 1
           }
 
-      - name: List changed stacks
-        id: list
-        run: |
-          echo "stacks<<EOF" >> "$GITHUB_OUTPUT"
-          terramate list --changed >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+      # --- G1: estructura, composición, orden (§14.4) ---
+      - name: Policy
+        run: ./ci/g1.sh
 
-      # --- G1: escaneo estático ---
       - name: Checkov (static)
-        if: steps.list.outputs.stacks != ''
+        run: checkov -d stacks --framework terraform --config-file .checkov/gcp.yaml
+
+      # --- ¿qué entornos toca este PR? ---
+      - name: Changed environments
+        id: envs
         run: |
-          checkov -d stacks --framework terraform \
-                  --config-file .checkov/gcp.yaml
-          checkov -d stacks --framework terraform \
-                  --config-file .checkov/aws.yaml
+          envs=()
+          for e in landing-zone $(ls environments); do
+            [ -n "$(terramate list --changed --tags "$e")" ] && envs+=("$e")
+          done
+          echo "envs=$(jq -cn '$ARGS.positional' --args "${envs[@]}")" >> "$GITHUB_OUTPUT"
+
+  plan:                      # un job por entorno tocado, con su propia identidad de solo lectura
+    needs: gates
+    if: needs.gates.outputs.envs != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        env: ${{ fromJSON(needs.gates.outputs.envs) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: jdx/mise-action@v2
 
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_PLAN_SA }}
+          service_account: tf-plan-${{ matrix.env == 'landing-zone' && 'lz' || matrix.env }}@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
 
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_PLAN_ROLE }}
-          aws-region: eu-west-1
-
-      # --- plan con sharing + mocks ---
-      - name: Plan changed stacks
-        run: terramate script run --changed tofu preview
+      # --- plan con sharing + mocks, solo los stacks de este entorno ---
+      - name: Plan
+        run: terramate script run --changed --tags ${{ matrix.env }} tofu preview
 
       # --- G2: escaneo del plan ---
       - name: Checkov (plan)
         run: |
-          terramate run --changed -- sh -c '
+          terramate run --changed --tags ${{ matrix.env }} -- sh -c '
             tofu show -json out.tfplan > plan.json &&
             checkov -f plan.json --framework terraform_plan
           '
 
-      - name: Comment plan on PR
+      - name: Summary
         run: |
           {
-            echo "### Changed stacks"
+            echo "### ${{ matrix.env }} — changed stacks"
             echo '```'
-            terramate list --changed
+            terramate list --changed --tags ${{ matrix.env }} --run-order
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 ```
@@ -3300,9 +3404,13 @@ Puntos clave:
 
 - **`terramate script run --changed tofu preview`** usa el script de §4.8, así que `enable_sharing = true` y `mock_on_fail = true` están garantizados. Una invocación cruda de `terramate run` que olvide `--enable-sharing` produce un plan contra variables sin fijar.
 - **`fetch-depth: 0`** — la detección de cambios compara contra `main`; un clon superficial reporta silenciosamente cero stacks cambiados.
-- **La autenticación dual de cloud en un solo job** funciona porque el token OIDC se intercambia por proveedor. Si tus cuentas están estrictamente segregadas, divide en dos jobs seleccionados por `terramate list --changed --tags gcp` / `--tags aws`.
+- **G0 es `terramate generate --detailed-exit-code`**: 0 si el código generado está al día, 2 si la generación cambió un fichero, 1 si hay error. No existe la opción `--check` (`poc/RESULTS.es.md`).
+- **Un entorno por job de plan.** Cada stack lleva su entorno como tag (`qa`, `prod`, …) y los de la landing zone llevan `landing-zone`, así que `--tags <env>` selecciona exactamente los stacks de una identidad. Una pull request que cambia un generador compartido toca todos los entornos y recibe un job de plan por entorno, cada uno leyendo solo su propio prefijo de estado. Un job que se autenticara una vez y lo planificara todo necesitaría una identidad que leyera el estado de todos los entornos — justo lo que §11.2 existe para impedir.
+- **Otras nubes.** Un entorno de AWS o Azure cambia el paso de autenticación (`aws-actions/configure-aws-credentials` con `tf-plan-<env>`, `azure/login` con la credencial federada del entorno); la forma del job es la misma. Las plantillas completas, con una acción compuesta que oculta el paso por nube, están en la propuesta `infra-repo-qa`.
 
 ### 14.2 Workflow de despliegue (merge a main)
+
+El workflow de deploy aplica lo que se ha fusionado, **entorno a entorno, cada uno en un job ligado al GitHub Environment de ese entorno**. El Environment es lo que hace alcanzable la identidad de apply (§11.2), lleva los revisores de ese entorno y serializa las ejecuciones contra él. Orden: la landing zone, después los entornos no productivos en paralelo, después `prod`.
 
 ```yaml
 name: deploy
@@ -3315,36 +3423,106 @@ permissions:
   id-token: write
 
 jobs:
-  deploy:
+  changes:                   # por entorno: ¿cambiado desde su último deploy con éxito?
     runs-on: ubuntu-latest
-    environment: production        # la puerta de reviewers requeridos está aquí
+    outputs:
+      lz:      ${{ steps.c.outputs.lz }}        # {"env":"landing-zone","base":"<sha>"} o ""
+      nonprod: ${{ steps.c.outputs.nonprod }}   # [{"env":"qa","base":"<sha>"}, …]
+      prod:    ${{ steps.c.outputs.prod }}      # {"env":"prod","base":"<sha>"} o ""
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: jdx/mise-action@v2
+      - run: git fetch origin cmdb-observed
+      - id: c
+        run: ./ci/changed-envs.sh   # lee cmdb-data/observed/deployed/<env>.json; escribe lz, nonprod, prod
+
+  landing-zone:
+    needs: changes
+    if: needs.changes.outputs.lz != ''
+    uses: ./.github/workflows/apply-env.yml
+    with: { env: landing-zone, base: "${{ fromJSON(needs.changes.outputs.lz).base }}" }
+
+  nonprod:
+    needs: [changes, landing-zone]
+    if: ${{ !cancelled() && needs.changes.outputs.nonprod != '[]' && needs.landing-zone.result != 'failure' }}
+    strategy:
+      fail-fast: false       # un fallo en dev no para qa
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.nonprod) }}
+    uses: ./.github/workflows/apply-env.yml
+    with: { env: "${{ matrix.env }}", base: "${{ matrix.base }}" }
+
+  prod:
+    needs: [changes, landing-zone, nonprod]
+    if: ${{ !cancelled() && needs.changes.outputs.prod != '' && needs.landing-zone.result != 'failure' && needs.nonprod.result != 'failure' }}
+    uses: ./.github/workflows/apply-env.yml
+    with: { env: prod, base: "${{ fromJSON(needs.changes.outputs.prod).base }}" }
+
+  cmdb:
+    needs: [landing-zone, nonprod, prod]
+    if: ${{ !cancelled() && !(needs.landing-zone.result == 'skipped' && needs.nonprod.result == 'skipped' && needs.prod.result == 'skipped') }}
+    permissions: { contents: write }
+    uses: ./.github/workflows/cmdb-sync.yml
+    with: { pattern: "cmdb-observed-${{ github.run_id }}-*" }
+```
+
+El job por entorno es un único workflow reutilizable, así que los tres llamadores no pueden divergir:
+
+```yaml
+# .github/workflows/apply-env.yml
+name: apply-env
+on:
+  workflow_call:
+    inputs:
+      env:  { type: string, required: true }
+      base: { type: string, required: true }   # commit del último deploy con éxito de env
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env }}             # revisores; pone environment=<env> en el token OIDC
+    concurrency: { group: "deploy-${{ inputs.env }}", cancel-in-progress: false }
+    permissions: { contents: read, id-token: write }
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: jdx/mise-action@v2
 
       - name: Verify generated code
-        run: terramate generate && git diff --exit-code
+        run: terramate generate --detailed-exit-code
 
-      # ... auth de cloud ...
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_APPLY_SA }}      # variable del Environment: tf-apply-<env>@…
 
       - name: Apply changed stacks
-        run: terramate script run --changed tofu deploy   # mocks DESACTIVADOS
+        run: terramate script run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" --no-tags bootstrap tofu deploy   # mocks DESACTIVADOS
 
       - name: Collect CMDB observations
         if: ${{ !cancelled() }}                          # también tras un apply fallido: registra outcome failed
-        run: terramate run --changed -- archetypectl cmdb observe --out "$RUNNER_TEMP/observed"
+        run: |
+          terramate run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" --no-tags bootstrap -- \
+            archetypectl cmdb observe --out "$RUNNER_TEMP/observed"
+      - name: Record the deploy marker
+        if: ${{ success() }}                             # solo un apply completamente correcto lo mueve
+        run: |
+          mkdir -p "$RUNNER_TEMP/observed/deployed"
+          jq -n --arg sha "$GITHUB_SHA" --argjson run "$GITHUB_RUN_NUMBER" '{sha:$sha, run:$run}' \
+            > "$RUNNER_TEMP/observed/deployed/${{ inputs.env }}.json"
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
-        with: { name: "cmdb-observed-${{ github.run_id }}", path: "${{ runner.temp }}/observed" }
-
-  cmdb:
-    needs: deploy
-    if: ${{ !cancelled() }}
-    permissions: { contents: write }
-    uses: ./.github/workflows/cmdb-sync.yml
-    with: { pattern: "cmdb-observed-${{ github.run_id }}" }
+        with: { name: "cmdb-observed-${{ github.run_id }}-${{ inputs.env }}", path: "${{ runner.temp }}/observed" }
 ```
+
+Puntos clave:
+
+- **Un entorno, una identidad, una puerta por job.** `environment: ${{ inputs.env }}` pone `environment=<env>` en el token OIDC, que es el único principal autorizado a suplantar a `tf-apply-<env>@` (§11.2). `GCP_APPLY_SA` es una variable del *Environment*, así que el mismo texto de workflow se resuelve a `tf-apply-qa@` en `qa` y a `tf-apply-prod@` en `prod`. El job único `environment: production` de borradores anteriores no podía funcionar: su token llevaba un entorno e intentaba aplicarlos todos.
+- **La base de cambios es el último deploy con éxito del entorno, no `HEAD^`.** Con `HEAD^`, una ejecución fallida o cancelada deja sus stacks sin aplicar y el siguiente merge ya no los ve; además GitHub mantiene solo una ejecución pendiente por grupo de concurrencia y cancela las demás, así que con una ráfaga de merges algunos commits nunca se despliegan por sí mismos. El marcador `deployed/<env>.json` en la rama `cmdb-observed` solo se escribe cuando el apply de un entorno tuvo éxito completo, y `cmdb-sync` solo lo mueve hacia delante (`run` mayor). La siguiente ejecución compara desde ahí y recoge todo lo posterior.
+- **Un entorno sin marcador no lo despliega este workflow.** Su primer apply es escalonado (§4.11) y se ejecuta desde `first-deploy`, un workflow manual con el mismo Environment; es el que escribe el primer marcador. `changes` informa de ese entorno como aviso, no como error.
+- **No productivo antes que producción.** Un cambio en un generador compartido llega primero a `qa` y `dev` en la misma ejecución; `prod` solo empieza si ninguno falló, y sus revisores ven el resultado. Es orden, no promoción — la promoción de imágenes de aplicación es asunto de la guía de desarrollo (`developer-guide.md` §5).
+- **La landing zone va primero y sola**, desde el Environment `landing-zone` con `tf-apply-lz@`. Los workflows de entorno seleccionan por `--tags <env>`, que nunca incluye los stacks de la landing zone, y sus identidades tampoco podrían aplicarlos (`landing-zone-qa` §5.2). El único stack de la landing zone que el pipeline nunca aplica es `gcp-lz-bootstrap`, que crea la propia federación e identidades del pipeline: `--no-tags bootstrap` lo excluye, y lo aplica una persona (`landing-zone-qa` §1, DZ8).
 
 Las observaciones llegan a la CMDB por un workflow reutilizable, el mismo para `deploy`, `drift` y `destroy`. Es el único punto del pipeline con `contents: write`, y nunca escribe en `main` (`archetype-model.md` §11.1):
 
@@ -3367,9 +3545,18 @@ jobs:
       - uses: actions/checkout@v4
         with: { path: main, sparse-checkout: schemas }
       - uses: actions/download-artifact@v4
-        with: { pattern: "${{ inputs.pattern }}", merge-multiple: true, path: observed/cmdb-data/observed }
+        with: { pattern: "${{ inputs.pattern }}", merge-multiple: true, path: "${{ runner.temp }}/in" }
       - name: Validate
-        run: check-jsonschema --schemafile main/schemas/cmdb-observed.schema.json observed/cmdb-data/observed/*.json
+        run: check-jsonschema --schemafile main/schemas/cmdb-observed.schema.json "$RUNNER_TEMP"/in/*.json
+      - name: Merge; deploy markers only move forward
+        run: |
+          cp "$RUNNER_TEMP"/in/*.json observed/cmdb-data/observed/ 2>/dev/null || true
+          mkdir -p observed/cmdb-data/observed/deployed
+          for m in "$RUNNER_TEMP"/in/deployed/*.json; do
+            [ -e "$m" ] || continue
+            cur="observed/cmdb-data/observed/deployed/$(basename "$m")"
+            if [ ! -e "$cur" ] || [ "$(jq .run "$m")" -gt "$(jq .run "$cur")" ]; then cp "$m" "$cur"; fi
+          done
       - name: Commit and push, with rebase and retry
         working-directory: observed
         run: |
@@ -3407,29 +3594,37 @@ on:
   schedule:
     - cron: '0 5 * * *'
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
-  drift:
+  drift:                     # un job por entorno, con su identidad de solo lectura
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        selector: ["gcp", "aws"]
+        env: ${{ fromJSON(vars.DRIFT_ENVS) }}   # variable del repositorio: ["landing-zone","qa","prod",…]
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: jdx/mise-action@v2
-      # ... auth ...
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: tf-plan-${{ matrix.env == 'landing-zone' && 'lz' || matrix.env }}@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
       - name: Detect drift and record it
         id: drift
         run: |
-          terramate run --tags ${{ matrix.selector }} --enable-sharing -- \
+          terramate run --tags ${{ matrix.env }} --enable-sharing -- \
             archetypectl cmdb observe --drift --out "$RUNNER_TEMP/observed"
           # por stack: tofu plan -detailed-exitcode -lock=false; salida 2 → outcome drifted, driftAt
           if grep -rqs '"outcome": "drifted"' "$RUNNER_TEMP/observed"; then
-            echo "::warning::Drift detectado en ${{ matrix.selector }}"
+            echo "::warning::Drift detectado en ${{ matrix.env }}"
             echo "drifted=true" >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/upload-artifact@v4
-        with: { name: "cmdb-observed-${{ github.run_id }}-${{ matrix.selector }}", path: "${{ runner.temp }}/observed" }
+        with: { name: "cmdb-observed-${{ github.run_id }}-${{ matrix.env }}", path: "${{ runner.temp }}/observed" }
       - if: steps.drift.outputs.drifted == 'true'
         run: exit 1
 
@@ -3450,7 +3645,7 @@ El invariante de ordenamiento que antes dependía de un script de shell es ahora
   run: |
     registry-generate --check                 # el registro es la fuente de verdad
     archetypectl resolve --dry-run > resolution.json
-    terramate list --json > stacks.json
+    ./ci/stacks-json.sh > stacks.json         # Terramate 0.16 no tiene `list --json`
     archetypectl enrich stacks.json           # añade consumes[] y after_ids[]
 
 - name: G1 — structure and composition
@@ -3460,16 +3655,29 @@ El invariante de ordenamiento que antes dependía de un script de shell es ahora
     for m in archetypes/*/manifest.yaml; do
       conftest test --policy policy/ --data registry/ "$m"
     done
+    for b in environments/*/binding.yaml; do  # nombres públicos: public_id y dns_suffix (§13.3)
+      conftest test --policy policy/ --data registry/ "$b"
+    done
 ```
 
-`archetypectl enrich` es la única pieza a medida: `terramate list --json` no expone los bloques `input`, así que el enriquecedor escanea cada stack en busca de `from_stack_id` y `after`, produciendo los campos `consumes[]` y `after_ids[]` que la política compara. Mantener esa extracción en una pequeña herramienta, en lugar de en la política, mantiene el Rego portable y testable contra fixtures.
+`ci/stacks-json.sh` construye el inventario de stacks. Terramate 0.16 **no tiene `list --json`** (medido): `terramate list` solo imprime rutas, así que el script evalúa los metadatos de cada stack:
+
+```bash
+#!/usr/bin/env bash
+# ci/stacks-json.sh — id, ruta, tags y after de cada stack, como un único array JSON
+terramate run --quiet -- terramate experimental eval \
+  'tm_jsonencode({id = terramate.stack.id, path = terramate.stack.path.relative, tags = terramate.stack.tags, after = terramate.stack.after})' \
+  | jq -s .
+```
+
+`archetypectl enrich` es la única pieza a medida: el inventario no expone los bloques `input`, así que el enriquecedor escanea cada stack en busca de `from_stack_id` y `after`, produciendo los campos `consumes[]` y `after_ids[]` que la política compara. Mantener esa extracción en una pequeña herramienta, en lugar de en la política, mantiene el Rego portable y testable contra fixtures.
 
 
 ---
 
 ## 15. Registro de riesgos
 
-El registro completo — 57 riesgos agrupados por dominio (56 activos; R28 retirado como duplicado de R26), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
+El registro completo — 60 riesgos agrupados por dominio (57 activos; R28 retirado como duplicado de R26, R38 y R39 retirados con el endpoint DNS del plano de control), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
 
 Los cinco sobre los que actuar primero:
 
@@ -3487,16 +3695,16 @@ Los cinco sobre los que actuar primero:
 
 ### Fase 0 — Validar suposiciones (1 semana)
 
-Construye un repositorio desechable con dos stacks y confirma, contra tu versión fijada de Terramate. El soporte de expresiones en `from_stack_id` se toma como una decisión de diseño; lo que queda es confirmar sus variantes:
+Construye un repositorio desechable con dos stacks y confirma, contra tu versión fijada de Terramate. El soporte de expresiones en `from_stack_id` se toma como una decisión de diseño; lo que queda es confirmar sus variantes. **Las cinco primeras se midieron el 2026-09-16 (Terramate 0.16.0, OpenTofu 1.10.6) y se repitieron el 2026-09-28; la evidencia está en `poc/RESULTS.es.md`.** El resto necesita un proyecto en la nube y se comprueba en el primer despliegue de `qa` (`landing-zone-qa` VZ1–VZ5):
 
-- [ ] `from_stack_id` resuelve un global **heredado de un directorio padre**, no solo uno definido en el propio stack
-- [ ] `from_stack_id` acepta **interpolación** (`"${global.env}-gke"`), no solo una referencia desnuda
-- [ ] `stack.after` acepta una ruta derivada de globals, **o** los filtros de tag (`after = ["tag:network"]`) funcionan como fallback — este falla silenciosamente, así que pruébalo deliberadamente
-- [ ] `--mock-on-fail` se comporta como está documentado cuando el productor no tiene estado
-- [ ] `tofu output -json` se ejecuta con éxito como `sharing_backend.command` en tu imagen de CI
+- [x] `from_stack_id` resuelve un global **heredado de un directorio padre**, no solo uno definido en el propio stack
+- [x] `from_stack_id` acepta **interpolación** (`"${global.env}-gke"`), no solo una referencia desnuda
+- [x] `stack.after` acepta una ruta derivada de globals — **refutado, con un error de análisis, no en silencio**; los filtros de tag (`after = ["tag:network"]`) y las rutas literales funcionan, así que el resolver escribe literales
+- [x] `--mock-on-fail` se comporta como está documentado cuando el productor no tiene estado — y no enmascara un stack productor inexistente
+- [x] `tofu output -json` se ejecuta con éxito como `sharing_backend.command` (en local; repetir en la imagen de CI)
 - [ ] Las lecturas de estado entre proyectos / entre cuentas funcionan con tus roles OIDC
 - [ ] La federación OIDC funciona de extremo a extremo con una condición de confianza **sin comodines** (§11.2, §11.3)
-- [ ] Un plano de control privado es alcanzable desde el tipo de runner elegido, o has aceptado runners autoalojados (§11.9)
+- [ ] El plano de control es alcanzable desde el tipo de runner elegido — en GKE por el endpoint DNS solo con IAM, así que no hace falta camino de red del runner (`landing-zone-qa` DZ4, VZ5); en otras nubes, o has aceptado runners autoalojados (§11.9)
 - [ ] Las claves de cifrado de estado de OpenTofu están restringidas por entorno, no por stack (§11.5)
 
 Si las variantes de globals heredados o de interpolación fallan, el modelo de binding tardío de §12.2 necesita reemplazarse por un fichero de contrato generado por instancia por el resolver — más maquinaria y pull requests más ruidosas, pero no un rediseño. Mejor averiguarlo ahora.
@@ -3545,7 +3753,7 @@ Secuenciada para que nada bloquee un despliegue real hasta que se haya observado
 
 **2c.1 — Registro (2–3 días).** `registry/{capabilities,traits,zones,labels}.yaml`, los tres generadores (`enum`s de schema, bundle `--data` de conftest, values del chart de Gatekeeper), y la puerta `registry-generate --check`. Esto va primero porque todo lo que sigue consume el registro. Retroadaptar una única fuente una vez existen tres copias es materialmente más difícil (R34).
 
-**2c.2 — `archetypectl enrich` (2 días).** `terramate list --json` no expone los bloques `input`, así que el enriquecedor escanea cada stack en busca de `from_stack_id` y `after` y emite `consumes[]` y `after_ids[]`. Mantén la extracción aquí, no en Rego, para que las políticas sigan siendo portables y testables contra fixtures.
+**2c.2 — `archetypectl enrich` (2 días).** El inventario de stacks (`ci/stacks-json.sh`, §14.4) no expone los bloques `input`, así que el enriquecedor escanea cada stack en busca de `from_stack_id` y `after` y emite `consumes[]` y `after_ids[]`. Mantén la extracción aquí, no en Rego, para que las políticas sigan siendo portables y testables contra fixtures.
 
 **2c.3 — Puerta G1, consultiva (3 días).** La política `input`↔`after` más las reglas de nombrado de stacks y de outputs secretos, ejecutándose **sin bloquear**. Mide la tasa de falsos positivos contra el repositorio existente antes de activarla.
 
@@ -3592,7 +3800,7 @@ Secuenciada para que nada bloquee un despliegue real hasta que se haya observado
 | Cosa | Patrón | Ejemplo |
 |---|---|---|
 | ID de stack | `<cloud>-<env>-<capability>[-<instance>]` | `aws-demos-eks`, `gcp-prod-disasterproject-app` |
-| Tags de stack | `<cloud>`, `<env>`, `<capability>`, `platform`\|`archetype:<name>`, `instance:<id>`, `producer`\|`consumer`, `protected` | |
+| Tags de stack | `<cloud>`, `<env>`, `<capability>`, `platform`\|`archetype/<name>`, `instance/<id>`, `producer`\|`consumer`, `protected` | |
 | Ficheros generados | `_<purpose>.tf` | `_main.tf`, `_backend.tf`, `_sharing_generated.tf` |
 | Directorio de generador | `imports/generators/v<N>/gen_<capability>.tm.hcl` | `imports/generators/v1/gen_cluster.tm.hcl` |
 | Fichero de contrato | `imports/contracts/contract_<capability>[_<cloud>].tm.hcl` | `contract_cluster_eks.tm.hcl` |
@@ -3610,8 +3818,8 @@ Secuenciada para que nada bloquee un despliegue real hasta que se haya observado
 | Inspeccionar el orden de ejecución | `terramate experimental run-graph` |
 | Plan con sharing + mocks | `terramate script run --changed tofu preview` |
 | Apply con sharing | `terramate script run --changed tofu deploy` |
-| Desplegar una instancia | `terramate run --tags instance:alpha --enable-sharing -- tofu apply -auto-approve` |
-| Destruir una instancia | `terramate run --tags instance:alpha --reverse --enable-sharing -- tofu destroy -auto-approve` |
+| Desplegar una instancia | `terramate run --tags instance/alpha --enable-sharing -- tofu apply -auto-approve` |
+| Destruir una instancia | `terramate run --tags instance/alpha --reverse --enable-sharing -- tofu destroy -auto-approve` |
 | Comprobación de drift | `terramate run --tags prod --enable-sharing -- tofu plan -detailed-exitcode` |
 | Regenerar el registro | `registry-generate` |
 | Verificar que el registro está al día | `registry-generate --check` |

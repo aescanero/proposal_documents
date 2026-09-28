@@ -591,7 +591,7 @@ Nombres de métricas según la configuración del exportador JMX de Strimzi **(v
 | Fase | Contenido | Criterio de salida | Estimación |
 |---|---|---|---|
 | **0 · Prerrequisitos** | Node pool `kafka`; binding de `qa`; VB10, VB12 | Versiones fijadas | 1 día |
-| **1 · Esqueleto** | Manifiesto, charts, asserts, reglas G1 y constraints, `gen_messaging` | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 y preview con mocks en verde | 2 días |
+| **1 · Esqueleto** | Manifiesto, charts, asserts, reglas G1 y constraints, `gen_messaging` | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 y preview con mocks en verde | 2 días |
 | **2 · Operador y cluster** | `iam`, `operator`, `cluster`, `policy` | Cluster `Ready`; **VB1**, **VB2**, **VB3**, **VB4**, **VB9** | 2 días |
 | **3 · Pruebas de carga** | Aplicación de prueba con dos instancias | **VB5**, **VB6**, **VB7** | 2 días |
 | **4 · Acceso desde la VPC** | Solo cuando un cliente de fuera del cluster lo necesite: zona `qa.internal`, política de approver-policy, `vpc-access` | **VB8** | 1 día, con el primer cliente |

@@ -58,7 +58,7 @@ T=dict(
    ("cmdb-observed","Rama propia",["solo el bot","no dispara deploy","drift · destroy"])],
   [("publish","Une las dos mitades",["index.json","graph.jsonld","aviso si está viejo"]),
    ("cmdb-latest","Asset de release",["privado","token de lectura","no Pages"]),
-   ("niveles 2-3","No en qa",["≈ 51 stacks: jq","DuckDB en demos","grafo: si hay consulta"])],
+   ("niveles 2-3","No en qa",["≈ 50 stacks: jq","DuckDB en demos","grafo: si hay consulta"])],
   [("destroy","Recuento por aristas",["no por nombre","fuera del set: para","lo aprueba una persona"]),
    ("contrato","En el preview",["consumes ⊂ produces","R6 antes del merge","nombra al consumidor"]),
    ("impacto","Comentario en el PR",["consumidores transitivos","de cada productor","R11"])]],

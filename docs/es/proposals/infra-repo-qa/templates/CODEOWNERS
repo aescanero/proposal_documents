@@ -1,0 +1,25 @@
+# Destino: .github/CODEOWNERS — el último patrón que casa gana
+*                                   @disasterproject/platform
+
+# capa 0: plataforma y seguridad
+/stacks/landing-zone/               @disasterproject/platform @disasterproject/security
+/docs/runbooks/                     @disasterproject/platform @disasterproject/security
+
+# lo que decide qué se permite y qué se genera
+/registry/                          @disasterproject/platform @disasterproject/security
+/schemas/                           @disasterproject/platform
+/policy/                            @disasterproject/security
+/imports/                           @disasterproject/platform
+/modules/                           @disasterproject/platform
+
+# código generado: se revisa, no se edita (G0)
+**/_*.tf                            @disasterproject/platform
+/cmdb-data/                         @disasterproject/platform
+
+# pipeline: un cambio aquí cambia quién puede aplicar qué
+/.github/                           @disasterproject/platform @disasterproject/security
+/ci/                                @disasterproject/platform @disasterproject/security
+
+# producción
+/environments/prod/                 @disasterproject/platform @disasterproject/prod-approvers
+/stacks/platforms/gcp/prod/         @disasterproject/platform @disasterproject/prod-approvers

@@ -1,0 +1,60 @@
+# Destino: .github/workflows/deploy.yml — arquitectura §14.2
+name: deploy
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  changes:                                     # por entorno: ¿cambiado desde su último deploy con éxito?
+    runs-on: ubuntu-latest
+    outputs:
+      lz: ${{ steps.c.outputs.lz }}
+      nonprod: ${{ steps.c.outputs.nonprod }}
+      prod: ${{ steps.c.outputs.prod }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: ./.github/actions/setup
+      - run: git fetch origin cmdb-observed
+      - id: c
+        run: ./ci/changed-envs.sh
+
+  landing-zone:
+    needs: changes
+    if: needs.changes.outputs.lz != ''
+    uses: ./.github/workflows/apply-env.yml
+    with:
+      env: landing-zone
+      base: ${{ fromJSON(needs.changes.outputs.lz).base }}
+
+  nonprod:
+    needs: [changes, landing-zone]
+    if: ${{ !cancelled() && needs.changes.outputs.nonprod != '[]' && needs.landing-zone.result != 'failure' }}
+    strategy:
+      fail-fast: false                         # un fallo en dev no para qa
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.nonprod) }}
+    uses: ./.github/workflows/apply-env.yml
+    with:
+      env: ${{ matrix.env }}
+      base: ${{ matrix.base }}
+
+  prod:
+    needs: [changes, landing-zone, nonprod]
+    if: ${{ !cancelled() && needs.changes.outputs.prod != '' && needs.landing-zone.result != 'failure' && needs.nonprod.result != 'failure' }}
+    uses: ./.github/workflows/apply-env.yml
+    with:
+      env: prod
+      base: ${{ fromJSON(needs.changes.outputs.prod).base }}
+
+  cmdb:
+    needs: [landing-zone, nonprod, prod]
+    if: ${{ !cancelled() && !(needs.landing-zone.result == 'skipped' && needs.nonprod.result == 'skipped' && needs.prod.result == 'skipped') }}
+    permissions: { contents: write }
+    uses: ./.github/workflows/cmdb-sync.yml
+    with:
+      pattern: cmdb-observed-${{ github.run_id }}-*

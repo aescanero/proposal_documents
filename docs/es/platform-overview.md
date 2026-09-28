@@ -6,7 +6,7 @@ Mapa visual de los dos documentos de referencia. Nada aquí es normativo; cada d
 |---|---|
 | `archetype-model.md` | *¿Qué se puede componer con qué?* Manifiestos, capabilities, traits, pools, CMDB, resolución |
 | `terramate-outputs-sharing-architecture.md` | *¿Cómo se genera y se aplica?* Generadores, outputs sharing, IAM, política, CI/CD, guías por nube |
-| `risk-register.md` | *¿Qué puede salir mal, y el control está realmente implementado?* 57 riesgos por dominio (56 activos), revisados en cada puerta de fase |
+| `risk-register.md` | *¿Qué puede salir mal, y el control está realmente implementado?* 60 riesgos por dominio (57 activos), revisados en cada puerta de fase |
 
 ---
 
@@ -48,7 +48,7 @@ flowchart LR
 flowchart TD
     PR([Pull request abierta]) --> SCH["Validación de esquema<br/>manifiestos, bindings, ledgers"]
     SCH --> RESOLVE["archetypectl resolve<br/>17 pasos — falla cerrado"]
-    RESOLVE -->|"binding.tm.hcl<br/>escrituras de ledger"| G0["G0 · terramate generate --check<br/>el código generado está al día"]
+    RESOLVE -->|"binding.tm.hcl<br/>escrituras de ledger"| G0["G0 · terramate generate --detailed-exit-code<br/>el código generado está al día"]
     G0 --> G1["G1 · conftest<br/>estructura, composición, input↔after"]
     G1 --> G2["G2 · Checkov sobre el HCL generado"]
     G2 --> PLAN["terramate script run --changed tofu preview<br/>sharing ON · mocks ON"]

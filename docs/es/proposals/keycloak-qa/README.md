@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 7 |
+| **Estado** | Propuesta · revisión 8 |
 | **Alcance** | El arquetipo de capa 4 `keycloak` en `qa`: instalación, datos, configuración, realm `disasterproject` con Entra ID como IdP de origen, clientes de los consumidores como tenant resources, claves, publicación, red, disponibilidad, observabilidad, stacks, políticas, ejecución y plan |
 | **Supuesto de datos** | El proveedor global de `database-platform` del entorno ([`../postgres-cloudsql-qa/`](../postgres-cloudsql-qa/README.md)). En `qa`, `postgres-cloudsql`: Keycloak crea su propia instancia Cloud SQL (stack `data`, §3). Con `postgres-operator`, su propio `Cluster` CNPG (stack `data-tenant`) |
 | **Consumidores conocidos** | SonarQube por SAML ([`../sonarqube-qa/`](../sonarqube-qa/README.md), E1/E2), Grafana por OIDC, aplicaciones futuras con `SecurityPolicy` OIDC en el Gateway |
@@ -567,8 +567,12 @@ assert {
   message   = "keycloak: la ruta pública solo expone /realms/disasterproject/ y /resources/ (§8.1)"
 }
 assert {
-  assertion = global.keycloak.hostname == "https://sso.${global.platform.dns_suffix}" && global.keycloak.realm == global.platform.env
-  message   = "keycloak: hostname https://sso.<dns_suffix> y realm = nombre del entorno; Grafana los deriva por convención (monitorización §4.3)"
+  assertion = global.keycloak.hostname == "https://sso.${global.platform.dns_suffix}" && global.keycloak.realm == "disasterproject"
+  message   = "keycloak: hostname https://sso.<dns_suffix> y realm disasterproject; Grafana los deriva por convención (monitorización §4.3)"
+}
+assert {
+  assertion = !tm_anytrue([for w in ["prod", "qa", "dev", "test", "uat", "stg", "staging", "pre", "demo", "sandbox", global.platform.env] : tm_length(tm_regexall(w, global.keycloak.realm)) > 0])
+  message   = "keycloak: el realm sale en URLs públicas de OIDC y SAML; no puede nombrar el entorno (edge-qa DL10, RL7)"
 }
 assert {
   assertion = tm_startswith(global.keycloak.hostname, "https://")
@@ -711,7 +715,7 @@ Pregunta abierta con terceros:
 | Fase | Contenido | Criterio de salida | Estimación |
 |---|---|---|---|
 | **0 · Prerrequisitos** | Plataforma de `qa` hasta Gateway, cert-manager, ESO y monitorización; PSA; app registration en Entra (Q-K1); VK1, VK2, VK6 | Las tres verificaciones cerradas | Depende de la plataforma |
-| **1 · Esqueleto** | Manifiesto, chart del arquetipo por partes, asserts y reglas nuevas, script de arranque de claves | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 y preview con mocks en verde | 3 días |
+| **1 · Esqueleto** | Manifiesto, chart del arquetipo por partes, asserts y reglas nuevas, script de arranque de claves | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 y preview con mocks en verde | 3 días |
 | **2 · Servidor** | `iam`, `secrets`, `data`, `firewall`, `operator`, `app` | Dos pods listos contra Cloud SQL; **VK3**; restauración de la BD ensayada | 3 días |
 | **3 · Realm y Entra** | `realm`, `frontdoor` | Login de una persona por Entra en la cuenta de prueba; **VK4**, **VK5**, **VK8** | 3 días |
 | **4 · Tenants** | Reconciliador con clientes de prueba; reglas conftest y Gatekeeper | **VK7**; un cliente con hostname ajeno rechazado en CI | 2 días |

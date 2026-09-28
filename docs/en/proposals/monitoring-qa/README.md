@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 6 |
+| **Status** | Proposal · revision 7 |
 | **Scope** | The layer 3 `monitoring-oss` archetype on `qa` (metrics, alerts, logs, dashboards, probes) and what layer 1b `cloud-monitoring-gcp` contributes alongside it: the boundary between them, stack, security, the `monitoring` contract, alert routing, who watches the watcher, network, stacks, policies, execution and plan |
 | **Why now** | SonarQube (S1 §4.7, S2 §5.9), the Cloud SQL variant (§8), Keycloak (§10) and ESO (§9) already take for granted the `prometheus=qa` selector, the dashboard sidecar, the blackbox exporter, Loki and the shared notification channel. ESO also left the rules for layer 3 components here |
 | **Reference specification** | `archetype-model.md` (AM §n; §3 layer 1b, §4.2 `monitoring` traits), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -43,7 +43,7 @@ AM §3 puts cloud-native monitoring in **layer 1b**, in parallel with the runtim
 | Pod, node and application metrics; alerts on them | Layer 3 (Prometheus + Alertmanager) | That is where consumers' `PodMonitor`s and `PrometheusRule`s live |
 | Application logs | Layer 3 (Fluent Bit → Loki) | S1 D7 |
 | Managed service metrics (Cloud SQL) | Layer 1b, but **the alerts are created by each consumer's `data` stack** (Cloud SQL variant §8) | Native Cloud Monitoring metrics; nothing to operate |
-| GCP audit logs and their alerts (secrets, authorised networks, KMS) | Layer 1b | They do not pass through the cluster; S1 §4.7 |
+| GCP audit logs and their alerts (secrets, cluster access, KMS) | Layer 1b | They do not pass through the cluster; S1 §4.7 |
 | **Is Prometheus alive? And Alertmanager?** | **Layer 1b** (§6) | If the alerting system goes down, it cannot report that it has gone down |
 | Notification channel | Layer 1b creates and publishes it (`notification_channel_id`); Alertmanager delivers to the **same destination** | One single place where every alert arrives |
 | GKE control plane and system component logs | Cloud Logging (layer 1b) | GKE collects them; there is no in-cluster alternative |
@@ -145,7 +145,7 @@ Grafana logs in with OIDC against Keycloak, but Keycloak (layer 4) requires `mon
 
 | Piece | How |
 |---|---|
-| Keycloak URLs | By environment convention: `https://sso.<dns_suffix>/realms/<env>`, the same that the `oidc-idp` contract publishes (Keycloak §11.3). An assert in `keycloak` checks that its hostname and realm follow the convention |
+| Keycloak URLs | By convention: `https://sso.<dns_suffix>/realms/disasterproject`, the same realm in every environment (edge-qa DL10), the same that the `oidc-idp` contract publishes (Keycloak §11.3). An assert in `keycloak` checks that its hostname and realm follow the convention |
 | Grafana's OIDC client | Declared by Keycloak's `realm` stack as a platform client (Keycloak §6.6) |
 | Client secret | `qa-monitoring-oss-grafana-oidc`, created by this archetype's `secrets` stack with `secretAccessor` for the `qa-keycloak-config` principal (Keycloak §6.5). The principal can be granted before the KSA exists |
 | Before Keycloak exists | Grafana starts; OIDC login fails until then. Local `admin` account (`qa-monitoring-oss-grafana-admin`) as break-glass |
@@ -373,7 +373,7 @@ Source: [`diagrams/02-stacks-arquetipo.mmd`](diagrams/02-stacks-arquetipo.mmd)
 | Resource | Note |
 |---|---|
 | Notification channels, with the destination configured at deployment (§16) | Output `notification_channel_id` (Cloud SQL variant §8) |
-| Log-based alerts | Secret reads outside the list (ESO §9.2), changes to authorised networks outside the intermediate service (S1 §4.13), destruction of KMS key versions (S1 §4.14) |
+| Log-based alerts | Secret reads outside the list (ESO §9.2), access to the cluster through the DNS endpoint by principals outside the list (S1 §4.13, landing zone DZ4), destruction of KMS key versions (S1 §4.14) |
 | Edge alerts | Backend 5xx as seen from the GLB, p95 latency, certificate state other than `ACTIVE`, Cloud Armor denial spikes, Adaptive Protection (`edge-qa` proposal §7); exhausted NAT ports (`network-qa` proposal §3) |
 | Shared project | `gcp-qa-cloudmon` lives in the non-prod project alongside the other environments: every alert filters by the `environment` label or the resource's `qa-` prefix, and its channels are `qa`'s. Without that filter, a `dev` failure pages `qa` |
 | Dead-man's switch | §6 |
@@ -490,7 +490,7 @@ Requirements **accepted**. The `gcp-qa-gke` one is recorded in S1 §4.1 and the 
 | Phase | Contents | Exit criterion | Estimate |
 |---|---|---|---|
 | **0 · Prerequisites** | GKE with the settings in §12; ESO; notification destinations configured (§16); VM1, VM3 | Verifications closed | Depends on the platform |
-| **1 · Skeleton** | Manifest, charts, asserts, CI rules and constraints | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 and preview with mocks green | 2 days |
+| **1 · Skeleton** | Manifest, charts, asserts, CI rules and constraints | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 and preview with mocks green | 2 days |
 | **2 · Metrics and alerts** | `iam`, `secrets`, `firewall`, `crds`, `metrics`; layer 1b | Watchdog and test alert delivered; **VM2**, **VM4**, **VM5**, **VM9** | 3 days |
 | **3 · Logs** | `storage`, `logs` | Logs from every namespace in Loki; **VM6**, **VM8** | 2 days |
 | **4 · Grafana** | `grafana`, `frontdoor` | Login with local account; platform dashboards; **VM7** once Keycloak exists | 2 days |

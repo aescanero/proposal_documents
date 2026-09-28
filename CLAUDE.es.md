@@ -17,7 +17,7 @@ Una plataforma de infraestructura multi-nube construida sobre **Terramate CLI + 
 | **Resolve** | `archetype-model.md` | Qué se puede componer con qué — manifiestos, capabilities, traits, pools, CMDB, resolución |
 | **Generate** | `terramate-outputs-sharing-architecture.md` | Cómo se genera y se aplica — generadores, outputs sharing, IAM, política, CI/CD, guías por nube |
 
-Además `platform-overview.md` (mapa guiado por diagramas, léelo primero), `risk-register.md` (57 riesgos por dominio, 56 activos), `glossary.md` (cada término, definido) y `developer-guide.md` (la mitad del desarrollador de aplicaciones — branching, versionado, build, rollback). Cada uno de estos vive en **dos idiomas**: `docs/en/<archivo>.md` y `docs/es/<archivo>.md`. Más abajo, una referencia simple a `docs/<archivo>.md` significa "ese archivo, en el idioma que estés leyendo" — ambas copias dicen lo mismo, así que la ruta es neutral respecto al idioma por diseño.
+Además `platform-overview.md` (mapa guiado por diagramas, léelo primero), `risk-register.md` (60 riesgos por dominio, 57 activos), `glossary.md` (cada término, definido) y `developer-guide.md` (la mitad del desarrollador de aplicaciones — branching, versionado, build, rollback). Cada uno de estos vive en **dos idiomas**: `docs/en/<archivo>.md` y `docs/es/<archivo>.md`. Más abajo, una referencia simple a `docs/<archivo>.md` significa "ese archivo, en el idioma que estés leyendo" — ambas copias dicen lo mismo, así que la ruta es neutral respecto al idioma por diseño.
 
 **La costura entre las dos mitades es `binding.tm.hcl`.** El resolver escribe globals; los generadores los consumen. Ninguna de las dos conoce las internas de la otra.
 
@@ -79,7 +79,9 @@ Reglas que se derivan de "mantenerse sincronizados", no solo "traducido una vez"
 | **Un runtime crea sus propias subredes** | Las subredes de nodos, los rangos de pods y las subredes del plano de control son claims del runtime (AM §9.5), así que las crea su arquetipo en un primer stack `*-subnets`. `network` publica la VPC/VNet, la salida y el enrutamiento, y no conoce ningún runtime. Dueño del claim = creador = autor del firewall; reconstruir un cluster nunca toca la red; el ciclo de etiquetado de subredes de EKS no puede aparecer. Aplicado a las cinco guías de runtime: GKE, EKS, Cloud Run, ECS Fargate y AKS (arquitectura §5.2, §6.2, §7.2, §8.2, §9.2); en los runtimes serverless el claim es la subred de egress o las subredes de tareas, localizadas mediante `global.platform.runtime_subnet_stack_id` |
 | **La CMDB tiene dos mitades, separadas por quién las escribe** | La mitad **declarada** (stacks, aristas, claims) la genera `archetypectl cmdb` en la pull request, se comprueba como G0 y vive en `main`, así que el revisor ve una arista o un claim nuevo en el diff. La mitad **observada** (`lastApply`, `resourceCount`, salidas no sensibles, drift) la escribe tras el apply el workflow reutilizable `cmdb-sync` en la rama `cmdb-observed` — nunca en `main`, que necesitaría un bypass de su protección y volvería a disparar `deploy` (R55). El modelo de lectura es un asset de release privado (`cmdb-latest`): unas Pages públicas publicarían el mapa del entorno. La guarda de destroy cuenta **aristas** de la CMDB, nunca nombres de stack (AM §11, arquitectura §12.4, §14.2; propuesta `cmdb-qa`) |
 | **El borde solo depende hacia abajo; el tramo balanceador → Envoy es HTTP** | El TLS público termina en el balanceador con el certificado de la capa 1 (Certificate Manager, validado por DNS authorization en la zona delegada del propio entorno). Un certificado de `cert-manager` (capa 3) para el tramo hacia el backend era una dependencia hacia arriba que el balanceador ni siquiera validaba. El nombre del NEG sigue siendo la única arista hacia arriba (AM §3). Si algún día hay que autenticar el tramo, la raíz es una CA de plataforma en la capa 1, nunca la CA interna (arquitectura §10.2; `edge-qa` DL9, `envoy-gateway-qa` DG14) |
-| **Los nombres públicos nunca llevan el nombre del entorno** | Todo lo visible sin credenciales —zona pública y hostnames, el wildcard que queda en los logs de Certificate Transparency, los nombres de bucket, que son globales, el nombre del realm de Keycloak en las URLs de OIDC/SAML— usa el `network.public_id` del entorno: 7 letras minúsculas aleatorias de la landing zone, nunca un hash del nombre. Como **subdominio** (`sonar.<public_id>.disasterproject.com`), no con guion: el wildcard sigue siendo por entorno, la zona delegada sigue siendo del entorno y las cookies no cruzan entornos. Los nombres internos (etiquetas, prefijos de KSA, IDs de stack, namespaces, `qa.internal`) conservan el nombre del entorno: ocultarlos no protege nada y rompe la facturación y la operación (AM §7; `edge-qa` DL10) |
+| **Los nombres públicos nunca llevan el nombre del entorno** | Todo lo visible sin credenciales —zona pública y hostnames, el wildcard que queda en los logs de Certificate Transparency, los nombres de bucket, que son globales, el nombre del realm de Keycloak en las URLs de OIDC/SAML— usa el `network.public_id` del entorno: 7 letras minúsculas aleatorias de la landing zone, nunca un hash del nombre. Como **subdominio** (`sonar.<public_id>.disasterproject.com`), no con guion: el wildcard sigue siendo por entorno, la zona delegada sigue siendo del entorno y las cookies no cruzan entornos. Los nombres internos (etiquetas, prefijos de KSA, IDs de stack, namespaces, `qa.internal`) conservan el nombre del entorno: ocultarlos no protege nada y rompe la facturación y la operación. Se comprueba en G1 sobre cada binding y en G3 sobre el plan, con una sola lista de palabras (arquitectura §13.3–§13.4); el realm, con un `assert` en `keycloak` (AM §7; `edge-qa` DL10) |
+| **El pipeline llega a GKE por el endpoint DNS del plano de control** | Solo IAM (`container.clusters.connect` por cluster, después RBAC); el endpoint IP público, desactivado. El procedimiento anterior —abrir la IP del runner en las redes autorizadas mediante un intermediario en Cloud Run— era inalcanzable con la org policy `run.allowedIngress` y dependía de cuatro condiciones frágiles; R38 y R39 se retiran. Sin la barrera de red, los accesos de principales fuera de la lista se alertan en la capa 1b (`landing-zone-qa` DZ4, `gke-qa` §2.2) |
+| **La landing zone es dueña de los singletons del proyecto y de las identidades entre proyectos** | Un recurso que existe una vez por proyecto (la política de Binary Authorization) lo escribe solo la landing zone, una regla por cluster, `ALWAYS_DENY` por defecto: si no, el `apply` de cada entorno borra las reglas de los demás (R59). Las SAs que reciben grants entre proyectos (la SA de nodos de un runtime) las crea la landing zone, para que la capa 0 nunca espere a la capa 2 (R60). Las identidades del pipeline viven en el proyecto de la landing zone, con acceso al estado por prefijo (arquitectura §11.2; `landing-zone-qa` DZ5, DZ6) |
 | **Kafka es un archetype, no un component** | Despliega un operador e impone un contrato multi-tenant. Bus común, datos separados |
 | **Neo4j, MongoDB son components** | Instancias dedicadas sin contrato con nadie más |
 
@@ -98,7 +100,7 @@ La misma tecnología puede ser ambas cosas. `postgres-operator` (archetype, prov
 2. **¿VPC compartida o VPCs separadas en GCP?** La no transitividad del peering más la regla del backend en la misma VPC pueden forzar Shared VPC. El plan de direccionamiento no cambia en ningún caso. Riesgo R23.
    **Asentado para `qa`: VPC separada.** `qa` tiene su propia VPC dentro del proyecto non-prod compartido, así que su load balancer de edge vive en su propia VPC junto al NEG de Envoy y nada enruta a través del hub; R23 no se presenta. Todavía abierto para `demos` y cualquier environment cuyo edge fuera a residir en el hub. Ver `proposals/sonarqube-qa/README.md` §4.15.
 3. **Techo de particiones de Kafka** para el número de brokers previsto. El presupuesto de 4000 en el binding de `demos` es un valor de relleno.
-4. **Dónde corre la resolución** — ¿un CLI en el repositorio, o un workflow reutilizable? Determina si la oficina de proyecto puede validar una demo localmente.
+4. **Dónde corre la resolución** — ¿un CLI en el repositorio, o un workflow reutilizable? Determina si la oficina de proyecto puede validar una demo localmente. *Propuesto* en `infra-repo-qa` DR3: un CLI de un repositorio aparte, `platform-tools`, fijado con `mise` y ejecutado por `ci/g1.sh` igual en local que en CI.
 5. **Cuánto Rego se comparte genuinamente** entre conftest y los `ConstraintTemplate`s. Medir antes de planear una única base de código de política.
 6. **Preguntas abiertas de la guía del desarrollador** — herramienta de scaffolding vs. repositorio plantilla, dónde se calcula el incremento de versión, environments efímeros opt-in o automáticos. Listadas en `developer-guide.md` §13.
 
@@ -109,6 +111,14 @@ La misma tecnología puede ser ambas cosas. `postgres-operator` (archetype, prov
 Estos son los modos de fallo que ya se han identificado. No los redescubras.
 
 **Outputs sharing no crea orden de ejecución.** Cada bloque `input` necesita un `after` correspondiente en `stack.tm.hcl`. Un ordenamiento no resuelto aplica un valor obsoleto **sin ningún error**. Este es el riesgo R2, el riesgo principal, y la política conftest G1 existe específicamente para detectarlo.
+
+**Los globals no se resuelven en `stack.after` — es un error de análisis, no uno silencioso** (medido, Terramate 0.16.0, `poc/RESULTS.es.md`). El resolver debe escribir valores literales; preferir `after = ["tag:<capability>"]` a una ruta para que un stack pueda moverse. El fallo silencioso que queda es un `after` *olvidado*: un consumidor con un `input` y sin orden se genera limpiamente y puede programarse antes que su productor, sin error en ninguna fase. Eso es R2, y G1 es lo que lo detecta.
+
+**Los tags de Terramate no pueden contener `:`** (medido, 0.16.0: solo minúsculas, dígitos, `.`, `_`, `-`, `/`). En un filtro, `:` significa AND y `,` significa OR, y dos opciones `--tags` son OR. Por eso los tags de instancia y de arquetipo son `instance/<id>` y `archetype/<name>`, y `--tags gcp:qa:network` selecciona los stacks que llevan los tres tags. Un tag escrito `instance:alpha` hace fallar la carga entera de la configuración.
+
+**`terramate list` no tiene `--json`** (0.16.0): imprime rutas. El inventario de stacks (ids, tags, `after`) sale de `terramate run --quiet -- terramate experimental eval 'tm_jsonencode({...terramate.stack...})'`, envuelto como `ci/stacks-json.sh` (arquitectura §14.4).
+
+**La opción de G0 es `terramate generate --detailed-exit-code`** (0 = al día, 2 = deriva, 1 = error). `--check` no existe en Terramate y falla con `unknown flag`. Un mock de tipo incorrecto no cambia ningún fichero generado, así que G0 no puede detectarlo; G1 comprueba la forma del mock contra el contrato.
 
 **`mock_on_fail` debe ser true en preview y false en deploy.** Bloques `script` nombrados por separado para que no se pueda confundir. Un deployment que cae silenciosamente en un mock aplica un sinsentido.
 
@@ -149,7 +159,7 @@ registry/               FUENTE DE VERDAD para capabilities, traits, zones, label
 .github/workflows/
 ```
 
-Planeado, aún no presente:
+Planeado, aún no presente — pertenece al repositorio de despliegue `disasterproject/infra`, no a este (estructura, ramas y plantillas de workflows en `proposals/infra-repo-qa/`; **no hay rama por entorno**, DR2):
 
 ```
 policy/                 Rego para conftest, más *_test.rego
@@ -188,30 +198,32 @@ El generador (`registry-generate`) **todavía no está escrito**. Es la primera 
 |---|---|---|
 | ID de stack | `<cloud>-<env>-<capability>[-<instance>]` | `gcp-demos-gke`, `aws-prod-eks` |
 | Nombres públicos | `<app>.<public_id>.<dominio>`; buckets `disasterproject-<public_id>-<propósito>` | `sonar.tqbvzkr.disasterproject.com` (`public_id` es un ejemplo) |
-| Tags de stack | cloud, env, capability, `platform`\|`archetype:<name>`, `instance:<id>`, `producer`\|`consumer`, `protected` | |
+| Tags de stack | cloud, env, capability, `platform`\|`archetype/<name>`, `instance/<id>`, `producer`\|`consumer`, `protected` | |
 | Archivos generados | `_<propósito>.tf` | `_main.tf`, `_sharing_generated.tf` |
 | Generadores | `imports/generators/v<N>/gen_<capability>.tm.hcl` | |
 | Contratos | `imports/contracts/contract_<capability>[_<cloud>].tm.hcl` | |
 | Mocks | prefijados con `mock-` | `mock-endpoint.example.invalid` |
 
-El código generado **se commitea a git**, prefijado con `_`, y cubierto por `CODEOWNERS`. La puerta `terramate generate --check` (G0) existe por esto: sin ella, alguien edita a mano un `_main.tf`, el escaneo pasa, y el siguiente generate revierte silenciosamente el arreglo.
+El código generado **se commitea a git**, prefijado con `_`, y cubierto por `CODEOWNERS`. La puerta `terramate generate --detailed-exit-code` (G0) existe por esto: sin ella, alguien edita a mano un `_main.tf`, el escaneo pasa, y el siguiente generate revierte silenciosamente el arreglo.
 
 ---
 
 ## Por dónde empezar
 
-El roadmap está en `terramate-outputs-sharing-architecture.md` §16. Posición actual: **nada construido todavía; documentación completa**.
+El roadmap está en `terramate-outputs-sharing-architecture.md` §16. Posición actual: **PoC local de la fase 0 hecha (`poc/`); nada desplegado; documentación completa**. Este repositorio contiene solo documentación y propuestas; el repositorio de despliegue que describe se organiza en `docs/es/proposals/infra-repo-qa/`.
 
-**Fase 0 primero.** Construir un repositorio desechable con dos stacks y confirmar, contra una versión fijada de Terramate:
+**Resultados de la fase 0** (Terramate 0.16.0, OpenTofu 1.10.6, medido el 2026-09-16, repetido el 2026-09-28 — `poc/RESULTS.es.md`):
 
-- `from_stack_id` resuelve un global **heredado de un directorio padre**, no solo uno definido en el stack
-- `from_stack_id` acepta **interpolación** (`"${global.env}-gke"`), no solo una referencia simple
-- `stack.after` acepta una ruta derivada de globals, **o** los filtros de tags funcionan como fallback — esto último **falla silenciosamente**, así que probarlo deliberadamente
-- `--mock-on-fail` se comporta como está documentado cuando el producer no tiene state
-- Las lecturas de state entre proyectos/cuentas funcionan con los roles OIDC
-- Un control plane privado es alcanzable desde el tipo de runner elegido
+| Suposición | Resultado |
+|---|---|
+| `from_stack_id` resuelve un global **heredado de un directorio padre** | Confirmada |
+| `from_stack_id` acepta **interpolación** (`"${global.env}-gke"`) | Confirmada |
+| `stack.after` acepta una ruta derivada de globals | **Refutada, ruidosamente** — error de análisis. Los filtros por tag y las rutas literales funcionan; el resolver escribe literales |
+| `--mock-on-fail` se comporta como está documentado cuando el producer no tiene state | Confirmada; no enmascara un stack productor inexistente |
+| Las lecturas de state entre proyectos funcionan con los roles OIDC | No probada — primer despliegue de `qa`, `landing-zone-qa` VZ1–VZ3 |
+| El control plane es alcanzable desde el runner | No probada — ahora el endpoint DNS solo con IAM, `landing-zone-qa` VZ5 |
 
-Esto es el trabajo de una tarde y condiciona todo lo demás.
+Dos hallazgos laterales: un proyecto Terramate es **un repositorio git con una configuración raíz** (no puede anidarse en otro), y `output.description` no se emite en el bloque generado.
 
 ---
 

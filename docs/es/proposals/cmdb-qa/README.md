@@ -57,7 +57,7 @@ Los stacks salen de los manifiestos de cada propuesta, con los proveedores del b
 |---|---|---|---|
 | `environment` | 1 | `network`, `edge-base`, `edge`, `edge-l4` | — |
 | `cloud-monitoring-gcp` | 1b | `cloudmon` | — |
-| `gke` | 2 | `subnet`, `cluster`, `nodepools`, `access`, `baseline` | — |
+| `gke` | 2 | `subnet`, `cluster`, `nodepools`, `baseline` | — |
 | `policy-gatekeeper` | 2b | `controller`, `library`, `exemptions` | — |
 | `cert-manager` | 3 | `controllers`, `ca` | — |
 | `gateway-envoy-gke` | 3 | `controller`, `proxy` | — |
@@ -67,13 +67,13 @@ Los stacks salen de los manifiestos de cada propuesta, con los proveedores del b
 | `kafka` | 3 | `iam`, `operator`, `cluster`, `policy`, `vpc-access` | — |
 | `keycloak` | 3 | 9 (10 menos `data-tenant`) | `main` |
 | `sonarqube` | 5 | 9 (10 menos `data-tenant`) | `main` |
-| **Total** | | **≈ 51** | 2 |
+| **Total** | | **≈ 50** | 2 |
 
 Es una cifra de manifiestos: la definitiva es la de `terramate list --tags qa` cuando existan los stacks, y el generador la escribe sin que nadie la cuente.
 
 | Fichero | Cuántos en `qa` | Tamaño aproximado |
 |---|---|---|
-| `stacks/<id>.json` | ≈ 51 | 2–4 KiB cada uno |
+| `stacks/<id>.json` | ≈ 50 | 2–4 KiB cada uno |
 | `archetypes/<nombre>@<versión>.json` | 12 | 1–3 KiB |
 | `instances/qa-<arquetipo>-<instancia>.json` | 2 | 1 KiB |
 | `environments/qa.json`, `pools/qa.json` | 2 | 2 KiB |
@@ -166,7 +166,7 @@ Los claims los hace el arquetipo; en el fichero se atribuyen al stack que crea e
 
 | Campo | Fuente | Sin nube |
 |---|---|---|
-| `id`, `path`, `tags` | `terramate list --json` | Sí |
+| `id`, `path`, `tags` | `ci/stacks-json.sh` (arquitectura §14.4) | Sí |
 | `environment`, `project`, `cloud`, `capability`, `archetype`, `instance`, `model` | Globals del stack (`terramate debug show globals`) | Sí |
 | `produces` | Bloques `output` del contrato importado | Sí |
 | `consumes` | Bloques `input` del contrato, **con `from_stack_id` evaluado** | Sí, si el extractor evalúa globals (VI1) |
@@ -175,7 +175,7 @@ Los claims los hace el arquetipo; en el fichero se atribuyen al stack que crea e
 
 **Un extractor para dos consumidores.** La regla de G1 que comprueba que cada `input` tiene su `after` (R2) necesita exactamente los mismos pares `(stack, from_stack_id)`. Se escribe una vez, en `archetypectl`, y lo usan G1 y la CMDB: si el extractor se equivoca, se equivocan los dos a la vez y se nota antes.
 
-**La comprobación (DI2).** `archetypectl cmdb check` regenera la mitad declarada y falla si difiere de lo que hay en el PR, igual que G0 con `terramate generate --check`. Sin ella alguien corrige a mano un `consumes`, la revisión lo aprueba y la siguiente generación lo revierte en silencio.
+**La comprobación (DI2).** `archetypectl cmdb check` regenera la mitad declarada y falla si difiere de lo que hay en el PR, igual que G0 con `terramate generate --detailed-exit-code`. Sin ella alguien corrige a mano un `consumes`, la revisión lo aprueba y la siguiente generación lo revierte en silencio.
 
 La herramienta no existe todavía. La rama `claude/fervent-goodall-m3r9eg` tiene un `archetypectl` con el subcomando `enrich`, sin integrar; `cmdb` sería un subcomando nuevo.
 
@@ -301,7 +301,7 @@ En el proyecto compartido, un recurso huérfano de `qa` —creado a mano, o que 
 
 | Ajuste | `qa` | `prod` | `demos` |
 |---|---|---|---|
-| Stacks | ≈ 51 | Parecido a `qa` | Plataforma + un conjunto por demo |
+| Stacks | ≈ 50 | Parecido a `qa` | Plataforma + un conjunto por demo |
 | Nivel 2 (DuckDB) | No (DI4) | No | **Sí** cuando haya varias demos: la consulta de caducidad (AM §11.3) es la que mantiene habitable el entorno |
 | Reconciliación | Opcional | Recomendada: `prod` tiene su propio proyecto, y todo lo que hay en él debería estar en un estado | Recomendada: las demos caducan y dejan restos |
 | Rama `cmdb-observed` | La misma para todos los entornos | La misma | La misma |

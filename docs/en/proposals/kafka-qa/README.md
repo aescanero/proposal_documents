@@ -591,7 +591,7 @@ Metric names depend on Strimzi's JMX exporter configuration **(verify, VB10)**.
 | Phase | Contents | Exit criterion | Estimate |
 |---|---|---|---|
 | **0 · Prerequisites** | `kafka` node pool; `qa` binding; VB10, VB12 | Versions pinned | 1 day |
-| **1 · Skeleton** | Manifest, charts, asserts, G1 rules and constraints, `gen_messaging` | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 and preview with mocks green | 2 days |
+| **1 · Skeleton** | Manifest, charts, asserts, G1 rules and constraints, `gen_messaging` | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 and preview with mocks green | 2 days |
 | **2 · Operator and cluster** | `iam`, `operator`, `cluster`, `policy` | Cluster `Ready`; **VB1**, **VB2**, **VB3**, **VB4**, **VB9** | 2 days |
 | **3 · Load tests** | A test application with two instances | **VB5**, **VB6**, **VB7** | 2 days |
 | **4 · Access from the VPC** | Only when a client outside the cluster needs it: the `qa.internal` zone, the approver-policy policy, `vpc-access` | **VB8** | 1 day, with the first client |

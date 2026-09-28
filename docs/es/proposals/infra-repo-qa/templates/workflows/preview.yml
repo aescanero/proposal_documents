@@ -1,0 +1,117 @@
+# Destino: .github/workflows/preview.yml — arquitectura §14.1
+name: preview
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write                              # solo lo usan los jobs de plan
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true                     # un push nuevo deja obsoleta la preview anterior
+
+jobs:
+  gates:                                       # G0 y G1, sin credenciales de nube
+    runs-on: ubuntu-latest
+    outputs:
+      envs: ${{ steps.envs.outputs.envs }}     # no productivos y landing-zone
+      prod: ${{ steps.envs.outputs.prod }}     # "true" si el PR toca prod
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }               # la detección de cambios necesita historial
+      - uses: ./.github/actions/setup
+
+      - name: G0 — el código generado está al día
+        run: |
+          terramate generate --detailed-exit-code || {
+            echo "::error::El código generado está obsoleto. Ejecuta 'terramate generate' y commitea."
+            exit 1
+          }
+
+      - name: G1 — estructura, composición, orden
+        run: ./ci/g1.sh
+
+      - name: Checkov (estático)
+        run: checkov -d stacks --framework terraform --config-file .checkov/gcp.yaml
+
+      - name: Entornos que toca el PR
+        id: envs
+        run: |
+          envs=(); prod=false
+          for e in landing-zone $(ls environments); do
+            [ -n "$(terramate list --changed --tags "$e")" ] || continue
+            if [ "$e" = prod ]; then prod=true; else envs+=("$e"); fi
+          done
+          echo "envs=$(jq -cn '$ARGS.positional' --args "${envs[@]}")" >> "$GITHUB_OUTPUT"
+          echo "prod=$prod" >> "$GITHUB_OUTPUT"
+
+  plan:                                        # un job por entorno tocado, con su identidad de solo lectura
+    needs: gates
+    # antes del bootstrap no hay federación: solo corren G0 y G1 (landing-zone-qa §1.2)
+    if: needs.gates.outputs.envs != '[]' && vars.GCP_WIF_PROVIDER != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        env: ${{ fromJSON(needs.gates.outputs.envs) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: ./.github/actions/setup
+        with:
+          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service-account: tf-plan-${{ matrix.env == 'landing-zone' && 'lz' || matrix.env }}@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
+
+      - name: Plan con sharing y mocks, solo los stacks de este entorno
+        run: terramate script run --changed --tags ${{ matrix.env }} tofu preview
+
+      - name: G2 — Checkov sobre el plan
+        run: |
+          terramate run --changed --tags ${{ matrix.env }} -- sh -c '
+            tofu show -json out.tfplan > plan.json &&
+            checkov -f plan.json --framework terraform_plan
+          '
+
+      - name: Resumen
+        run: |
+          {
+            echo "### ${{ matrix.env }} — stacks cambiados, en orden de ejecución"
+            echo '```'
+            terramate list --changed --tags ${{ matrix.env }} --run-order
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  plan-prod:                                   # prod: el mismo plan, con aprobación (DR7)
+    needs: gates
+    if: needs.gates.outputs.prod == 'true' && vars.GCP_WIF_PROVIDER != ''
+    runs-on: ubuntu-latest
+    environment: prod-plan                     # tf-plan-prod@ solo es suplantable desde aquí
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: ./.github/actions/setup
+        with:
+          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service-account: tf-plan-prod@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
+
+      - name: Plan con sharing y mocks, solo los stacks de este entorno
+        run: terramate script run --changed --tags prod tofu preview
+
+      - name: G2 — Checkov sobre el plan
+        run: |
+          terramate run --changed --tags prod -- sh -c '
+            tofu show -json out.tfplan > plan.json &&
+            checkov -f plan.json --framework terraform_plan
+          '
+
+      - name: Resumen
+        run: |
+          {
+            echo "### prod — stacks cambiados, en orden de ejecución"
+            echo '```'
+            terramate list --changed --tags prod --run-order
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

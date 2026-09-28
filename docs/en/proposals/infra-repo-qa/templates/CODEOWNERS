@@ -1,0 +1,25 @@
+# Destination: .github/CODEOWNERS — the last matching pattern wins
+*                                   @disasterproject/platform
+
+# layer 0: platform and security
+/stacks/landing-zone/               @disasterproject/platform @disasterproject/security
+/docs/runbooks/                     @disasterproject/platform @disasterproject/security
+
+# what decides what is allowed and what is generated
+/registry/                          @disasterproject/platform @disasterproject/security
+/schemas/                           @disasterproject/platform
+/policy/                            @disasterproject/security
+/imports/                           @disasterproject/platform
+/modules/                           @disasterproject/platform
+
+# generated code: reviewed, never edited (G0)
+**/_*.tf                            @disasterproject/platform
+/cmdb-data/                         @disasterproject/platform
+
+# pipeline: a change here changes who can apply what
+/.github/                           @disasterproject/platform @disasterproject/security
+/ci/                                @disasterproject/platform @disasterproject/security
+
+# production
+/environments/prod/                 @disasterproject/platform @disasterproject/prod-approvers
+/stacks/platforms/gcp/prod/         @disasterproject/platform @disasterproject/prod-approvers

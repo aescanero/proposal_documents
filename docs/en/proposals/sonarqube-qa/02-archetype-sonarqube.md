@@ -313,7 +313,7 @@ Every stack shares this:
 stack {
   id    = "gcp-qa-sonarqube-main-app"
   name  = "qa — sonarqube-main — app"
-  tags  = ["gcp", "qa", "app", "archetype:sonarqube", "instance:sonarqube-main", "consumer"]
+  tags  = ["gcp", "qa", "app", "archetype/sonarqube", "instance/sonarqube-main", "consumer"]
   after = [
     "/stacks/archetypes/sonarqube/instances/main/secrets",
     "/stacks/archetypes/sonarqube/instances/main/firewall",
@@ -771,15 +771,15 @@ archetypectl resolve --dry-run                     # closure, traits, claims →
 terramate generate && git diff --exit-code          # G0
 conftest test ...                                   # G1
 checkov -d stacks/archetypes/sonarqube              # G2
-# the runner's IP is opened by the intermediate service (S1 §4.13)
-terramate script run --tags instance:sonarqube-main --changed tofu preview   # sharing ON, mocks ON
+# API server through the control plane DNS endpoint, IAM only (S1 §4.13)
+terramate script run --tags instance/sonarqube-main --changed tofu preview   # sharing ON, mocks ON
 conftest/checkov over plan.json                     # G3
 ```
 
 ### 8.2 Merge to `main` (deploy)
 
 ```bash
-terramate script run --tags instance:sonarqube-main --changed tofu deploy    # sharing ON, mocks OFF
+terramate script run --tags instance/sonarqube-main --changed tofu deploy    # sharing ON, mocks OFF
 ```
 
 The order comes from the `after`s (§3). The first deployment runs all 9 stacks; later ones, only the changed ones. A GitHub Environment with required reviewers (architecture §14.2).
@@ -802,7 +802,7 @@ Step 3 is automated as a `pre-upgrade` stack only if version changes become freq
 
 ### 8.4 Destruction
 
-`terramate run --tags instance:sonarqube-main --reverse -- tofu destroy` (architecture §12.4). It stops at `qa-sonarqube-secret-key` (`prevent_destroy`) on purpose: destroying the instance requires removing that protection in an explicit PR.
+`terramate run --tags instance/sonarqube-main --reverse -- tofu destroy` (architecture §12.4). It stops at `qa-sonarqube-secret-key` (`prevent_destroy`) on purpose: destroying the instance requires removing that protection in an explicit PR.
 
 ---
 
@@ -844,7 +844,7 @@ The diagram's dates are **illustrative** (assumed start on 5 October); what matt
 | Phase | Content | Exit criterion | Estimate |
 |---|---|---|---|
 | **0 · Prerequisites** | Roadmap phase 0; `qa`'s platform through S1 §6's phase B; V1, V2, V3, V9 | All four verifications closed | Depends on the platform |
-| **1 · Skeleton** | `manifest.yaml`, the empty wrapper chart in parts, new generators and contracts, asserts, new G1 rules | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 and a preview with mocks, all green | 3–4 days |
+| **1 · Skeleton** | `manifest.yaml`, the empty wrapper chart in parts, new generators and contracts, asserts, new G1 rules | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 and a preview with mocks, all green | 3–4 days |
 | **2 · Identity, secrets and data** | `iam`, `secrets`, `data-tenant` stacks deployed | Secrets synced by ESO; a healthy `Cluster`; a completed backup; **V5** (restore) passed | 3 days |
 | **3 · Application** | `firewall`, `app`, `frontdoor` | `/api/system/status` = `UP` over the public URL; **V6** with a large analysis; OOM and latency observed for 48 h | 3 days |
 | **4 · Human identity** | `sso`, `config` (`keycloak` requirements met) | **V3** and **V8**: login from Entra ID with a `team-*` group applied; `teams.yaml` applied idempotently (two runs, no changes) | 3 days |

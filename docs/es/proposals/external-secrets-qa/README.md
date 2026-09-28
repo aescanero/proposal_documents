@@ -500,7 +500,7 @@ Se detiene en `prevent_destroy`. Desmontar ESO sin desmontar a sus consumidores 
 | Fase | Contenido | Criterio de salida | Estimación |
 |---|---|---|---|
 | **0 · Prerrequisitos** | GKE, Gatekeeper y cert-manager de `qa`; VE1, VE4 | Las dos verificaciones cerradas | Depende de la plataforma |
-| **1 · Esqueleto** | Manifiesto, chart del arquetipo (NetworkPolicy, constraints), asserts, reglas conftest | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 y preview con mocks en verde | 1 día |
+| **1 · Esqueleto** | Manifiesto, chart del arquetipo (NetworkPolicy, constraints), asserts, reglas conftest | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 y preview con mocks en verde | 1 día |
 | **2 · Despliegue** | Stack `gcp-qa-secrets` | ESO sano con 2 réplicas; VE2, VE3, VE6, VE8 | 1–2 días |
 | **3 · Contrato** | Rama `gcpsm` de `gen_secrets.tm.hcl`; tenant de prueba | `ExternalSecret` de prueba en `Ready`; **VE5**, **VE7** | 1 día |
 | **4 · Observabilidad** | Reglas y scrape en `monitoring-oss` | Cada alerta disparada una vez en prueba provocada | 0,5 días |

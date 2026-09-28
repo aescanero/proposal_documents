@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 5 |
+| **Status** | Proposal · revision 6 |
 | **Scope** | The `qa` cluster as an archetype: addresses and subnet, control plane and access, node security, node pools and how consumers are assigned to them, storage, cluster networking, upgrades, the `cluster` contract, stacks, policies, execution and plan |
 | **Why now** | Everything deployed in the earlier proposals runs on it, and each of them left it a requirement (§0.1). It is everyone's dependency: the last link before the network and the edge |
 | **Base** | S1 §4.1 (runtime), §4.13 (pipeline access), §4.14 (KMS), §4.15 (separate VPC); architecture §5.2–§5.7 (GKE guide and security baseline); AM §9 (pools and ranges). This document **does not repeat** what is there: it makes it concrete and closes the gaps |
@@ -36,7 +36,7 @@ Source: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 | Origin | Requirement | Where it is met |
 |---|---|---|
 | S1 §4.1 | Private nodes, Workload Identity, `deletion_protection`, sysctl `vm.max_map_count` on `sonar` | §2, §3, §5 |
-| S1 §4.13 | Public endpoint with empty authorised networks; `ignore_changes` on them; intermediary `open`/`close` service | §2.2, `access` stack |
+| S1 §4.13, landing zone DZ4 | Pipeline access to the control plane through the **DNS endpoint**, IAM only; no authorised networks and no intermediary service | §2.2 |
 | S1 §4.14 | etcd secrets encryption with the landing zone's `gke-secrets` key | §3 |
 | Monitoring §1 | `SYSTEM_COMPONENTS` in logs and metrics; `managed_prometheus.enabled = false` | §4 |
 | Envoy Gateway §3 | `gateway_api_config { channel = "CHANNEL_DISABLED" }` | §4 |
@@ -101,9 +101,9 @@ Private Google Access is enabled on the node subnet: `gke` creates it, so `gke` 
 | Setting | Value | Reason |
 |---|---|---|
 | Nodes | `enable_private_nodes = true` | §5.7 |
-| Public endpoint | Enabled, `master_authorized_networks_config` **empty** at creation | S1 §4.13 |
-| Authorised networks | `lifecycle { ignore_changes = [master_authorized_networks_config] }` | Opened and closed by the `access` stack (§7.3), not this one |
-| Control plane DNS endpoint | Noted as the alternative (S1 §4.13); not enabled | If the intermediary service costs more than expected, it replaces the whole procedure |
+| Public IP endpoint | **Disabled**; the private IP endpoint stays for traffic inside the VPC | No authorised networks to maintain (landing zone DZ4) |
+| DNS endpoint | `control_plane_endpoints_config.dns_endpoint_config.allow_external_traffic = true`: the API server on a Google DNS name, reachable from a hosted runner and controlled **by IAM only** | Replaces S1 §4.13's procedure and the `access` service, which the `run.allowedIngress` org policy made unreachable (landing zone §3.2) **(verify the field names on the pinned provider version, VZ5)** |
+| Who can use it | `container.clusters.connect` granted **on this cluster** to `qa`'s pipeline identities and to the `gke-qa-admins@` group; RBAC after that | Without the network barrier, IAM is the only one: access by principals outside that list is alerted in layer 1b (monitoring §10.3) |
 
 ### 2.3 Control plane firewall
 
@@ -115,14 +115,14 @@ GKE creates the rule that lets the control plane reach the nodes on **443 and 10
 
 | Control | Value | Reference |
 |---|---|---|
-| Node SA | `gke-nodes-qa@disasterproject-nonprod`, dedicated: `logging.logWriter`, `monitoring.metricWriter`, `stackdriver.resourceMetadata.writer`; `artifactregistry.reader` **on the landing zone's repository**, not on the project | §5.7 |
+| Node SA | `gke-nodes-qa@disasterproject-nonprod`, dedicated, **created by the landing zone** and received as a global: the `cluster` stack does not create it (landing zone DZ5). Roles `logging.logWriter`, `monitoring.metricWriter`, `stackdriver.resourceMetadata.writer` on the project; `artifactregistry.reader` **on the landing zone's repositories** | §5.7; the landing zone can only grant on its registry to an identity that already exists |
 | Workload Identity | `workload_pool = "disasterproject-nonprod.svc.id.goog"`; `workload_metadata_config.mode = "GKE_METADATA"` on every pool. The pool is the **project's**, shared with the other non-prod clusters: every KSA holding GCP IAM is named `qa-<name>` (Gatekeeper P12) | §5.7, R15, R54 |
 | Metadata | `disable-legacy-endpoints = true` | §5.7 |
 | Nodes | Shielded (secure boot, integrity), `COS_CONTAINERD`, no external IP | §5.7, org policies §11.7 |
 | Secrets in etcd | `database_encryption { state = "ENCRYPTED", key_name = <gke-secrets> }` | S1 §4.14 |
 | Grant on `gke-secrets` | Given by the **landing zone** to `disasterproject-nonprod`'s GKE service agent | `qa`'s identity cannot write IAM on a landing zone key; the landing zone creates the project and knows its number. The agent is **one per project** and the non-prod clusters share it: the per-environment key separates encryption by convention, not by IAM (accepted in non-production) |
 | RBAC | Google Groups for RBAC (`authenticator_groups_config.security_group = gke-security-groups@<domain>`); `cluster-admin` bound to `gke-qa-admins@` | §5.7 **(verify the group in the domain, VN4)** |
-| Binary Authorization | `PROJECT_SINGLETON_POLICY_ENFORCE`, with a **cluster-specific rule**: the policy is one per project and the non-prod environments share it. On `qa`, an allow-list of the landing zone's Artifact Registry **and** an attestation requirement in *dry-run* mode | §5.7 asks for attestation, and nothing generates it yet: S1 §4.10's signature is cosign's. Enforce on `prod` once the pipeline creates attestations (DN10) |
+| Binary Authorization | `PROJECT_SINGLETON_POLICY_ENFORCE`. The policy is **one per project** and **only the landing zone** writes it, with one rule per cluster generated from the bindings and `ALWAYS_DENY` by default (landing zone DZ6); this archetype does not declare the resource. On `qa`, the rule admits the `apps` and `third-party` repositories and requires attestation in *dry-run* | If every `gke` wrote the policy, the last `apply` would erase the other non-prod environments' rules. §5.7 asks for attestation and nothing generates it yet: S1 §4.10's signature is cosign's. Enforce on `prod` once the pipeline creates attestations (DN10) |
 
 ---
 
@@ -301,8 +301,6 @@ stacks:
     after: [subnet]
   - name: nodepools
     after: [cluster]
-  - name: access
-    after: [cluster]
   - name: baseline
     after: [nodepools]
 ```
@@ -314,14 +312,11 @@ stacks:
 | Stack | Contents | Inputs via sharing |
 |---|---|---|
 | `subnet` | Node subnet with its two secondary ranges, Private Google Access and flow logs from the environment's `flow_logs` global (`network-qa` proposal §2) | `network_self_link` |
-| `cluster` | `google_container_cluster` (§2–§4), node SA and its roles | `network_self_link`, `subnet_self_link` (from its own `subnet`) |
+| `cluster` | `google_container_cluster` (§2–§4) with the landing zone's node SA; that SA's project roles | `network_self_link`, `subnet_self_link` (from its own `subnet`) |
 | `nodepools` | One `google_container_node_pool` per entry in `cluster.node_pools`; publishes `node_pool_instance_groups` | — (globals) |
-| `access` | S1 §4.13's intermediary service: a Cloud Run function with a custom role holding only `container.clusters.get` and `container.clusters.update`, with an IAM condition on **this** cluster; Cloud Scheduler for the 15-minute reconciler | — |
 | `baseline` | `PriorityClass` `platform-critical` for layers 2b–4, so a tenant cannot evict Gatekeeper or the Gateway; nothing else | `cluster_endpoint`, `cluster_ca` |
 
 **Why `nodepools` is separate.** A pool change (size, taint, a new pool) must not plan the cluster, and a cluster `plan` must not show the pools. It is also the stack that differs most between environments.
-
-**Why `access` is separate.** It holds the only permission able to change any cluster setting (S1 §4.13, condition 4): isolating it in its own stack keeps its IAM reviewable in one place.
 
 ---
 
@@ -329,7 +324,7 @@ stacks:
 
 | What | How |
 |---|---|
-| First deployment | Phase A of S1 §6, after `gcp-qa-network`: `subnet` → `cluster` → `nodepools` and `access` → `baseline`. Gatekeeper comes next |
+| First deployment | Phase A of S1 §6, after `gcp-qa-network`: `subnet` → `cluster` → `nodepools` → `baseline`. Gatekeeper comes next |
 | Control plane upgrade | Automatic via the channel, in the window (§2.1). `qa` one week before `prod` |
 | Pool upgrade | Automatic after the control plane; surge 1/0 per pool. The `sonar` pool **takes SonarQube down** during the node swap: accepted on `qa` (R53); the window keeps it out of working hours |
 | Resizing a pool | PR to the binding → `nodepools` |
@@ -368,7 +363,7 @@ assert {
 | RN1 | **Disk incompatible with the machine**: `hyperdisk-balanced` PVCs do not attach on n2 | High with the current design | High — SonarQube, Prometheus and Kafka do not start; the error appears when the pod is scheduled | §6, option A; `storage_class` as a global; VN1 |
 | RN2 | **`HttpLoadBalancing` addon disabled**: the standalone NEG is not created | Medium | High — the edge has no backends | `assert`; VN5 |
 | RN3 | **Cluster without Dataplane V2**: `NetworkPolicy` objects are admitted and not enforced | Low with the `assert` | Critical — no network isolation, no error; fixing it is a rebuild | `assert` |
-| RN4 | **Authorised networks reverted** by a cluster `apply` in the middle of a job | Low with `ignore_changes` | Medium | S1 §4.13 condition 3 |
+| RN4 | *Retired*: with no authorised networks there is nothing an `apply` can revert (landing zone DZ4) | — | — | — |
 | RN5 | **A tenant lands on a dedicated pool** by adding the toleration | Medium without the rule | Medium — it evicts or slows SonarQube or Kafka | §5.3 Gatekeeper rule |
 | RN6 | **Automatic upgrade of `sonar` during working hours** | Medium | Low on `qa` | Maintenance window; exclusions around delivery dates |
 | RN7 | **Pool trait resolved without the pool** | High without the proposal | Medium — the consumer fails at start-up | §5.3: the resolver checks the pool |
@@ -409,6 +404,7 @@ assert {
 | AM §4.2 and `registry/traits.yaml` | Pool traits: present only if a pool in the binding declares them; marked in the registry | **Applied** (DN5) |
 | Gatekeeper §4.1 and §7.1 | Rule P11: tolerate `dedicated=<pool>` only from its owners' namespaces; its parameters come from the binding | **Applied** (DN5) |
 | Consumers of `workload_identity_pool` | Read it as a global; the output remains until 3.0.0 | **Proposed** (DN7) |
+| Landing zone §3.2, §6.3 and §8; S1 §4.13 | DNS endpoint instead of authorised networks and the `access` stack (DZ4); node SA created by the landing zone (DZ5); Binary Authorization written only by the landing zone (DZ6) | **Applied** |
 
 ---
 
@@ -416,7 +412,7 @@ assert {
 
 | # | Decision | Status | Recommendation | Alternative |
 |---|---|---|---|---|
-| DN1 | Mode and access | Consequence of S1 §4.1 and §4.13 | Regional Standard, private nodes, public endpoint with empty networks | Autopilot; DNS endpoint |
+| DN1 | Mode and access | Consequence of S1 §4.1; access revised by landing zone DZ4 | Regional Standard, private nodes, public IP endpoint disabled, DNS endpoint with IAM only | Autopilot; public endpoint with authorised networks opened per job (the original S1 §4.13) |
 | DN2 | Who creates the node subnet | **Approved** | `gke`, which claims it | `network`, as in architecture §5.2 |
 | DN3 | Disk | **Approved**; VN1 confirms it | `pd-balanced` (`standard-rwo`) on n2; `storage_class` as a global | Hyperdisk Balanced with n4 or c3 |
 | DN4 | `general` pool | Proposed | n2-standard-8, 1–3 per zone | n2-standard-4, 2–6 per zone |
@@ -435,7 +431,7 @@ assert {
 |---|---|---|---|
 | **0 · Verifications** | VN1 and VN2 in an ephemeral with a minimal cluster | Disk decided; webhook on 10250 reachable | 1 day |
 | **1 · Cluster** | `subnet`, `cluster`, `nodepools`; §9.1 `assert`s | Three healthy pools; `kubectl` from a runner with its IP opened | 1 day |
-| **2 · Access** | `access` stack; reconciler; monitoring alert on changes made outside the service (monitoring §10.3) | Two simultaneous jobs without losing access (S1 §4.13 condition 1); an orphaned IP removed after 60 min | 1.5 days |
+| **2 · Access** | DNS endpoint; per-resource `container.clusters.connect`; alert on access outside the list (monitoring §10.3); **VZ5** | `helm`, `kubernetes` and `kubectl` against the cluster from a hosted runner, with no authorised networks | 0.5 days |
 | **3 · Baseline** | `baseline`; VN4, VN5, VN6, VN7 | Gatekeeper installable (phase B of S1 §6) | 1 day |
 
 Four and a half days for one person. What it unblocks is everything else.

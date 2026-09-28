@@ -1,0 +1,15 @@
+// A3 probe — bare global reference in `stack.after`.
+//
+// Kept OUT of stacks/ and suffixed `.fixture` on purpose: this file does not
+// parse, and Terramate aborts the whole configuration load when it is present,
+// so leaving it in the tree would block every other check. run-poc.sh copies it
+// into a scratch stack directory, runs run-graph, records the result, and
+// removes it again.
+
+stack {
+  id   = "poc-after-global-expr"
+  name = "A3 probe — after = [global.producer_path]"
+  tags = ["poc", "probe"]
+
+  after = [global.producer_path]
+}

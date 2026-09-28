@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 5 |
+| **Estado** | Propuesta · revisión 6 |
 | **Alcance** | El borde público de `qa`: IP, zona DNS pública y registros, certificado, Cloud Armor, el Global external Application LB hacia el NEG de Envoy, TLS, las excepciones L4 (patrón B), observabilidad, el contrato `env-edge`, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | Es la última pieza para que SonarQube, Keycloak y Grafana sean alcanzables. La propuesta de Envoy Gateway le dejó requisitos (health check, drenaje, `after`, NEG como `data`) y la de SonarQube, dos más (timeout de 120 s y exclusiones de Cloud Armor) |
 | **Base** | E1 §4.5 (publicación), §4.15 (VPC separada y borde propio); propuesta de Envoy Gateway §1, §2, §4.4, §5.2, §7.1; propuesta `network-qa`; arquitectura §10.2 y §10.8; AM §3 (capabilities de borde en la capa 1). No se repite lo que ya está allí |
@@ -300,7 +300,7 @@ assert {
 | RL4 | **DNSSEC roto** por un cambio de claves o de zona sin actualizar el `DS` en la padre | Baja | Crítico — ningún resolvedor con validación resuelve el entorno | Zona y `DS` en el mismo stack de la landing zone (DL2) |
 | RL5 | **Tráfico con host arbitrario** hasta el cluster | Alta sin la regla | Baja — Envoy devuelve 404, pero consume y ensucia los logs | Regla 100 de Cloud Armor |
 | RL6 | **IP de borde liberada** por un `destroy` o un cambio de nombre | Baja | Alta — el wildcard apunta a una IP que puede reasignarse | Claim, `prevent_destroy`, tag `protected` |
-| RL7 | **Identificador público que delata el entorno**: derivado del nombre (un hash de `qa`), con el entorno en otra parte del nombre público, o una zona recorrible | Media | Media — el mapa de entornos y de lo que corre en cada uno, a la vista | Aleatorio y generado por la landing zone; regla de G1 que rechaza un `dns_suffix`, un nombre de bucket o un realm con el nombre de un entorno; NSEC3 en la zona (VL7) |
+| RL7 | **Identificador público que delata el entorno**: derivado del nombre (un hash de `qa`), con el entorno en otra parte del nombre público, o una zona recorrible | Media | Media — el mapa de entornos y de lo que corre en cada uno, a la vista | Aleatorio y generado por la landing zone; `environment.public_names` en G1 (binding: `public_id` y `dns_suffix`) y `terraform.public_names` en G3 (plan: buckets, registros DNS públicos, dominios del certificado), arquitectura §13.3–§13.4; `assert` del realm en Keycloak; NSEC3 en la zona (VL7) |
 
 ### 9.4 Verificaciones
 
@@ -340,6 +340,7 @@ assert {
 | Propuesta `network-qa` §8.2 | El manifiesto pasa a 3.1.0 con el borde | **Aplicado** |
 | Propuestas de Envoy Gateway (§1, §2.1, DG14), cert-manager (§1, DT7) y SonarQube E1 §4.5 | El tramo GLB → Envoy pasa a HTTP; desaparece `gateway-backend-tls` (DL9) | **Aplicado** |
 | Todas las propuestas de `qa`, AM §7, §10 y §15, arquitectura §10.6, visión general; `schemas/environment-binding.schema.json`; `CLAUDE.md` | Hostnames bajo `tqbvzkr.disasterproject.com` (ejemplo); buckets `disasterproject-tqbvzkr-…`; realm `disasterproject`; zona `qa-public`; campo `network.public_id` en el binding (DL10) | **Aplicado** |
+| Arquitectura §13.3, §13.4 y §14.4; propuestas de Keycloak (§9.1) y monitorización (§4.3) | Reglas `environment.public_names` (G1, sobre cada binding) y `terraform.public_names` (G3, sobre el plan); `assert` del realm; la convención de URL de Keycloak pasa a `/realms/disasterproject` (RL7) | **Aplicado** |
 
 ---
 

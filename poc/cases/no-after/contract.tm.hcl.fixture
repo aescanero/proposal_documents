@@ -1,0 +1,6 @@
+input "cluster_endpoint" {
+  backend       = "tofu"
+  from_stack_id = global.producer_id
+  value         = outputs.cluster_endpoint.value
+  mock          = "https://mock-endpoint.example.invalid"
+}

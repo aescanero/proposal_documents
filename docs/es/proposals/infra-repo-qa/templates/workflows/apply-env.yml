@@ -1,0 +1,54 @@
+# Destino: .github/workflows/apply-env.yml — un entorno, una identidad, una puerta
+name: apply-env
+on:
+  workflow_call:
+    inputs:
+      env:
+        type: string
+        required: true
+      base:                                    # commit del último deploy con éxito de env
+        type: string
+        required: true
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env }}             # revisores; pone environment=<env> en el token OIDC
+    concurrency:
+      group: deploy-${{ inputs.env }}
+      cancel-in-progress: false                # nunca cortar un apply a medias
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: ./.github/actions/setup
+        with:
+          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service-account: ${{ vars.GCP_APPLY_SA }}   # variable del Environment: tf-apply-<env>@…
+
+      - name: El código generado está al día
+        run: terramate generate --detailed-exit-code
+
+      - name: Apply de los stacks cambiados, mocks desactivados
+        run: terramate script run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" --no-tags bootstrap tofu deploy
+
+      - name: Observaciones para la CMDB
+        if: ${{ !cancelled() }}                # también tras un apply fallido: registra outcome failed
+        run: |
+          terramate run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" --no-tags bootstrap -- \
+            archetypectl cmdb observe --out "$RUNNER_TEMP/observed"
+
+      - name: Marcador de deploy
+        if: ${{ success() }}                   # solo un apply completamente correcto lo mueve
+        run: |
+          mkdir -p "$RUNNER_TEMP/observed/deployed"
+          jq -n --arg sha "$GITHUB_SHA" --argjson run "$GITHUB_RUN_NUMBER" '{sha: $sha, run: $run}' \
+            > "$RUNNER_TEMP/observed/deployed/${{ inputs.env }}.json"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: cmdb-observed-${{ github.run_id }}-${{ inputs.env }}
+          path: ${{ runner.temp }}/observed

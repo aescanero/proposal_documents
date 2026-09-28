@@ -1,0 +1,39 @@
+# Destino: .github/workflows/image-mirror.yml — copia de imágenes de terceros (landing-zone-qa §6.2)
+name: image-mirror
+on:
+  push:
+    branches: [main]
+    paths: [images/third-party.yaml]
+  schedule:
+    - cron: "43 4 * * 1"                       # semanal: repara una copia borrada a mano
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    environment: image-mirror                  # image-mirror@ solo es suplantable desde aquí
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service-account: image-mirror@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
+      - run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+
+      - name: Copiar por digest y comprobarlo
+        env:
+          DEST: europe-west1-docker.pkg.dev/${{ vars.GCP_LZ_PROJECT }}/third-party
+        run: |
+          # images/third-party.yaml: [{source: quay.io/jetstack/cert-manager-controller, tag: v1.16.2, digest: "sha256:…"}]
+          yq -o=json '.[]' images/third-party.yaml | jq -c . | while read -r img; do
+            src="$(jq -r .source <<<"$img")"; tag="$(jq -r .tag <<<"$img")"; want="$(jq -r .digest <<<"$img")"
+            got="$(crane digest "$src:$tag")"
+            if [ "$got" != "$want" ]; then
+              echo "::error::$src:$tag publica $got, se declaró $want"; exit 1
+            fi
+            crane copy "$src@$want" "$DEST/${src#*/}:$tag"
+          done
