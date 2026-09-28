@@ -673,6 +673,15 @@ output se mantengan.
 
 ### 4.11 Primer despliegue de un entorno nuevo
 
+**Paso 0 — antes de la secuencia, y no con la identidad del entorno.** Dos cosas preceden al primer apply de un entorno:
+
+| | Qué | Quién lo aplica | Dónde se especifica |
+|---|---|---|---|
+| **0a** | **La landing zone existe.** El stack `gcp-lz-bootstrap` (bucket de estado, key ring `lz` con `tofu-state`, el pool de federación, `tf-plan-lz@`, `tf-apply-lz@`, `tf-destroy-lz@`) lo aplica **una vez por organización** una persona, con estado local, y su estado se migra al bucket; después el resto de la landing zone lo aplica el pipeline | Una persona con `organizationAdmin` y `billing.admin`, una vez; después el job `landing-zone` | `landing-zone-qa` §1 |
+| **0b** | **El entorno se da de alta en la landing zone.** Una pull request añade el entorno a `global.lz.environments`: key ring de KMS y clave `tofu-state`, el prefijo de estado, `tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@` con sus vínculos de federación, la zona delegada y el `public_id`, el bloque de direcciones del pool global, la regla de Binary Authorization y la SA de nodos del runtime. La misma pull request añade `environments/<env>/binding.yaml`. Fuera del repositorio, un administrador crea los GitHub Environments `<env>` y `<env>-destroy` con sus revisores y las variables `GCP_APPLY_SA` / `GCP_DESTROY_SA` | El job `landing-zone` (`tf-apply-lz@`); los GitHub Environments, un administrador del repositorio | `landing-zone-qa` §10; `infra-repo-qa` |
+
+La identidad propia del entorno no puede hacer ninguna de las dos: no existe antes de 0b, y después no tiene ningún rol sobre la landing zone. Solo cuando ambas están hechas se ejecuta la secuencia de abajo — desde `first-deploy`, un workflow manual ligado al Environment `<env>`, que escribe el primer marcador de deploy del entorno (§14.2).
+
 La misma secuencia aplica a cada cloud y runtime; solo cambian los selectores de tag.
 
 ```bash
@@ -2533,9 +2542,10 @@ Deny  kms:ScheduleKeyDeletion para las claves de cifrado de estado
 | Job | Identidad GCP | Identidad AWS | Puerta de entorno de GitHub | Acceso al estado |
 |---|---|---|---|---|
 | `preview` (PR) | `tf-plan-<env>@` | `tf-plan-<env>` | ninguna | lectura |
-| `deploy` (main) | `tf-apply-<env>@` | `tf-apply-<env>` | **reviewers requeridos** | lectura + escritura |
+| `deploy` (main), landing zone | `tf-apply-lz@` | — | **Environment `landing-zone`**: revisores de plataforma y de seguridad | lectura + escritura, prefijo `lz/` |
+| `deploy` (main) | `tf-apply-<env>@` | `tf-apply-<env>` | **Environment `<env>`**: reviewers requeridos | lectura + escritura |
 | `drift` (cron) | `tf-plan-<env>@` | `tf-plan-<env>` | ninguna | lectura |
-| `destroy` (manual) | `tf-destroy-<env>@` | `tf-destroy-<env>` | **reviewers requeridos + grupo aprobador separado** | lectura + escritura |
+| `destroy` (manual) | `tf-destroy-<env>@` | `tf-destroy-<env>` | **Environment `<env>-destroy`**: reviewers requeridos + grupo aprobador separado | lectura + escritura |
 
 El destroy merece su propia identidad. En una plataforma compartida es la operación que puede tumbar a cada tenant (§12.4), y separarla significa que un camino de deploy comprometido no puede borrar infraestructura.
 
@@ -3299,6 +3309,8 @@ Protégelo con una puerta `registry-generate --check` en CI, exactamente igual q
 
 ### 14.1 Workflow de preview (pull request)
 
+**Cada job de workflow que toca una nube actúa para exactamente un entorno**, con la identidad de ese entorno. Las identidades del pipeline son por entorno (§11.2, §11.4) y la identidad de apply está ligada al GitHub Environment del mismo nombre, así que un solo job no puede aplicar dos entornos, y no debe intentarlo. Por eso la preview va en dos partes: las puertas que no necesitan credenciales, una vez; después, un job de plan por cada entorno que toca la pull request.
+
 ```yaml
 name: preview
 on:
@@ -3308,71 +3320,81 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  id-token: write            # OIDC hacia GCP y AWS
+  id-token: write            # OIDC hacia la nube, solo lo usan los jobs de plan
 
 jobs:
-  preview:
+  gates:                     # G0 y G1 — sin credenciales de nube
     runs-on: ubuntu-latest
+    outputs:
+      envs: ${{ steps.envs.outputs.envs }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0     # la detección de cambios necesita historial
 
-      - uses: jdx/mise-action@v2       # fija terramate, tofu, checkov
+      - uses: jdx/mise-action@v2       # fija terramate, tofu, checkov, conftest
 
       # --- G0: integridad de la generación ---
       - name: Check generated code is current
         run: |
-          terramate generate
-          git diff --exit-code || {
+          terramate generate --detailed-exit-code || {
             echo "::error::El código generado está obsoleto. Ejecuta 'terramate generate' y commitea."
             exit 1
           }
 
-      - name: List changed stacks
-        id: list
-        run: |
-          echo "stacks<<EOF" >> "$GITHUB_OUTPUT"
-          terramate list --changed >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+      # --- G1: estructura, composición, orden (§14.4) ---
+      - name: Policy
+        run: ./ci/g1.sh
 
-      # --- G1: escaneo estático ---
       - name: Checkov (static)
-        if: steps.list.outputs.stacks != ''
+        run: checkov -d stacks --framework terraform --config-file .checkov/gcp.yaml
+
+      # --- ¿qué entornos toca este PR? ---
+      - name: Changed environments
+        id: envs
         run: |
-          checkov -d stacks --framework terraform \
-                  --config-file .checkov/gcp.yaml
-          checkov -d stacks --framework terraform \
-                  --config-file .checkov/aws.yaml
+          envs=()
+          for e in landing-zone $(ls environments); do
+            [ -n "$(terramate list --changed --tags "$e")" ] && envs+=("$e")
+          done
+          echo "envs=$(jq -cn '$ARGS.positional' --args "${envs[@]}")" >> "$GITHUB_OUTPUT"
+
+  plan:                      # un job por entorno tocado, con su propia identidad de solo lectura
+    needs: gates
+    if: needs.gates.outputs.envs != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        env: ${{ fromJSON(needs.gates.outputs.envs) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: jdx/mise-action@v2
 
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_PLAN_SA }}
+          service_account: tf-plan-${{ matrix.env == 'landing-zone' && 'lz' || matrix.env }}@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
 
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_PLAN_ROLE }}
-          aws-region: eu-west-1
-
-      # --- plan con sharing + mocks ---
-      - name: Plan changed stacks
-        run: terramate script run --changed tofu preview
+      # --- plan con sharing + mocks, solo los stacks de este entorno ---
+      - name: Plan
+        run: terramate script run --changed --tags ${{ matrix.env }} tofu preview
 
       # --- G2: escaneo del plan ---
       - name: Checkov (plan)
         run: |
-          terramate run --changed -- sh -c '
+          terramate run --changed --tags ${{ matrix.env }} -- sh -c '
             tofu show -json out.tfplan > plan.json &&
             checkov -f plan.json --framework terraform_plan
           '
 
-      - name: Comment plan on PR
+      - name: Summary
         run: |
           {
-            echo "### Changed stacks"
+            echo "### ${{ matrix.env }} — changed stacks"
             echo '```'
-            terramate list --changed
+            terramate list --changed --tags ${{ matrix.env }} --run-order
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 ```
@@ -3381,9 +3403,13 @@ Puntos clave:
 
 - **`terramate script run --changed tofu preview`** usa el script de §4.8, así que `enable_sharing = true` y `mock_on_fail = true` están garantizados. Una invocación cruda de `terramate run` que olvide `--enable-sharing` produce un plan contra variables sin fijar.
 - **`fetch-depth: 0`** — la detección de cambios compara contra `main`; un clon superficial reporta silenciosamente cero stacks cambiados.
-- **La autenticación dual de cloud en un solo job** funciona porque el token OIDC se intercambia por proveedor. Si tus cuentas están estrictamente segregadas, divide en dos jobs seleccionados por `terramate list --changed --tags gcp` / `--tags aws`.
+- **G0 es `terramate generate --detailed-exit-code`**: 0 si el código generado está al día, 2 si la generación cambió un fichero, 1 si hay error. No existe la opción `--check` (`poc/RESULTS.es.md`).
+- **Un entorno por job de plan.** Cada stack lleva su entorno como tag (`qa`, `prod`, …) y los de la landing zone llevan `landing-zone`, así que `--tags <env>` selecciona exactamente los stacks de una identidad. Una pull request que cambia un generador compartido toca todos los entornos y recibe un job de plan por entorno, cada uno leyendo solo su propio prefijo de estado. Un job que se autenticara una vez y lo planificara todo necesitaría una identidad que leyera el estado de todos los entornos — justo lo que §11.2 existe para impedir.
+- **Otras nubes.** Un entorno de AWS o Azure cambia el paso de autenticación (`aws-actions/configure-aws-credentials` con `tf-plan-<env>`, `azure/login` con la credencial federada del entorno); la forma del job es la misma. Las plantillas completas, con una acción compuesta que oculta el paso por nube, están en la propuesta `infra-repo-qa`.
 
 ### 14.2 Workflow de despliegue (merge a main)
+
+El workflow de deploy aplica lo que se ha fusionado, **entorno a entorno, cada uno en un job ligado al GitHub Environment de ese entorno**. El Environment es lo que hace alcanzable la identidad de apply (§11.2), lleva los revisores de ese entorno y serializa las ejecuciones contra él. Orden: la landing zone, después los entornos no productivos en paralelo, después `prod`.
 
 ```yaml
 name: deploy
@@ -3396,36 +3422,106 @@ permissions:
   id-token: write
 
 jobs:
-  deploy:
+  changes:                   # por entorno: ¿cambiado desde su último deploy con éxito?
     runs-on: ubuntu-latest
-    environment: production        # la puerta de reviewers requeridos está aquí
+    outputs:
+      lz:      ${{ steps.c.outputs.lz }}        # {"env":"landing-zone","base":"<sha>"} or ""
+      nonprod: ${{ steps.c.outputs.nonprod }}   # [{"env":"qa","base":"<sha>"}, …]
+      prod:    ${{ steps.c.outputs.prod }}      # {"env":"prod","base":"<sha>"} or ""
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: jdx/mise-action@v2
+      - run: git fetch origin cmdb-observed
+      - id: c
+        run: ./ci/changed-envs.sh >> "$GITHUB_OUTPUT"   # reads cmdb-data/observed/deployed/<env>.json
+
+  landing-zone:
+    needs: changes
+    if: needs.changes.outputs.lz != ''
+    uses: ./.github/workflows/apply-env.yml
+    with: { env: landing-zone, base: "${{ fromJSON(needs.changes.outputs.lz).base }}" }
+
+  nonprod:
+    needs: [changes, landing-zone]
+    if: ${{ !cancelled() && needs.changes.outputs.nonprod != '[]' && needs.landing-zone.result != 'failure' }}
+    strategy:
+      fail-fast: false       # un fallo en dev no para qa
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.nonprod) }}
+    uses: ./.github/workflows/apply-env.yml
+    with: { env: "${{ matrix.env }}", base: "${{ matrix.base }}" }
+
+  prod:
+    needs: [changes, landing-zone, nonprod]
+    if: ${{ !cancelled() && needs.changes.outputs.prod != '' && needs.landing-zone.result != 'failure' && needs.nonprod.result != 'failure' }}
+    uses: ./.github/workflows/apply-env.yml
+    with: { env: prod, base: "${{ fromJSON(needs.changes.outputs.prod).base }}" }
+
+  cmdb:
+    needs: [landing-zone, nonprod, prod]
+    if: ${{ !cancelled() && !(needs.landing-zone.result == 'skipped' && needs.nonprod.result == 'skipped' && needs.prod.result == 'skipped') }}
+    permissions: { contents: write }
+    uses: ./.github/workflows/cmdb-sync.yml
+    with: { pattern: "cmdb-observed-${{ github.run_id }}-*" }
+```
+
+El job por entorno es un único workflow reutilizable, así que los tres llamadores no pueden divergir:
+
+```yaml
+# .github/workflows/apply-env.yml
+name: apply-env
+on:
+  workflow_call:
+    inputs:
+      env:  { type: string, required: true }
+      base: { type: string, required: true }   # commit del último deploy con éxito de env
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env }}             # revisores; pone environment=<env> en el token OIDC
+    concurrency: { group: "deploy-${{ inputs.env }}", cancel-in-progress: false }
+    permissions: { contents: read, id-token: write }
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: jdx/mise-action@v2
 
       - name: Verify generated code
-        run: terramate generate && git diff --exit-code
+        run: terramate generate --detailed-exit-code
 
-      # ... auth de cloud ...
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_APPLY_SA }}      # variable del Environment: tf-apply-<env>@…
 
       - name: Apply changed stacks
-        run: terramate script run --changed tofu deploy   # mocks DESACTIVADOS
+        run: terramate script run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" tofu deploy   # mocks DESACTIVADOS
 
       - name: Collect CMDB observations
         if: ${{ !cancelled() }}                          # también tras un apply fallido: registra outcome failed
-        run: terramate run --changed -- archetypectl cmdb observe --out "$RUNNER_TEMP/observed"
+        run: |
+          terramate run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" -- \
+            archetypectl cmdb observe --out "$RUNNER_TEMP/observed"
+      - name: Record the deploy marker
+        if: ${{ success() }}                             # solo un apply completamente correcto lo mueve
+        run: |
+          mkdir -p "$RUNNER_TEMP/observed/deployed"
+          jq -n --arg sha "$GITHUB_SHA" --argjson run "$GITHUB_RUN_NUMBER" '{sha:$sha, run:$run}' \
+            > "$RUNNER_TEMP/observed/deployed/${{ inputs.env }}.json"
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
-        with: { name: "cmdb-observed-${{ github.run_id }}", path: "${{ runner.temp }}/observed" }
-
-  cmdb:
-    needs: deploy
-    if: ${{ !cancelled() }}
-    permissions: { contents: write }
-    uses: ./.github/workflows/cmdb-sync.yml
-    with: { pattern: "cmdb-observed-${{ github.run_id }}" }
+        with: { name: "cmdb-observed-${{ github.run_id }}-${{ inputs.env }}", path: "${{ runner.temp }}/observed" }
 ```
+
+Puntos clave:
+
+- **Un entorno, una identidad, una puerta por job.** `environment: ${{ inputs.env }}` pone `environment=<env>` en el token OIDC, que es el único principal autorizado a suplantar a `tf-apply-<env>@` (§11.2). `GCP_APPLY_SA` es una variable del *Environment*, así que el mismo texto de workflow se resuelve a `tf-apply-qa@` en `qa` y a `tf-apply-prod@` en `prod`. El job único `environment: production` de borradores anteriores no podía funcionar: su token llevaba un entorno e intentaba aplicarlos todos.
+- **La base de cambios es el último deploy con éxito del entorno, no `HEAD^`.** Con `HEAD^`, una ejecución fallida o cancelada deja sus stacks sin aplicar y el siguiente merge ya no los ve; además GitHub mantiene solo una ejecución pendiente por grupo de concurrencia y cancela las demás, así que con una ráfaga de merges algunos commits nunca se despliegan por sí mismos. El marcador `deployed/<env>.json` en la rama `cmdb-observed` solo se escribe cuando el apply de un entorno tuvo éxito completo, y `cmdb-sync` solo lo mueve hacia delante (`run` mayor). La siguiente ejecución compara desde ahí y recoge todo lo posterior.
+- **Un entorno sin marcador no lo despliega este workflow.** Su primer apply es escalonado (§4.11) y se ejecuta desde `first-deploy`, un workflow manual con el mismo Environment; es el que escribe el primer marcador. `changes` informa de ese entorno como aviso, no como error.
+- **No productivo antes que producción.** Un cambio en un generador compartido llega primero a `qa` y `dev` en la misma ejecución; `prod` solo empieza si ninguno falló, y sus revisores ven el resultado. Es orden, no promoción — la promoción de imágenes de aplicación es asunto de la guía de desarrollo (`developer-guide.md` §5).
+- **La landing zone va primero y sola**, desde el Environment `landing-zone` con `tf-apply-lz@`. Los workflows de entorno seleccionan por `--tags <env>`, que nunca incluye los stacks de la landing zone, y sus identidades tampoco podrían aplicarlos (`landing-zone-qa` §5.2).
 
 Las observaciones llegan a la CMDB por un workflow reutilizable, el mismo para `deploy`, `drift` y `destroy`. Es el único punto del pipeline con `contents: write`, y nunca escribe en `main` (`archetype-model.md` §11.1):
 
@@ -3448,9 +3544,18 @@ jobs:
       - uses: actions/checkout@v4
         with: { path: main, sparse-checkout: schemas }
       - uses: actions/download-artifact@v4
-        with: { pattern: "${{ inputs.pattern }}", merge-multiple: true, path: observed/cmdb-data/observed }
+        with: { pattern: "${{ inputs.pattern }}", merge-multiple: true, path: "${{ runner.temp }}/in" }
       - name: Validate
-        run: check-jsonschema --schemafile main/schemas/cmdb-observed.schema.json observed/cmdb-data/observed/*.json
+        run: check-jsonschema --schemafile main/schemas/cmdb-observed.schema.json "$RUNNER_TEMP"/in/*.json
+      - name: Merge; deploy markers only move forward
+        run: |
+          cp "$RUNNER_TEMP"/in/*.json observed/cmdb-data/observed/ 2>/dev/null || true
+          mkdir -p observed/cmdb-data/observed/deployed
+          for m in "$RUNNER_TEMP"/in/deployed/*.json; do
+            [ -e "$m" ] || continue
+            cur="observed/cmdb-data/observed/deployed/$(basename "$m")"
+            if [ ! -e "$cur" ] || [ "$(jq .run "$m")" -gt "$(jq .run "$cur")" ]; then cp "$m" "$cur"; fi
+          done
       - name: Commit and push, with rebase and retry
         working-directory: observed
         run: |
@@ -3488,29 +3593,37 @@ on:
   schedule:
     - cron: '0 5 * * *'
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
-  drift:
+  drift:                     # un job por entorno, con su identidad de solo lectura
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        selector: ["gcp", "aws"]
+        env: ${{ fromJSON(vars.DRIFT_ENVS) }}   # variable del repositorio: ["landing-zone","qa","prod",…]
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: jdx/mise-action@v2
-      # ... auth ...
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: tf-plan-${{ matrix.env == 'landing-zone' && 'lz' || matrix.env }}@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
       - name: Detect drift and record it
         id: drift
         run: |
-          terramate run --tags ${{ matrix.selector }} --enable-sharing -- \
+          terramate run --tags ${{ matrix.env }} --enable-sharing -- \
             archetypectl cmdb observe --drift --out "$RUNNER_TEMP/observed"
           # por stack: tofu plan -detailed-exitcode -lock=false; salida 2 → outcome drifted, driftAt
           if grep -rqs '"outcome": "drifted"' "$RUNNER_TEMP/observed"; then
-            echo "::warning::Drift detectado en ${{ matrix.selector }}"
+            echo "::warning::Drift detectado en ${{ matrix.env }}"
             echo "drifted=true" >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/upload-artifact@v4
-        with: { name: "cmdb-observed-${{ github.run_id }}-${{ matrix.selector }}", path: "${{ runner.temp }}/observed" }
+        with: { name: "cmdb-observed-${{ github.run_id }}-${{ matrix.env }}", path: "${{ runner.temp }}/observed" }
       - if: steps.drift.outputs.drifted == 'true'
         run: exit 1
 

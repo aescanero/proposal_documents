@@ -403,10 +403,10 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 
 | Término | Definición |
 |---|---|
-| **Workflow de preview** | El pipeline de PR: G0 → escaneo estático de Checkov → autenticación OIDC cloud → `terramate script run --changed tofu preview` (sharing y mocks activados) → escaneo del plan con Checkov → comentario en el PR con los stacks cambiados. |
+| **Workflow de preview** | El pipeline de PR: G0, G1 y el escaneo estático de Checkov una vez, sin credenciales; después **un job de plan por cada entorno que toca el PR**, cada uno con la identidad de solo lectura de ese entorno (`tf-plan-<env>@`): `terramate script run --changed --tags <env> tofu preview` (sharing y mocks activados) → escaneo del plan con Checkov → resumen de los stacks cambiados. |
 | **`fetch-depth: 0`** | Ajuste de checkout requerido para que la detección de cambios de Terramate (compara contra `main`) tenga el historial de git completo; un clon superficial informa en silencio de cero stacks cambiados. |
-| **Workflow de despliegue** | El pipeline de merge a main, protegido por un `environment: production` de GitHub (revisores obligatorios), que ejecuta `terramate script run --changed tofu deploy` con los mocks desactivados, y luego un script de sincronización de la CMDB. |
-| **Workflow de drift** | Un job programado que ejecuta `tofu plan -detailed-exitcode -lock=false` por selector de cloud para detectar drift de configuración sin aplicar. |
+| **Workflow de despliegue** | El pipeline de merge a main. **Un job por entorno**, cada uno ligado al GitHub Environment de ese nombre (sus revisores, y el claim `environment` que es lo único que puede suplantar a `tf-apply-<env>@`): primero la landing zone, después los entornos no productivos en paralelo, después `prod`. Cada uno ejecuta `terramate script run --changed -B <último deploy con éxito> --tags <env> tofu deploy` con los mocks desactivados, y luego la sincronización de la CMDB, que además mueve el marcador de deploy del entorno. Arquitectura §14.2. |
+| **Workflow de drift** | Un job programado que ejecuta `tofu plan -detailed-exitcode -lock=false` por entorno, con la identidad de plan de ese entorno, para detectar drift de configuración sin aplicar. |
 | **Entradas de construcción de la puerta de política** | La cadena que produce las entradas de evaluación de conftest: `registry-generate --check` → `archetypectl resolve --dry-run > resolution.json` → `terramate list --json > stacks.json` → `archetypectl enrich stacks.json`. |
 | **`mise`** | Gestor de fijación de versiones de herramientas (`mise.toml`, `jdx/mise-action`) que fija las versiones de Terramate, OpenTofu y Checkov de forma consistente entre las máquinas de los desarrolladores y CI. |
 

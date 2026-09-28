@@ -403,10 +403,10 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 
 | Term | Definition |
 |---|---|
-| **Preview workflow** | The PR pipeline: G0 → Checkov static scan → cloud OIDC auth → `terramate script run --changed tofu preview` (sharing + mocks on) → Checkov plan scan → PR comment with changed stacks. |
+| **Preview workflow** | The PR pipeline: G0, G1 and the Checkov static scan once, without credentials; then **one plan job per environment the PR touches**, each with that environment's read-only identity (`tf-plan-<env>@`): `terramate script run --changed --tags <env> tofu preview` (sharing + mocks on) → Checkov plan scan → summary of changed stacks. |
 | **`fetch-depth: 0`** | Required checkout setting so Terramate's change detection (compares against `main`) has full git history; a shallow clone silently reports zero changed stacks. |
-| **Deployment workflow** | The merge-to-main pipeline, gated by a GitHub `environment: production` (required reviewers), running `terramate script run --changed tofu deploy` with mocks off, then a CMDB sync script. |
-| **Drift workflow** | A scheduled job running `tofu plan -detailed-exitcode -lock=false` per cloud selector to detect configuration drift without applying. |
+| **Deployment workflow** | The merge-to-main pipeline. **One job per environment**, each bound to the GitHub Environment of that name (its reviewers, and the `environment` claim that alone can impersonate `tf-apply-<env>@`): the landing zone first, then non-production environments in parallel, then `prod`. Each runs `terramate script run --changed -B <last successful deploy> --tags <env> tofu deploy` with mocks off, then the CMDB sync, which also moves the environment's deploy marker. Architecture §14.2. |
+| **Drift workflow** | A scheduled job running `tofu plan -detailed-exitcode -lock=false` per environment, with that environment's plan identity, to detect configuration drift without applying. |
 | **Policy gate build inputs** | The chain producing conftest's evaluation inputs: `registry-generate --check` → `archetypectl resolve --dry-run > resolution.json` → `terramate list --json > stacks.json` → `archetypectl enrich stacks.json`. |
 | **`mise`** | Tool-version pinning manager (`mise.toml`, `jdx/mise-action`) pinning Terramate, OpenTofu and Checkov versions consistently across developer machines and CI. |
 
