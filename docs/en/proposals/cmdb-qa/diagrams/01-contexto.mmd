@@ -1,0 +1,40 @@
+flowchart LR
+    subgraph PR["Pull request · no cloud"]
+        direction TB
+        TM["terramate list · globals<br/>contracts: input / output"]
+        GEN["archetypectl cmdb generate<br/>same extractor as G1"]
+        CHK["archetypectl cmdb check<br/>like G0"]
+        TM --> GEN --> CHK
+    end
+    subgraph MAIN["main · protected · reviewed"]
+        DECL["cmdb-data/<br/>stacks · edges · instances<br/>archetypes · pools/qa.json"]
+    end
+    subgraph RUN["After the merge · with cloud"]
+        direction TB
+        DEP["deploy · tf-apply-qa@<br/>collector per stack"]
+        DRF["drift · tf-plan-qa@"]
+        DES["destroy · tf-destroy-qa@"]
+    end
+    subgraph OBS["branch cmdb-observed · bot only"]
+        OBSD["cmdb-data/observed/<br/>lastApply · resourceCount<br/>non-sensitive outputs"]
+    end
+    PUB["release cmdb-latest<br/>index.json · graph.jsonld<br/>private"]
+    subgraph USE["Used by"]
+        direction TB
+        G1["preview: broken contract<br/>blast radius"]
+        GD["destroy: counting<br/>by edges"]
+        DSH["dashboards · scripts"]
+    end
+    CHK --> DECL
+    DEP -- "artifacts → cmdb-aggregate" --> OBSD
+    DRF -- "drifted" --> OBSD
+    DES -- "destroyed" --> OBSD
+    DECL --> PUB
+    OBSD --> PUB
+    DECL -.-> G1
+    PUB --> GD
+    PUB --> DSH
+
+    style DECL fill:#e8f0fe
+    style OBSD fill:#fff5e6
+    style PUB fill:#ecfeff
