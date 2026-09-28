@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 1 |
+| **Estado** | Propuesta · revisión 2 · DZ4, DZ5 y DZ6 aprobadas y aplicadas (§13) |
 | **Alcance** | Lo que la capa 0 tiene que dar para que `qa` arranque: arranque de la propia landing zone, proyectos y carpetas, org policies, APIs del proyecto non-prod, claves de Cloud KMS, Artifact Registry, federación de GitHub Actions e identidades del pipeline, bucket de estado, DNS padre y zona delegada, identificador público, pool global de direcciones, Binary Authorization, presupuestos. `hub` y `prod` solo donde cambian algo |
 | **Por qué ahora** | Todas las propuestas de `qa` le dejan requisitos (§0.1) y ninguna la describe. Es lo primero que se aplica y lo único que se arranca a mano |
 | **Base** | E1 §4.13 (acceso al plano de control), §4.14 (KMS), §4.15 (VPC separada); arquitectura §11.2 (identidad del pipeline), §11.4 (segregación), §11.5 (estado); AM §3 (capas), §7 (binding), §9.2 (pool global). No se repite lo que ya está allí |
@@ -120,7 +120,7 @@ E1 §4.13 decidió abrir las redes autorizadas del plano de control con un servi
 | B. Excepción de la política en `nonprod` | `run.allowedIngress` admite también `all` en la carpeta | Cualquier servicio Cloud Run del proyecto puede publicarse sin balanceador ni Cloud Armor: R14 vuelve para todos |
 | C. Balanceador delante de `access` | Un GLB con backend serverless | Un balanceador, un certificado y una política de Cloud Armor para una función que abre y cierra una IP |
 
-**Recomendación (DZ4):** A. Resuelve el choque y además elimina la parte más frágil de E1 §4.13. Queda como decisión pendiente porque cambia una propuesta ya cerrada.
+**Decisión (DZ4, aprobada):** A. Resuelve el choque y además elimina la parte más frágil de E1 §4.13, que queda revisada; R38 y R39 se retiran.
 
 ---
 
@@ -194,7 +194,7 @@ La landing zone concede `artifactregistry.reader` a la SA de nodos de `qa` y `cr
 | B. El stack `gke` concede el grant | La identidad de `qa` necesitaría `setIamPolicy` sobre un repositorio de la landing zone, y con él podría darse acceso a imágenes de otros entornos |
 | C. Grant a nivel de proyecto (`artifactregistry.reader` sobre `disasterproject-lz`) | Cualquier SA con ese rol lee todos los repositorios, también los que no le corresponden |
 
-**Recomendación (DZ5):** A. Cambia `gke-qa` §3: la SA de nodos pasa a ser un global de la landing zone.
+**Decisión (DZ5, aprobada):** A. `gke-qa` §3 recibe la SA de nodos como global de la landing zone.
 
 ---
 
@@ -301,7 +301,7 @@ assert {
 | VZ2 | Agentes de servicio forzados | El grant de `gke-secrets` se aplica antes del primer cluster, sin "service account does not exist" |
 | VZ3 | Federación | `tf-apply-qa@` no es asumible desde un job sin `environment: qa`; `tf-plan-qa@` no lee el prefijo `dev/` del bucket |
 | VZ4 | Binary Authorization compartida | Dos clusters no productivos con reglas distintas; un `apply` de la landing zone no altera la regla de ninguno; un cluster sin regla no admite pods |
-| VZ5 | Endpoint DNS del plano de control (si se elige DZ4 A) | `helm`, `kubernetes` y `kubectl` funcionan desde un runner alojado con solo IAM; sin redes autorizadas |
+| VZ5 | Endpoint DNS del plano de control (DZ4) | `helm`, `kubernetes` y `kubectl` funcionan desde un runner alojado con solo IAM; sin redes autorizadas |
 | VZ6 | Org policies | `run.allowedIngress` rechaza un servicio con `ingress=all`; `compute.restrictVpcPeering` admite la conexión de PSA (= VW5) |
 
 ---
@@ -322,11 +322,11 @@ assert {
 
 | Documento | Cambio | Estado |
 |---|---|---|
-| Propuesta `gke-qa` §3 y §7 | La SA de nodos `gke-nodes-qa@` la crea la landing zone y llega como global (DZ5); la regla de Binary Authorization la escribe la landing zone (DZ6) | **Propuesto** |
-| E1 §4.13 y propuesta `gke-qa` (stack `access`) | Endpoint DNS del plano de control en lugar del servicio `access` y de las redes autorizadas (DZ4) | **Propuesto** |
-| `network-qa` §1.1 | Agentes de servicio forzados con `google_project_service_identity` | **Propuesto** |
-| Arquitectura §11.2 | Identidades del pipeline en el proyecto de la landing zone; condición IAM por prefijo en el bucket de estado | **Propuesto** |
-| `risk-register.md` | RZ1–RZ3 como R58–R60 | **Propuesto** |
+| Propuesta `gke-qa` §3 y §7 | La SA de nodos `gke-nodes-qa@` la crea la landing zone y llega como global (DZ5); la regla de Binary Authorization la escribe la landing zone (DZ6) | **Aplicado** |
+| E1 §4.13 y propuesta `gke-qa` (stack `access`) | Endpoint DNS del plano de control en lugar del servicio `access` y de las redes autorizadas (DZ4) | **Aplicado** |
+| `network-qa` §1.1 | Agentes de servicio forzados con `google_project_service_identity` | **Aplicado** |
+| Arquitectura §11.2 | Identidades del pipeline en el proyecto de la landing zone; condición IAM por prefijo en el bucket de estado | **Aplicado** |
+| `risk-register.md` | RZ1–RZ3 como R58–R60 | **Aplicado** |
 
 ---
 
@@ -337,9 +337,9 @@ assert {
 | DZ1 | Arranque | **Propuesta** | Stack de bootstrap aplicado una vez a mano, con estado migrado después; runbook en el repositorio | Consola; script fuera del repositorio |
 | DZ2 | Proyectos | **Propuesta** | `lz`, `nonprod`, `prod` en tres carpetas; un `nonprod-2` al llegar a límites | Un proyecto por entorno |
 | DZ3 | Identidades | **Propuesta** | En el proyecto de la landing zone; grants por recurso; estado con condición por prefijo | En el proyecto del entorno |
-| DZ4 | Acceso al plano de control | **Propuesta** — reabre E1 §4.13 | Endpoint DNS, solo IAM | Excepción de `run.allowedIngress`; balanceador delante de `access` |
-| DZ5 | SAs con grants entre proyectos | **Propuesta** | Las crea la landing zone | Las crea la capa 2 (arista hacia arriba) |
-| DZ6 | Binary Authorization | **Propuesta** | Política del proyecto escrita solo por la landing zone; `ALWAYS_DENY` por defecto | Cada `gke` escribe su regla |
+| DZ4 | Acceso al plano de control | **Aprobada** — revisa E1 §4.13 | Endpoint DNS, solo IAM | Excepción de `run.allowedIngress`; balanceador delante de `access` |
+| DZ5 | SAs con grants entre proyectos | **Aprobada** | Las crea la landing zone | Las crea la capa 2 (arista hacia arriba) |
+| DZ6 | Binary Authorization | **Aprobada** | Política del proyecto escrita solo por la landing zone; `ALWAYS_DENY` por defecto | Cada `gke` escribe su regla |
 | DZ7 | Presupuestos | **Propuesta** | Por entorno, filtrados por la etiqueta `environment` | Uno por proyecto |
 
 ---
@@ -352,6 +352,6 @@ assert {
 | **1 · Organización** | Carpetas, proyectos, org policies, APIs y agentes; **VZ2**, **VZ6** | `plan` de `gcp-qa-network` sin errores de política ni de API | 1 día |
 | **2 · Pipeline** | Federación, identidades, bucket con condiciones; **VZ3** | Un PR de `qa` hace `plan` con `tf-plan-qa@`; el `apply` solo desde el Environment | 1 día |
 | **3 · Servicios compartidos** | KMS, Artifact Registry y copia de imágenes, DNS e identificador, Binary Authorization, presupuestos; **VZ4** | Alta de `qa` completa (§10) | 2 días |
-| **4 · Acceso** | Si se aprueba DZ4 A: endpoint DNS; **VZ5** | `helm` y `kubectl` contra el cluster de `qa` desde un runner alojado | 0,5 días |
+| **4 · Acceso** | Endpoint DNS (DZ4); **VZ5** | `helm` y `kubectl` contra el cluster de `qa` desde un runner alojado | 0,5 días |
 
 Cinco días para una persona. Es la fase 0 de E1 §6: bloquea todo lo demás.

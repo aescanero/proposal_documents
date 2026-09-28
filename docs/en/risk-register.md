@@ -6,7 +6,7 @@
 |---|---|
 | **Scope** | Every identified failure mode across generation, resolution, identity, edge, policy and multi-tenancy |
 | **Section references** | `§n` refers to the architecture document unless prefixed `AM §n` (archetype model) |
-| **Identifiers** | R1–R57. R28 is **retired** (duplicate of R26); its number is not reused |
+| **Identifiers** | R1–R60. R28 is **retired** (duplicate of R26), and R38 and R39 are retired with the control plane DNS endpoint (`landing-zone-qa` DZ4); retired numbers are not reused |
 | **Review cadence** | At each roadmap phase gate, and whenever a pinned tool version changes |
 
 Risks are grouped by domain rather than numbered order, because that is how they are reviewed. The original R-numbers are stable identifiers and must not be reused if a risk is retired.
@@ -47,23 +47,24 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R16 | **Permission boundary omitted from a tenant-created IAM role** | Medium | High — tenant stack can escalate | Platform publishes `task_role_boundary_arn`; assertion blocks generation without it (§11.7) |
 | R19 | **Default service account used as workload identity** (GCP compute SA, ECS shared role) | Medium | High — workload runs with project Editor | Dedicated identity per workload, enforced by Checkov custom policy (§7.4, §5.7) |
 | R25 | **AKS `kube_config` lands in state as a credential** | Certain if used | High | `local_account_disabled = true` plus Entra auth; never expose `kube_config` as a shared output (§9.5) |
-| R39 | **`container.clusters.update` granted to a pipeline identity** to open the runner IP in GKE authorized networks | High if done the direct way | Critical — any PR can reconfigure the cluster, since preview identities need it too | A minimal intermediate service holds the permission and exposes only open/close of a /32 with expiry (`proposals/sonarqube-qa`, section 4.13) |
+| R39 | *Retired — with the DNS endpoint no pipeline identity needs `container.clusters.update` (`landing-zone-qa` DZ4). Number not reused.* | — | — | — |
 | R40 | **Secret values stored in OpenTofu state** (`random_password` + secret version) | High by default | High — the encrypted state becomes a second secret store readable by every identity that can read state | Ephemeral resources and write-only attributes (`secret_data_wo`); verify support in the pinned OpenTofu and provider versions in Phase 0 |
 | R41 | **Environment state-encryption key destroyed** — GCP has no written equivalent of the AWS SCP in §11.3 | Low | Critical — the environment's state is unreadable, irrecoverably | No KMS destroy permission on pipeline identities; `prevent_destroy`; org policy `constraints/cloudkms.minimumDestroyScheduledDuration`; key ring created at layer 0 (`proposals/sonarqube-qa`, section 4.14) |
 | R42 | **IdP federation credential expires** (Keycloak's credential in the upstream IdP app registration) | Medium | High — nobody can log in to anything behind the realm | Certificate credential instead of client secret; alert 30 days before expiry routed to the team that owns the app registration |
 | R43 | **Offboarded user keeps application tokens** where the application has no SCIM | Medium | Medium — access continues after the upstream account is disabled | Daily reconciliation job against the upstream directory; no personal tokens in CI |
 | R54 | **Workload Identity sameness in the shared non-prod project**: one pool per GCP project, so the same namespace and KSA in two non-prod clusters are one GCP identity | High unless KSAs are prefixed | High — one non-prod environment reads another's secrets, buckets and databases | Every KSA with GCP IAM named `<env>-<name>`; Gatekeeper P12 rejects another environment's prefix; G1 checks every IAM `member`. Residual: a cluster-admin of one non-prod environment can bypass admission — accepted for non-prod only; `prod` never shares a project (`CLAUDE.md`) |
+| R60 | **A project-level grant where a resource-level one would do**: in the shared non-prod project, a role on the project reaches every environment in it | Medium | High — an environment identity reads or writes another environment's resources | Grants on keys, repositories, zones and SAs per resource; the landing zone creates the SAs that receive cross-project grants; a G3 rule on landing zone IAM (`landing-zone-qa` §6.3, §11.1) |
 
 ## 3. Networking and address planning
 
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|---|
 | R7 | **Cross-account state read permissions missing** | High at first setup | Medium — CI fails loudly | Document the required grants per environment; test in the PoC before scaling out |
-| R18 | **Private control plane unreachable from GitHub-hosted runners** | High on private clusters | Medium — pipeline blocked late in rollout | Decide self-hosted runners vs authorized-network allowance in Phase 0 (§11.9) |
+| R18 | **Private control plane unreachable from GitHub-hosted runners** | High on private clusters | Medium — pipeline blocked late in rollout | Decide self-hosted runners vs authorized-network allowance in Phase 0 (§11.9); on GCP, the control plane DNS endpoint with IAM only removes the problem without self-hosted runners (`landing-zone-qa` DZ4) |
 | R23 | **GCP VPC peering non-transitivity blocks hub LB → spoke NEG** | High if hub-and-spoke uses separate VPCs | High — the edge design does not work | Shared VPC with a /17 per environment, Network Connectivity Center, or an LB per spoke. Decide in Phase 0 |
 | R26 | **Pod secondary range sized for too few nodes** — immutable after cluster creation. The original trigger was a /18 at 110 pods per node (64 nodes) | High without the check | High — cluster cannot grow; fixed only by rebuilding it | Platform default of 64 pods per node (`/25` per node, 128 nodes in a `/18`); resolver rejects `max_nodes × block > range` (AM §9.4); `/16` for production; Azure CNI Overlay removes the constraint (§9.2) |
 | R27 | **Environment pool fragments into unusable /17s** | Medium over 12 months | Medium — a /16 becomes unallocatable | Buddy allocation preferring blocks that do not split larger free runs; isolate the ephemeral supernet (AM §8.5) |
-| R38 | **GKE authorized networks edited per CI job** — concurrent jobs overwrite each other's entry (the list is replaced whole) and a dead runner leaves its IP open | High without serialization | Medium — an apply cut off mid-run; a stale entry (IAM still applies) | One `concurrency` group for every workflow touching the API; close step with `if: always()`; scheduled reconciler expiring entries older than 60 min; `ignore_changes` on the list in the cluster stack (`proposals/sonarqube-qa`, section 4.13) |
+| R38 | *Retired — the control plane DNS endpoint removes the authorized networks it described (`landing-zone-qa` DZ4). Number not reused.* | — | — | — |
 
 ## 4. Edge and ingress
 
@@ -100,6 +101,7 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R36 | **Rego rule written but never fires** | High without tests | Medium — false confidence | `conftest verify` on `policy/*_test.rego` in the same job as the gate (§13.3) |
 | R37 | **Serverless runtimes assumed to have the same policy coverage** | Medium | Medium — a control believed universal is absent on Cloud Run and Fargate | Parity gap stated explicitly (§13); cloud control-plane policy substitutes for admission there |
 | R46 | **Upstream Helm chart ships a privileged or root init container** (sysctl, chown) | High | Medium — pod rejected under PSS `restricted`, or pressure to exempt a whole namespace | Disable in the archetype's values; move the requirement to the node (a trait such as `sysctl-max-map-count`); name-scoped exemption only as a last resort |
+| R59 | **A project-singleton policy written by an environment**: Binary Authorization is one policy per project, and a `gke` stack that writes it erases the other non-prod clusters' rules | High if each environment writes it | High — admission rules of other environments gone, with no error | Only the landing zone writes it, one rule per cluster from the bindings, `ALWAYS_DENY` by default; a G3 rule counts the rules (`landing-zone-qa` §8) |
 
 ## 7. Process and tooling
 
@@ -110,6 +112,7 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R55 | **The CMDB sync writes to `main`**: a job with a bypass of `main`'s protection, and a commit that triggers `deploy` again | High if the observed half is committed to `main` | Medium — a job that can push to `main` without review; a deploy loop held back only by a `paths-ignore` | Observed half on its own `cmdb-observed` branch, written only by the reusable `cmdb-sync` workflow; `main`'s ruleset has no bypass (AM §11.1, §14.2) |
 | R56 | **CMDB edges silently empty**: the extractor does not evaluate a `from_stack_id`, the stack appears to have no consumers | Medium until the extractor is verified against the pinned Terramate version | Critical — the destroy guard counts 0 and lets a platform with consumers go (R5) | `archetypectl cmdb check` fails when a stack has `input` blocks and no evaluated `consumes`; one extractor shared with the R2 rule of G1, so both fail together (§12.4) |
 | R57 | **A secret value reaches the CMDB**: an output carrying one is not marked `sensitive` and ends up in the observed half and the read model | Medium | High — a secret in a file every repository reader can fetch | The G1 secret-name rule (§13.3); the collector drops `sensitive` outputs; the read model is a private release asset, never public Pages (AM §11.2) |
+| R58 | **An unrepeatable landing zone bootstrap**: nobody remembers how the organisation was started when it has to be rebuilt | Medium | High — the platform cannot be recreated from the repository | The bootstrap is a stack in the repository with a runbook, applied once by hand and then managed with remote state (`landing-zone-qa` §1) |
 
 ---
 

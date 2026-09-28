@@ -969,7 +969,7 @@ Note `global.platform.namespace` — this is what allows two archetype instances
 | **Secondary ranges are immutable** | Changing pod/service CIDRs requires cluster recreation | Size generously in globals from day one; compute with `tm_cidrsubnet` so they are reviewable |
 | **Kubernetes provider needs a live cluster at plan time** | `tofu plan` on the services stack fails if the cluster is not yet applied | Use `--mock-on-fail` for PR previews; accept that a first-ever deployment of a new environment requires a staged apply (network → cluster → services) |
 | **`tofu output -json` on the network stack requires state read access** | The CI job applying the cluster must read the network stack's GCS state object | Grant the cluster job `roles/storage.objectViewer` on the network state prefix. If network and cluster live in different projects, this is a cross-project grant |
-| **Private cluster endpoints** | If the control plane is private, the CI runner cannot reach `cluster_endpoint` | Either run CI on a private runner inside the VPC, or authorise the runner egress IP in `master_authorized_networks` |
+| **Private cluster endpoints** | If the control plane is private, the CI runner cannot reach `cluster_endpoint` | Either run CI on a private runner inside the VPC, authorise the runner egress IP in `master_authorized_networks`, or — on GKE, the choice for `qa` — use the control plane DNS endpoint, reachable from anywhere and controlled by IAM only (`landing-zone-qa` DZ4) |
 | **`cluster_ca` is base64** | A mock of `"mock"` breaks `base64decode()` at plan time | Mock with a valid base64 string (`"bW9jaw=="`) |
 | **Deletion protection** | `deletion_protection = true` blocks `tofu destroy` | Set it from `global.cluster.deletion_protection`; `false` for demos, `true` for prod, enforced by an `assert` |
 
@@ -980,7 +980,7 @@ Note `global.platform.namespace` — this is what allows two archetype instances
 | Node service account | Dedicated SA with `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/stackdriver.resourceMetadata.writer`, `roles/artifactregistry.reader` | The default compute SA holds `roles/editor`; every node would carry project-wide write |
 | Workload Identity | Enabled cluster-wide and on every node pool | Without it, pods fall back to the node SA and all tenants share one identity |
 | Metadata concealment | Legacy metadata endpoints disabled (`metadata.disable-legacy-endpoints = true`) | Legacy endpoints let a pod read the node SA token directly, defeating Workload Identity |
-| Control plane | Private cluster, `master_authorized_networks` restricted | |
+| Control plane | Private nodes; public IP endpoint disabled and the DNS endpoint with IAM only, or `master_authorized_networks` restricted | `landing-zone-qa` DZ4 |
 | Nodes | Shielded GKE nodes, Container-Optimized OS, secure boot, integrity monitoring | |
 | Node pool | `enable_private_nodes = true`, no external IPs | |
 | Secrets | Application-layer secrets encryption with a Cloud KMS key | etcd encryption at rest with a key you control |
@@ -2419,6 +2419,8 @@ resource "google_service_account_iam_member" "apply" {
 
 **In the shared non-prod project**, `tf-apply-qa@` and `tf-apply-dev@` are distinct identities, but a role granted at project level reaches every environment in the project. Grant at resource level wherever the service supports it (secrets, buckets, keys, service accounts, Cloud SQL instances with IAM conditions on the name prefix); where only a project-level role exists (`roles/container.admin`, `roles/compute.networkAdmin`), accept that a non-prod apply identity can touch another non-prod environment, and rely on the per-environment state prefixes, CODEOWNERS and the environment gate. That exposure never reaches `prod`, which is a different project.
 
+**Where the identities live.** The pipeline service accounts (`tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@`) are created in the landing zone's project, not in the environment's: an environment identity then cannot edit its own IAM policy or another's. State access is per prefix, with an IAM condition on the bucket (`resource.name.startsWith("projects/_/buckets/<state-bucket>/objects/<env>/")`), so `tf-plan-qa@` reads the state of `qa`'s producers and not `dev`'s. The service accounts that receive cross-project grants — a runtime's node SA, for instance — are created by the landing zone too, so layer 0 never waits on layer 2 (`landing-zone-qa` §5, §6.3).
+
 The `attribute.environment` claim is only present when the workflow job declares `environment:`. Binding the apply SA to that attribute means **the apply role is unreachable from a job without the environment gate**, which is what makes GitHub's required-reviewers control a real security boundary rather than a UI convenience.
 
 | Identity | Roles | Scope |
@@ -2640,7 +2642,7 @@ Never write a wildcard into a workload identity trust condition. `system:service
 
 | Control | GKE | EKS | AKS | Cloud Run | ECS Fargate |
 |---|---|---|---|---|
-| Private control plane | Private cluster + authorized networks | Private endpoint + `public_access_cidrs` | Private cluster + authorized IP ranges | n/a | n/a |
+| Private control plane | Private cluster + DNS endpoint (IAM only) or authorized networks | Private endpoint + `public_access_cidrs` | Private cluster + authorized IP ranges | n/a | n/a |
 | Workload egress | Cloud NAT, no external IPs | NAT, `assign_public_ip=false` | NAT gateway, no node public IPs | `PRIVATE_RANGES_ONLY` | `assign_public_ip=false` |
 | Private service access | PSA range for Cloud SQL | VPC endpoints | Private endpoints + private DNS zones | PSA + Direct VPC egress | VPC endpoints |
 | East-west policy | NetworkPolicy default-deny | NetworkPolicy default-deny | NetworkPolicy (Cilium or Calico) | Service-to-service IAM | Security group references |
@@ -3538,7 +3540,7 @@ The ordering invariant that previously relied on a shell script is now a Rego po
 
 ## 15. Risk register
 
-The full register — 57 risks grouped by domain (56 active; R28 retired as a duplicate of R26), with likelihood, impact, mitigation and the section that specifies each control — is maintained in its own document, `risk-register.md`. It is reviewed at every roadmap phase gate rather than read end to end.
+The full register — 60 risks grouped by domain (57 active; R28 retired as a duplicate of R26, R38 and R39 retired with the control plane DNS endpoint), with likelihood, impact, mitigation and the section that specifies each control — is maintained in its own document, `risk-register.md`. It is reviewed at every roadmap phase gate rather than read end to end.
 
 The five to act on first:
 

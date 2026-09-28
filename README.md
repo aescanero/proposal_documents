@@ -23,7 +23,7 @@ Inside each language folder:
 | `archetype-model.md` | What may be composed with what — manifests, capabilities, traits, pools, CMDB, resolution |
 | `terramate-outputs-sharing-architecture.md` | How it is generated and applied — generators, outputs sharing, IAM, policy, CI/CD, five runtime guides |
 | `developer-guide.md` | For application developers — branching, versioning, build, rollback, and the three languages |
-| `risk-register.md` | 57 risks by domain (56 active), reviewed at each phase gate |
+| `risk-register.md` | 60 risks by domain (57 active), reviewed at each phase gate |
 | `glossary.md` | Every technical term in the documents above, with its definition |
 | `proposals/sonarqube-qa/` | Design proposal, in two stages: elements and dependencies, then the layer-5 `sonarqube` archetype and its implementation plan |
 | `proposals/sonarqube-qa-cloudsql/` | SonarQube's `qa` path with the default `database-platform` provider: its PostgreSQL on its own Cloud SQL instance, through the Auth Proxy sidecar |

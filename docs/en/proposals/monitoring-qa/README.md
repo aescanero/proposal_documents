@@ -43,7 +43,7 @@ AM §3 puts cloud-native monitoring in **layer 1b**, in parallel with the runtim
 | Pod, node and application metrics; alerts on them | Layer 3 (Prometheus + Alertmanager) | That is where consumers' `PodMonitor`s and `PrometheusRule`s live |
 | Application logs | Layer 3 (Fluent Bit → Loki) | S1 D7 |
 | Managed service metrics (Cloud SQL) | Layer 1b, but **the alerts are created by each consumer's `data` stack** (Cloud SQL variant §8) | Native Cloud Monitoring metrics; nothing to operate |
-| GCP audit logs and their alerts (secrets, authorised networks, KMS) | Layer 1b | They do not pass through the cluster; S1 §4.7 |
+| GCP audit logs and their alerts (secrets, cluster access, KMS) | Layer 1b | They do not pass through the cluster; S1 §4.7 |
 | **Is Prometheus alive? And Alertmanager?** | **Layer 1b** (§6) | If the alerting system goes down, it cannot report that it has gone down |
 | Notification channel | Layer 1b creates and publishes it (`notification_channel_id`); Alertmanager delivers to the **same destination** | One single place where every alert arrives |
 | GKE control plane and system component logs | Cloud Logging (layer 1b) | GKE collects them; there is no in-cluster alternative |
@@ -373,7 +373,7 @@ Source: [`diagrams/02-stacks-arquetipo.mmd`](diagrams/02-stacks-arquetipo.mmd)
 | Resource | Note |
 |---|---|
 | Notification channels, with the destination configured at deployment (§16) | Output `notification_channel_id` (Cloud SQL variant §8) |
-| Log-based alerts | Secret reads outside the list (ESO §9.2), changes to authorised networks outside the intermediate service (S1 §4.13), destruction of KMS key versions (S1 §4.14) |
+| Log-based alerts | Secret reads outside the list (ESO §9.2), access to the cluster through the DNS endpoint by principals outside the list (S1 §4.13, landing zone DZ4), destruction of KMS key versions (S1 §4.14) |
 | Edge alerts | Backend 5xx as seen from the GLB, p95 latency, certificate state other than `ACTIVE`, Cloud Armor denial spikes, Adaptive Protection (`edge-qa` proposal §7); exhausted NAT ports (`network-qa` proposal §3) |
 | Shared project | `gcp-qa-cloudmon` lives in the non-prod project alongside the other environments: every alert filters by the `environment` label or the resource's `qa-` prefix, and its channels are `qa`'s. Without that filter, a `dev` failure pages `qa` |
 | Dead-man's switch | §6 |

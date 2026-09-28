@@ -58,7 +58,7 @@ T=dict(
   [("general","n2-standard-8",["1-3 por zona","≈ 13 vCPU pedidas","aguanta perder una zona"]),
    ("dedicados","sonar y kafka",["taint dedicated=pool","sysctl en sonar","solo su dueño tolera"]),
    ("disco","standard-rwo",["pd-balanced en n2","hyperdisk no en N2 (VN1)","global storage_class"])],
-  [("access","Redes autorizadas",["open / close por job","reconciliador 15 min","rol solo clusters.update"]),
+  [("endpoint","DNS del plano de control",["solo IAM","sin redes autorizadas","landing zone DZ4"]),
    ("upgrades","Surge 1/0 por pool",["qa una semana antes","PDB respetado 1 h","sonar: corte aceptado"]),
    ("baseline","platform-critical",["PriorityClass","capas 2b-4","sin expulsiones"])]],
  right="Provee", right_sub="cluster 2.5.0 · sysctl-max-map-count · …",

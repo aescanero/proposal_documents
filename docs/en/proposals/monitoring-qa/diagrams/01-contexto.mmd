@@ -21,7 +21,7 @@ flowchart LR
 
     subgraph L1B["Layer 1b · cloud-monitoring-gcp · gcp-qa-cloudmon"]
         direction TB
-        LBA["Log-based alerts<br/>secrets · authorised networks · KMS"]
+        LBA["Log-based alerts<br/>secrets · cluster access · KMS"]
         DMS["Dead-man's switch<br/>Prometheus and Alertmanager alive"]
         CSA["Cloud SQL alerts<br/>(created by each data stack)"]
         NC["Notification channel"]

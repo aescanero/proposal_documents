@@ -980,7 +980,7 @@ Nótese `global.platform.namespace` — esto es lo que permite que dos instancia
 | **Los rangos secundarios son inmutables** | Cambiar los CIDR de pods/servicios requiere recrear el cluster | Dimensiona generosamente en globals desde el primer día; calcula con `tm_cidrsubnet` para que sea revisable |
 | **El provider de Kubernetes necesita un cluster vivo en el momento del plan** | `tofu plan` en el stack de services falla si el cluster todavía no se ha aplicado | Usa `--mock-on-fail` para las previews de PR; acepta que un primer despliegue de un entorno nuevo requiere un apply escalonado (network → cluster → services) |
 | **`tofu output -json` en el stack de network requiere acceso de lectura al estado** | El job de CI que aplica el cluster debe leer el objeto de estado GCS del stack de network | Concede al job del cluster `roles/storage.objectViewer` sobre el prefijo de estado de network. Si network y cluster viven en proyectos distintos, esto es una concesión entre proyectos |
-| **Endpoints de cluster privados** | Si el plano de control es privado, el runner de CI no puede alcanzar `cluster_endpoint` | O ejecuta la CI en un runner privado dentro de la VPC, o autoriza la IP de salida del runner en `master_authorized_networks` |
+| **Endpoints de cluster privados** | Si el plano de control es privado, el runner de CI no puede alcanzar `cluster_endpoint` | O ejecuta la CI en un runner privado dentro de la VPC, o autoriza la IP de salida del runner en `master_authorized_networks`, o —en GKE, la opción de `qa`— usa el endpoint DNS del plano de control, alcanzable desde cualquier sitio y controlado solo por IAM (`landing-zone-qa` DZ4) |
 | **`cluster_ca` es base64** | Un mock de `"mock"` rompe `base64decode()` en el momento del plan | Usa un mock con una cadena base64 válida (`"bW9jaw=="`) |
 | **Protección contra borrado** | `deletion_protection = true` bloquea `tofu destroy` | Fíjala desde `global.cluster.deletion_protection`; `false` para demos, `true` para prod, reforzado con un `assert` |
 
@@ -991,7 +991,7 @@ Nótese `global.platform.namespace` — esto es lo que permite que dos instancia
 | Service account del nodo | SA dedicada con `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/stackdriver.resourceMetadata.writer`, `roles/artifactregistry.reader` | La SA de compute por defecto tiene `roles/editor`; cada nodo llevaría escritura a nivel de proyecto |
 | Workload Identity | Habilitado a nivel de cluster y en cada node pool | Sin ello, los pods caen en la SA del nodo y todos los tenants comparten una identidad |
 | Ocultación de metadatos | Endpoints de metadatos legacy deshabilitados (`metadata.disable-legacy-endpoints = true`) | Los endpoints legacy dejan que un pod lea directamente el token de la SA del nodo, anulando Workload Identity |
-| Plano de control | Cluster privado, `master_authorized_networks` restringido | |
+| Plano de control | Nodos privados; endpoint IP público desactivado y endpoint DNS solo IAM, o `master_authorized_networks` restringido | `landing-zone-qa` DZ4 |
 | Nodos | Nodos GKE blindados (shielded), Container-Optimized OS, secure boot, monitorización de integridad | |
 | Node pool | `enable_private_nodes = true`, sin IPs externas | |
 | Secretos | Cifrado de secretos a nivel de aplicación con una clave de Cloud KMS | Cifrado de etcd en reposo con una clave que controlas |
@@ -2430,6 +2430,8 @@ resource "google_service_account_iam_member" "apply" {
 
 **En el proyecto non-prod compartido**, `tf-apply-qa@` y `tf-apply-dev@` son identidades distintas, pero un rol concedido a nivel de proyecto alcanza a todos los entornos del proyecto. Concede a nivel de recurso donde el servicio lo admita (secretos, buckets, claves, cuentas de servicio, instancias de Cloud SQL con condiciones IAM sobre el prefijo del nombre); donde solo existe un rol de proyecto (`roles/container.admin`, `roles/compute.networkAdmin`), acepta que una identidad de apply no productiva puede tocar otro entorno no productivo, y apóyate en los prefijos de estado por entorno, CODEOWNERS y la puerta de entorno. Esa exposición nunca llega a `prod`, que es otro proyecto.
 
+**Dónde viven las identidades.** Las cuentas de servicio del pipeline (`tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@`) se crean en el proyecto de la landing zone, no en el del entorno: así una identidad de entorno no puede editar su propia política IAM ni la de otra. El acceso al estado es por prefijo, con una condición IAM sobre el bucket (`resource.name.startsWith("projects/_/buckets/<bucket-de-estado>/objects/<env>/")`), de modo que `tf-plan-qa@` lee el estado de los productores de `qa` y no el de `dev`. Las cuentas de servicio que reciben grants entre proyectos —la SA de nodos de un runtime, por ejemplo— también las crea la landing zone, para que la capa 0 nunca espere a la capa 2 (`landing-zone-qa` §5, §6.3).
+
 El claim `attribute.environment` solo está presente cuando el job del workflow declara `environment:`. Ligar la SA de apply a ese atributo significa que **el rol de apply es inalcanzable desde un job sin la puerta de entorno**, lo que hace que el control de required-reviewers de GitHub sea un límite de seguridad real en lugar de una conveniencia de UI.
 
 | Identidad | Roles | Alcance |
@@ -2651,7 +2653,7 @@ Nunca escribas un comodín en una condición de confianza de workload identity. 
 
 | Control | GKE | EKS | AKS | Cloud Run | ECS Fargate |
 |---|---|---|---|---|
-| Plano de control privado | Cluster privado + redes autorizadas | Endpoint privado + `public_access_cidrs` | Cluster privado + rangos de IP autorizados | n/a | n/a |
+| Plano de control privado | Cluster privado + endpoint DNS (solo IAM) o redes autorizadas | Endpoint privado + `public_access_cidrs` | Cluster privado + rangos de IP autorizados | n/a | n/a |
 | Egress de workload | Cloud NAT, sin IPs externas | NAT, `assign_public_ip=false` | NAT gateway, sin IPs públicas de nodo | `PRIVATE_RANGES_ONLY` | `assign_public_ip=false` |
 | Acceso privado a servicios | Rango PSA para Cloud SQL | Endpoints de VPC | Endpoints privados + zonas DNS privadas | PSA + Direct VPC egress | Endpoints de VPC |
 | Política este-oeste | NetworkPolicy default-deny | NetworkPolicy default-deny | NetworkPolicy (Cilium o Calico) | IAM servicio-a-servicio | Referencias a security groups |
@@ -3549,7 +3551,7 @@ El invariante de ordenamiento que antes dependía de un script de shell es ahora
 
 ## 15. Registro de riesgos
 
-El registro completo — 57 riesgos agrupados por dominio (56 activos; R28 retirado como duplicado de R26), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
+El registro completo — 60 riesgos agrupados por dominio (57 activos; R28 retirado como duplicado de R26, R38 y R39 retirados con el endpoint DNS del plano de control), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
 
 Los cinco sobre los que actuar primero:
 

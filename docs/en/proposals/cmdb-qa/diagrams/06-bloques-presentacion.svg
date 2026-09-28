@@ -156,7 +156,7 @@
 <text x="1038" y="673" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#15803d" text-anchor="start">levels 2-3</text>
 <text x="1006" y="718" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">Not on qa</text>
 <circle cx="1012" cy="741" r="3" fill="#15803d"/>
-<text x="1022" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">≈ 51 stacks: jq</text>
+<text x="1022" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">≈ 50 stacks: jq</text>
 <circle cx="1012" cy="765" r="3" fill="#15803d"/>
 <text x="1022" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">DuckDB on demos</text>
 <circle cx="1012" cy="789" r="3" fill="#15803d"/>

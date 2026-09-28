@@ -59,7 +59,7 @@ T=dict(
    ("cmdb-observed","Its own branch",["bot only","does not trigger deploy","drift · destroy"])],
   [("publish","Joins both halves",["index.json","graph.jsonld","warns when stale"]),
    ("cmdb-latest","Release asset",["private","read token","no Pages"]),
-   ("levels 2-3","Not on qa",["≈ 51 stacks: jq","DuckDB on demos","graph: if a query needs it"])],
+   ("levels 2-3","Not on qa",["≈ 50 stacks: jq","DuckDB on demos","graph: if a query needs it"])],
   [("destroy","Counting by edges",["not by name","outside the set: stop","a person approves"]),
    ("contract","In preview",["consumes ⊂ produces","R6 before the merge","names the consumer"]),
    ("impact","PR comment",["transitive consumers","of each producer","R11"])]],

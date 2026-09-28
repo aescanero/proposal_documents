@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 1 |
+| **Status** | Proposal · revision 2 · DZ4, DZ5 and DZ6 approved and applied (§13) |
 | **Scope** | What layer 0 has to provide for `qa` to start: the landing zone's own bootstrap, projects and folders, org policies, the non-prod project's APIs, Cloud KMS keys, Artifact Registry, GitHub Actions federation and pipeline identities, the state bucket, the parent DNS zone and the delegated zone, the public identifier, the global address pool, Binary Authorization, budgets. `hub` and `prod` only where they change something |
 | **Why now** | Every `qa` proposal leaves it requirements (§0.1) and none describes it. It is the first thing applied and the only thing bootstrapped by hand |
 | **Basis** | S1 §4.13 (control plane access), §4.14 (KMS), §4.15 (separate VPC); architecture §11.2 (pipeline identity), §11.4 (segregation), §11.5 (state); AM §3 (layers), §7 (binding), §9.2 (global pool). What is already there is not repeated |
@@ -120,7 +120,7 @@ S1 §4.13 decided to open the control plane's authorised networks through an int
 | B. A policy exception on `nonprod` | `run.allowedIngress` also admits `all` on the folder | Any Cloud Run service in the project can publish itself without a load balancer or Cloud Armor: R14 comes back for all of them |
 | C. A load balancer in front of `access` | A GLB with a serverless backend | A load balancer, a certificate and a Cloud Armor policy for a function that opens and closes an IP |
 
-**Recommendation (DZ4):** A. It resolves the clash and also removes the most fragile part of S1 §4.13. It stays a pending decision because it changes a proposal already closed.
+**Decision (DZ4, approved):** A. It resolves the clash and also removes the most fragile part of S1 §4.13, which is revised; R38 and R39 are retired.
 
 ---
 
@@ -194,7 +194,7 @@ The landing zone grants `artifactregistry.reader` to `qa`'s node SA and `cryptoK
 | B. The `gke` stack makes the grant | `qa`'s identity would need `setIamPolicy` on a landing zone repository, and with it could grant access to other environments' images |
 | C. A project-level grant (`artifactregistry.reader` on `disasterproject-lz`) | Any SA with that role reads every repository, including those not meant for it |
 
-**Recommendation (DZ5):** A. It changes `gke-qa` §3: the node SA becomes a landing zone global.
+**Decision (DZ5, approved):** A. `gke-qa` §3 receives the node SA as a landing zone global.
 
 ---
 
@@ -301,7 +301,7 @@ assert {
 | VZ2 | Forced service agents | The `gke-secrets` grant is applied before the first cluster, without "service account does not exist" |
 | VZ3 | Federation | `tf-apply-qa@` cannot be assumed from a job without `environment: qa`; `tf-plan-qa@` cannot read the bucket's `dev/` prefix |
 | VZ4 | Shared Binary Authorization | Two non-production clusters with different rules; a landing zone `apply` alters neither; a cluster without a rule admits no pods |
-| VZ5 | Control plane DNS endpoint (if DZ4 A is chosen) | `helm`, `kubernetes` and `kubectl` work from a hosted runner with IAM only; no authorised networks |
+| VZ5 | Control plane DNS endpoint (DZ4) | `helm`, `kubernetes` and `kubectl` work from a hosted runner with IAM only; no authorised networks |
 | VZ6 | Org policies | `run.allowedIngress` rejects a service with `ingress=all`; `compute.restrictVpcPeering` admits the PSA connection (= VW5) |
 
 ---
@@ -322,11 +322,11 @@ assert {
 
 | Document | Change | Status |
 |---|---|---|
-| `gke-qa` proposal §3 and §7 | The node SA `gke-nodes-qa@` is created by the landing zone and arrives as a global (DZ5); the Binary Authorization rule is written by the landing zone (DZ6) | **Proposed** |
-| S1 §4.13 and the `gke-qa` proposal (stack `access`) | Control plane DNS endpoint instead of the `access` service and authorised networks (DZ4) | **Proposed** |
-| `network-qa` §1.1 | Service agents forced with `google_project_service_identity` | **Proposed** |
-| Architecture §11.2 | Pipeline identities in the landing zone project; per-prefix IAM condition on the state bucket | **Proposed** |
-| `risk-register.md` | RZ1–RZ3 as R58–R60 | **Proposed** |
+| `gke-qa` proposal §3 and §7 | The node SA `gke-nodes-qa@` is created by the landing zone and arrives as a global (DZ5); the Binary Authorization rule is written by the landing zone (DZ6) | **Applied** |
+| S1 §4.13 and the `gke-qa` proposal (stack `access`) | Control plane DNS endpoint instead of the `access` service and authorised networks (DZ4) | **Applied** |
+| `network-qa` §1.1 | Service agents forced with `google_project_service_identity` | **Applied** |
+| Architecture §11.2 | Pipeline identities in the landing zone project; per-prefix IAM condition on the state bucket | **Applied** |
+| `risk-register.md` | RZ1–RZ3 as R58–R60 | **Applied** |
 
 ---
 
@@ -337,9 +337,9 @@ assert {
 | DZ1 | Bootstrap | **Proposed** | A bootstrap stack applied once by hand, with state migrated afterwards; a runbook in the repository | The console; a script outside the repository |
 | DZ2 | Projects | **Proposed** | `lz`, `nonprod`, `prod` in three folders; a `nonprod-2` when limits are reached | One project per environment |
 | DZ3 | Identities | **Proposed** | In the landing zone project; per-resource grants; state with a per-prefix condition | In the environment's project |
-| DZ4 | Control plane access | **Proposed** — reopens S1 §4.13 | DNS endpoint, IAM only | A `run.allowedIngress` exception; a load balancer in front of `access` |
-| DZ5 | SAs with cross-project grants | **Proposed** | Created by the landing zone | Created by layer 2 (an upward edge) |
-| DZ6 | Binary Authorization | **Proposed** | The project's policy written only by the landing zone; `ALWAYS_DENY` by default | Each `gke` writes its rule |
+| DZ4 | Control plane access | **Approved** — revises S1 §4.13 | DNS endpoint, IAM only | A `run.allowedIngress` exception; a load balancer in front of `access` |
+| DZ5 | SAs with cross-project grants | **Approved** | Created by the landing zone | Created by layer 2 (an upward edge) |
+| DZ6 | Binary Authorization | **Approved** | The project's policy written only by the landing zone; `ALWAYS_DENY` by default | Each `gke` writes its rule |
 | DZ7 | Budgets | **Proposed** | Per environment, filtered by the `environment` label | One per project |
 
 ---
@@ -352,6 +352,6 @@ assert {
 | **1 · Organisation** | Folders, projects, org policies, APIs and agents; **VZ2**, **VZ6** | A `plan` of `gcp-qa-network` with no policy or API errors | 1 day |
 | **2 · Pipeline** | Federation, identities, bucket with conditions; **VZ3** | A `qa` PR plans with `tf-plan-qa@`; `apply` only from the Environment | 1 day |
 | **3 · Shared services** | KMS, Artifact Registry and image copying, DNS and identifier, Binary Authorization, budgets; **VZ4** | `qa` fully onboarded (§10) | 2 days |
-| **4 · Access** | If DZ4 A is approved: DNS endpoint; **VZ5** | `helm` and `kubectl` against the `qa` cluster from a hosted runner | 0.5 days |
+| **4 · Access** | DNS endpoint (DZ4); **VZ5** | `helm` and `kubectl` against the `qa` cluster from a hosted runner | 0.5 days |
 
 Five days for one person. It is phase 0 of S1 §6: it blocks everything else.

@@ -771,7 +771,7 @@ archetypectl resolve --dry-run                     # closure, traits, claims →
 terramate generate && git diff --exit-code          # G0
 conftest test ...                                   # G1
 checkov -d stacks/archetypes/sonarqube              # G2
-# the runner's IP is opened by the intermediate service (S1 §4.13)
+# API server through the control plane DNS endpoint, IAM only (S1 §4.13)
 terramate script run --tags instance:sonarqube-main --changed tofu preview   # sharing ON, mocks ON
 conftest/checkov over plan.json                     # G3
 ```

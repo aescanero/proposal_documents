@@ -43,7 +43,7 @@ AM §3 pone la monitorización nativa de la nube en la **capa 1b**, en paralelo 
 | Métricas de pods, nodos y aplicaciones; alertas sobre ellas | Capa 3 (Prometheus + Alertmanager) | Es donde están los `PodMonitor` y `PrometheusRule` de los consumidores |
 | Logs de las aplicaciones | Capa 3 (Fluent Bit → Loki) | D7 de E1 |
 | Métricas de servicios gestionados (Cloud SQL) | Capa 1b, pero **las alertas las crea el stack `data` de cada consumidor** (variante Cloud SQL §8) | Métricas nativas de Cloud Monitoring; nada que operar |
-| Logs de auditoría de GCP y sus alertas (secretos, redes autorizadas, KMS) | Capa 1b | No pasan por el cluster; E1 §4.7 |
+| Logs de auditoría de GCP y sus alertas (secretos, accesos al cluster, KMS) | Capa 1b | No pasan por el cluster; E1 §4.7 |
 | **¿Está vivo Prometheus? ¿Y Alertmanager?** | **Capa 1b** (§6) | Si el sistema de alertas cae, no puede avisar de que ha caído |
 | Canal de notificación | Capa 1b lo crea y lo publica (`notification_channel_id`); Alertmanager entrega al **mismo destino** | Un solo sitio donde llegan todas las alertas |
 | Logs del plano de control y de componentes del sistema de GKE | Cloud Logging (capa 1b) | Los recoge GKE; no hay alternativa en el cluster |
@@ -373,7 +373,7 @@ Fuente: [`diagrams/02-stacks-arquetipo.mmd`](diagrams/02-stacks-arquetipo.mmd)
 | Recurso | Nota |
 |---|---|
 | Canales de notificación, con el destino que se configure al desplegar (§16) | Salida `notification_channel_id` (variante Cloud SQL §8) |
-| Alertas basadas en logs | Lectura de secretos fuera de la lista (ESO §9.2), cambios en redes autorizadas fuera del servicio intermedio (E1 §4.13), destrucción de versiones de clave KMS (E1 §4.14) |
+| Alertas basadas en logs | Lectura de secretos fuera de la lista (ESO §9.2), accesos al cluster por el endpoint DNS de principales fuera de la lista (E1 §4.13, landing zone DZ4), destrucción de versiones de clave KMS (E1 §4.14) |
 | Alertas del borde | 5xx de backend vistos desde el GLB, latencia p95, estado del certificado distinto de `ACTIVE`, saltos de denegaciones de Cloud Armor, Adaptive Protection (propuesta `edge-qa` §7); puertos de NAT agotados (propuesta `network-qa` §3) |
 | Proyecto compartido | `gcp-qa-cloudmon` vive en el proyecto non-prod junto a los demás entornos: cada alerta filtra por la etiqueta `environment` o por el prefijo `qa-` del recurso, y sus canales son los de `qa`. Sin ese filtro, un fallo de `dev` avisa a `qa` |
 | Dead-man's switch | §6 |

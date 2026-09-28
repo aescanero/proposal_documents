@@ -61,7 +61,7 @@ Fuente: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 | `secretmanager`, `iamcredentials`, `sts` | ESO, Workload Identity |
 | `logging`, `monitoring` | GKE (`SYSTEM_COMPONENTS`), capa 1b |
 | `certificatemanager` | Borde |
-| `run`, `cloudscheduler` | Stack `access` de GKE (E1 §4.13) |
+| Agentes de servicio | Forzados con `google_project_service_identity` antes del primer cluster, para que la landing zone pueda concederles roles sobre claves (landing zone §2.1). `run` y `cloudscheduler` ya no hacen falta: el stack `access` de GKE desapareció (landing zone DZ4) |
 | `binaryauthorization`, `containeranalysis` | GKE DN10 |
 | `cloudkms` | El cifrado del estado y de etcd usa claves de la landing zone; se habilita aquí por si las llamadas cuentan contra el proyecto que las hace **(verificar)** |
 

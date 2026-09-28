@@ -30,7 +30,7 @@ Nada de este documento reabre decisiones de `CLAUDE.md`. Donde SonarQube choca c
 | Secretos | **GCP Secret Manager**; **OpenBao no se usa en `qa`** | ESO como interfaz en el cluster, Secret Manager como backend (lo que AM §14.2 ya asigna a GCP). Sin unseal, sin Raft, sin recovery keys (§4.3) |
 | Entra ID | Lo gestiona el **equipo de identidad** | App registration, app roles y asignación de grupos son suyos; la plataforma solo consume el claim `roles` (§4.6) |
 | Filtrado por IP | **No** en SonarQube | D3 cerrada: SonarQube público tras Cloud Armor sin listas de IP |
-| Acceso del pipeline al cluster | La IP del runner se **abre en las redes autorizadas** de GKE al empezar y se **cierra** al terminar | Procedimiento aceptado; cuatro condiciones para que sea seguro (§4.13) |
+| Acceso del pipeline al cluster | Por el **endpoint DNS** del plano de control, solo IAM | Revisado por la landing zone DZ4 (§4.13) |
 
 Preguntas que siguen abiertas: §10.
 
@@ -95,7 +95,7 @@ Todo se construye de cero. **Registro** indica si la capability existe en `regis
 | 0 | *(identidad CI)* | Workload Identity Federation para GitHub Actions (§11.2) | cloud | Despliegue de la plataforma sin claves | — |
 | 1 | `network` | **VPC propia** de `qa`, subredes, Cloud NAT, **Private Google Access** | cloud | Nodos, pods, acceso a APIs de Google sin internet | ✓ |
 | 1 | `env-edge` | Backend service + URL map + proxy + forwarding rule **del propio entorno**, con el NEG en la VPC de `qa` | cloud | Entrada hacia el NEG del Gateway | ✓ |
-| 1b | `cloud-observability` | Cloud Logging **reducido** a auditoría y plano de control de GKE, con alertas basadas en logs | cloud | Alertas de acceso a secretos, redes autorizadas y KMS (§4.7) | ✓ |
+| 1b | `cloud-observability` | Cloud Logging **reducido** a auditoría y plano de control de GKE, con alertas basadas en logs | cloud | Alertas de acceso a secretos, accesos al cluster y KMS (§4.7) | ✓ |
 | 2 | `cluster` | **GKE Standard** regional, node pools `general` y `sonar` | cloud | Donde corre; `sonar` aporta el sysctl | ✓ (+ trait) |
 | 2b | `policy` | **OPA Gatekeeper** | Apache-2.0 | PSS `restricted`, etiquetas, registros permitidos | ✓ |
 | 3 | `ingress` | **Envoy Gateway** (`gateway-envoy-gke`) | Apache-2.0 | `HTTPRoute`, políticas de tráfico | ✓ |
@@ -123,7 +123,7 @@ Herramientas de plataforma sin cambios: Terramate, OpenTofu, conftest, Checkov.
 
 | Elemento | Propuesta | Motivo |
 |---|---|---|
-| Cluster | GKE Standard **regional**, **nodos privados**, endpoint del plano de control con redes autorizadas vacías por defecto (§4.13), Workload Identity, release channel `STABLE`, `deletion_protection: true` (§12.6) | Línea base de §5.7 |
+| Cluster | GKE Standard **regional**, **nodos privados**, endpoint IP público desactivado y endpoint DNS solo IAM (§4.13), Workload Identity, release channel `STABLE`, `deletion_protection: true` (§12.6) | Línea base de §5.7 |
 | Logs y métricas del sistema | `logging_config`: solo `SYSTEM_COMPONENTS`; `monitoring_config`: `SYSTEM_COMPONENTS` y `managed_prometheus.enabled = false` | Logs de cargas de trabajo solo en Loki y sin doble recogida de métricas (propuesta de monitorización §1) |
 | Gateway API de GKE | `gateway_api_config { channel = "CHANNEL_DISABLED" }` | Los CRDs los instala el arquetipo `gateway` en el canal estándar. Con el de GKE, GKE los gestiona y fija su versión, y aparecen las `GatewayClass` `gke-l7-*`, que crean balanceadores sin Cloud Armor (propuesta de Envoy Gateway §3) |
 | Pods por nodo | 64 (default de plataforma) | No aplica la pregunta abierta de Autopilot |
@@ -132,7 +132,7 @@ Herramientas de plataforma sin cambios: Terramate, OpenTofu, conftest, Checkov.
 | Sysctl | `node_config.linux_node_config.sysctls = { "vm.max_map_count" = "524288" }` | Elimina el init container privilegiado |
 | `fs.file-max` | Sin acción: el kernel lo dimensiona con la RAM y en 32 GB supera 131072 de sobra | Verificar en V1 |
 | StorageClass | El global `storage_class` del contrato `cluster`: `standard-rwo` (`pd-balanced`, `WaitForFirstConsumer`, `allowVolumeExpansion: true`) | La serie N2 no admite Hyperdisk Balanced; `pd-balanced` da 3000 IOPS de base más 6 por GiB (propuesta de GKE §6, DN3) |
-| Acceso del pipeline al plano de control | Endpoint público del plano de control con **redes autorizadas vacías por defecto**; la IP del runner se abre y cierra por job | Decisión del equipo (§4.13); cubre R18 |
+| Acceso del pipeline al plano de control | Endpoint DNS del plano de control, solo IAM; endpoint IP público desactivado | Landing zone DZ4 (§4.13); cubre R18 |
 
 **Por qué no Autopilot.** No permite configurar sysctl de nodo ni contenedores privilegiados. Se propone el trait **`sysctl-max-map-count`** en `cluster`: `gke` lo tiene, `gke-autopilot` no, y un binding equivocado falla en resolución en vez de en el primer arranque con `max virtual memory areas vm.max_map_count [65530] is too low`.
 
@@ -274,7 +274,7 @@ Con 200 proyectos, los permisos **solo** por plantillas: un proyecto nuevo nace 
 | Certificados | cert-manager | CA interna o certificado de Envoy < 14 días |
 | Secretos | Métricas de ESO | `ExternalSecret` sin sincronizar > 15 min (un secreto rotado en Secret Manager no llega al pod). **Regla de plataforma** para todos los namespaces, declarada por el arquetipo de monitorización (propuesta de ESO §9.2), no por SonarQube |
 
-Las alertas que nacen de **logs de auditoría de GCP** no pasan por Prometheus: son alertas basadas en logs de la capa 1b (`cloud-observability`). Tres: lectura de un secreto por un principal fuera de la lista de lectores autorizados (§4.3), cambios en las redes autorizadas fuera del servicio intermedio (§4.13) y cualquier operación de destrucción sobre claves KMS (§4.14). Por eso la capa 1b no se reduce a cero.
+Las alertas que nacen de **logs de auditoría de GCP** no pasan por Prometheus: son alertas basadas en logs de la capa 1b (`cloud-observability`). Tres: lectura de un secreto por un principal fuera de la lista de lectores autorizados (§4.3), accesos al cluster por el endpoint DNS de principales fuera de la lista (§4.13) y cualquier operación de destrucción sobre claves KMS (§4.14). Por eso la capa 1b no se reduce a cero.
 
 `PodMonitor` y `PrometheusRule` van en el chart del arquetipo (CRD en plan, R24); de ahí el trait **`prometheus-operator-crds`**. Grafana entra por OIDC con Keycloak, sin ciclo.
 
@@ -360,22 +360,19 @@ V4 mide el tiempo real por tarea con proyectos representativos antes de fijar na
 
 ### 4.13 Acceso del pipeline al plano de control de GKE
 
-Procedimiento decidido: el endpoint del plano de control es público pero con **redes autorizadas vacías** por defecto; cada job de GitHub Actions que necesita la API de Kubernetes añade la IP de su runner, ejecuta y la retira. Cubre R18 sin runners self-hosted.
+**Revisado por la landing zone (DZ4).** La versión anterior abría la IP del runner en las redes autorizadas del plano de control a través de un servicio intermedio en Cloud Run. La org policy `run.allowedIngress` de la landing zone, que protege R14, deja ese servicio inalcanzable desde los runners alojados; y el procedimiento dependía de cuatro condiciones frágiles: la carrera entre jobs que reemplazan la lista entera, las IPs huérfanas, la deriva con OpenTofu y el permiso `container.clusters.update`. Se sustituye por el **endpoint DNS del plano de control**, que esta sección ya dejaba anotado como alternativa.
 
 ![Acceso del runner](diagrams/10-acceso-runner.svg)
 
-Funciona, con cuatro condiciones. Sin ellas falla de formas poco evidentes:
+Fuente: [`diagrams/10-acceso-runner.mmd`](diagrams/10-acceso-runner.mmd)
 
-| # | Problema | Condición |
-|---|---|---|
-| 1 | **Carrera entre jobs.** La lista de redes autorizadas se actualiza **reemplazándola entera**: dos jobs simultáneos leen, añaden su IP y escriben, y el segundo borra la del primero, que pierde el acceso a mitad de un `apply` | Serializar: `concurrency: { group: gke-qa-api, cancel-in-progress: false }` en **todos** los workflows que abren la IP. Un job espera al anterior |
-| 2 | **IP huérfana.** Un runner que muere o un job cancelado a destiempo no ejecuta el paso de cierre | Cierre en un paso `if: always()` **y** un reconciliador programado (cada 15 min) que retira toda entrada con más de 60 min. Cada entrada lleva `display_name = gha-<run_id>-<epoch>` para poder caducarla |
-| 3 | **Deriva con OpenTofu.** Si `gcp-qa-gke` gestiona `master_authorized_networks_config`, un `apply` de ese stack revierte la IP del propio runner a mitad de ejecución, y cada `plan` muestra diferencias | `lifecycle { ignore_changes = [master_authorized_networks_config] }` en el cluster: la lista la gestiona solo el procedimiento; la línea base (vacía) se fija en la creación |
-| 4 | **Escalada de privilegios.** Abrir la IP requiere `container.clusters.update`, que permite cambiar **cualquier** ajuste del cluster. La identidad de *preview* (PR, cualquier rama, §11.2) también la necesita, porque el plan de los proveedores `helm`/`kubernetes` consulta la API | **No dar `clusters.update` a las identidades del pipeline.** Un servicio intermedio mínimo (Cloud Run function) con esa permisión expone solo `open(ip)` / `close(ip)`, valida que la IP sea una /32, fija la caducidad y registra quién la pidió. El pipeline lo invoca con su identidad OIDC de GitHub |
-
-Aun así, abrir la IP no autentica a nadie: la API sigue exigiendo IAM. Las redes autorizadas son una segunda barrera, no la primera. Y la IP de un runner alojado es compartida con otros clientes de GitHub durante la ventana abierta, aunque sin credenciales de IAM no obtienen nada.
-
-La alternativa que haría innecesario todo lo anterior es el **endpoint DNS del plano de control** de GKE, controlado solo por IAM y sin listas de IP. Queda anotada por si el reconciliador o el servicio intermedio resultan más costosos de operar de lo previsto.
+| Pieza | Diseño |
+|---|---|
+| Endpoint | Nombre DNS de Google para el API server, alcanzable desde un runner alojado y controlado **solo por IAM**. El endpoint IP público queda desactivado (propuesta `gke-qa` §2.2) |
+| Quién entra | `container.clusters.connect` sobre este cluster para `tf-plan-qa@`, `tf-apply-qa@`, `tf-destroy-qa@` y el grupo `gke-qa-admins@`; después, RBAC de Kubernetes |
+| Qué desaparece | El servicio intermedio, el reconciliador de IPs, el grupo de `concurrency` para la API de GKE, el `ignore_changes` sobre las redes autorizadas y `container.clusters.update` en cualquier identidad del pipeline. R38 y R39 quedan retirados |
+| Qué se pierde | La segunda barrera, la de red: IAM pasa a ser la única. Se compensa con una alerta de capa 1b sobre accesos al cluster de principales fuera de esa lista (§4.7); en `prod` se valora además VPC Service Controls |
+| Verificación | `helm`, `kubernetes` y `kubectl` funcionan desde un runner alojado (landing zone VZ5) |
 
 ### 4.14 Claves de Cloud KMS
 
@@ -430,7 +427,7 @@ Lo que la documentación **no** dice: qué stack crea las claves, en qué capa, 
 | Zona `tqbvzkr.disasterproject.com` | En `disasterproject-nonprod`, **creada por la landing zone** junto con la delegación desde `disasterproject.com` y el `DS` de DNSSEC; el entorno escribe los registros con `dns.admin` sobre esa zona | Así la capa 0 no lee name servers de la capa 1, y zona, delegación y `DS` no se desincronizan (propuesta `edge-qa` DL2) |
 | Zona privada `qa.internal` | Cloud DNS **privada** en `disasterproject-nonprod`, enlazada solo a la VPC de `qa`; la crea el stack de red y cada arquetipo escribe sus registros bajo `<namespace>.qa.internal` | Nombres para clientes de la VPC fuera del cluster (propuesta de Kafka §6.3). `.internal` está reservado para uso privado: no resuelve fuera de la VPC, ni por el peering con el hub salvo que se enlace allí a propósito |
 | KMS, Artifact Registry, WIF de GitHub | Proyecto de landing zone | Permisos entre proyectos: agente de GKE de `disasterproject-nonprod` sobre la clave `gke-secrets`; SA de nodos lectora del registro; identidades de pipeline por WIF |
-| Plano de control de GKE | Endpoint público con redes autorizadas vacías; nodos privados en la VPC de `qa` | Acceso del pipeline según §4.13 |
+| Plano de control de GKE | Endpoint DNS solo IAM, endpoint IP público desactivado; nodos privados en la VPC de `qa` | Acceso del pipeline según §4.13 |
 | Egress | Cloud NAT de `qa` | Keycloak → Entra ID; Cloud Armor y el LB no lo usan |
 | APIs de Google (Secret Manager, GCS, Artifact Registry, KMS) | Private Google Access en las subredes de `qa` | Sin NAT ni internet |
 | Peering con el hub | **No se necesita para SonarQube** | Ningún flujo de §4.8 cruza al hub. Si más adelante `qa` necesita on-premise u otro servicio del hub, se añade el peering sabiendo que no es transitivo |
@@ -448,7 +445,7 @@ Direccionamiento: una `/17` del bloque permanente `10.4.0.0/14` por resolución 
 | Cuenta de servicio de nodos | Dedicada, con `artifactregistry.reader`, logging y monitoring writer | §5.7 |
 | Workload Identity | Principal exacto por namespace y KSA | R15 |
 | Pipeline de plataforma | WIF de GitHub con `attribute_condition` sobre repo y environment exactos | §11.2, R12 |
-| Acceso a la API de GKE | Redes autorizadas abiertas por job a través del servicio intermedio | §4.13, R18 |
+| Acceso a la API de GKE | Endpoint DNS del plano de control, solo IAM | §4.13, R18 |
 | Región | `europe-west1` | Contexto (§0) |
 | KMS | Key ring `qa` regional en el proyecto de landing zone, sin capability, protegido frente a destrucción | §4.14 |
 | Proyecto | `disasterproject-nonprod`, uno por entorno | §0, §4.15 |
@@ -657,7 +654,7 @@ Añadidos en `registry/traits.yaml`, con el `enum` de `schemas/archetype-manifes
 | D8 | Registro de imágenes | **Cerrada** | Artifact Registry | Harbor |
 | D9 | Tokens de CI | **Cerrada** | Token de proyecto por repo, con caducidad, creado por onboarding automatizado | Un token global de análisis como secreto de organización: más simple, pero una fuga da acceso a los 200 proyectos |
 | D10 | DNS del entorno | **Cerrada** | Wildcard + certificado wildcard; `dns` sin enlazar | external-dns por hostname |
-| D11 | Acceso del pipeline a GKE | **Cerrada** | Apertura temporal de la IP del runner, con las condiciones de §4.13 | Endpoint DNS del plano de control |
+| D11 | Acceso del pipeline a GKE | **Revisada** por la landing zone DZ4 | Endpoint DNS del plano de control, solo IAM | Apertura temporal de la IP del runner (versión anterior de §4.13) |
 | D12 | Grupos de Entra ID | **Cerrada** | App roles | Claim `groups` (GUIDs y overage) |
 
 ---
@@ -678,9 +675,9 @@ Incorporados a `docs/risk-register.md`: los genéricos de plataforma en su domin
 | R51 | **Token global filtrado** desde un repo | Media si se elige | Alta | Tokens de proyecto (D9) |
 | R52 | **Upgrade con migración de BD sin retorno** | Media | Alta | Backup CNPG verificado antes; rollback = restaurar BD + imagen anterior (DG §6) |
 | R53 | **Caída de la zona** del PVC | Baja | Media | Aceptado en `qa`; disco HA como opción (§4.1) |
-| R38 | **Carrera en redes autorizadas**: un job borra la IP de otro | Alta sin serializar | Media — `apply` cortado a medias | Grupo de `concurrency` único para la API de GKE (§4.13) |
-| R38 | **IP de runner olvidada abierta** | Media | Baja — IAM sigue protegiendo | `if: always()` + reconciliador con caducidad de 60 min |
-| R39 | **`container.clusters.update` en la identidad de preview** | Alta si se hace por la vía directa | Crítico — cualquier PR puede reconfigurar el cluster | Servicio intermedio con permiso mínimo (§4.13) |
+| R38 | *Retirado*: sin redes autorizadas no hay carrera (landing zone DZ4) | — | — | — |
+| R38 | *Retirado*: sin IP del runner que abrir, no hay IP olvidada (landing zone DZ4) | — | — | — |
+| R39 | *Retirado*: ninguna identidad necesita `container.clusters.update` (landing zone DZ4) | — | — | — |
 | R43 | **Usuario dado de baja en Entra ID conserva tokens** en SonarQube | Media | Media | Reconciliación diaria; sin tokens personales en CI |
 | R41 | **Destrucción de `tofu-state`** | Baja | Crítico — estado ilegible | Sin permisos de destroy en pipelines, `prevent_destroy`, org policy de duración mínima (§4.14) |
 | R42 | **Caducidad de la credencial de Keycloak en Entra ID** | Media | Alta — nadie puede entrar | Certificado en vez de secreto; alerta 30 días antes de la caducidad, dirigida al equipo de identidad |

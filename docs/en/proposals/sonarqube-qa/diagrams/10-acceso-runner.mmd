@@ -1,21 +1,17 @@
 sequenceDiagram
     autonumber
-    participant GHA as GitHub Actions job<br/>concurrency: gke-qa-api
+    participant GHA as GitHub Actions job
     participant WIF as Workload Identity Federation
-    participant BRK as Intermediate service<br/>(Cloud Run function)
-    participant GKE as GKE · authorized networks
-    participant REC as Reconciler<br/>(every 15 min)
+    participant DNS as GKE · DNS endpoint<br/>(IAM only)
+    participant K8S as API server · RBAC
+    participant AUD as Layer 1b<br/>(audit logs)
 
-    Note over GHA: waits if another job holds the gke-qa-api group
     GHA->>WIF: OIDC token (exact repo + environment)
-    WIF-->>GHA: preview or deploy identity<br/>WITHOUT container.clusters.update
-    GHA->>BRK: open(runner ip /32)
-    BRK->>BRK: validates /32, records run_id
-    BRK->>GKE: adds gha-<run_id>-<epoch>
-    GHA->>GKE: terramate run -- tofu plan / apply<br/>(helm, kubernetes)
-    alt final step if: always()
-        GHA->>BRK: close(ip)
-        BRK->>GKE: removes the entry
-    else runner died
-        REC->>GKE: removes entries older than 60 min
-    end
+    WIF-->>GHA: tf-plan-qa@ or tf-apply-qa@<br/>WITHOUT container.clusters.update
+    GHA->>DNS: terramate run -- tofu plan / apply<br/>(helm, kubernetes) with a Google token
+    DNS->>DNS: IAM: container.clusters.connect on this cluster
+    DNS->>K8S: authenticated request
+    K8S-->>GHA: response per RBAC
+    DNS-->>AUD: access log
+    AUD->>AUD: alert if the principal is not on the list
+    Note over GHA,DNS: no authorised networks, no intermediate service,<br/>no concurrency for the API (landing zone DZ4)

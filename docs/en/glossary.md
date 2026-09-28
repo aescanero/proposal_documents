@@ -552,7 +552,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 
 ---
 
-## 26. Risk register (`risk-register.md`) — 57 risks by domain (56 active)
+## 26. Risk register (`risk-register.md`) — 60 risks by domain (57 active)
 
 Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mitigation tied to a document section.
 
@@ -595,8 +595,8 @@ Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mi
 | **R35** | A managed policy add-on is adopted, then custom templates are needed, but the two are mutually exclusive. Mitigated by standardising on self-managed Gatekeeper on all three clouds, with a `custom-templates` trait. |
 | **R36** | A Rego rule is written but never fires, producing false confidence. Mitigated by running `conftest verify` on `policy/*_test.rego` in the same CI job as the gate. |
 | **R37** | Serverless runtimes are assumed to have the same policy coverage as Kubernetes runtimes, but the admission layer doesn't exist there. Mitigated by explicitly stating the coverage parity gap, with cloud control-plane policy substituting for admission control. |
-| **R38** | GKE authorized networks edited per CI job: concurrent jobs overwrite each other's entry and a dead runner leaves its IP open. Mitigated by one `concurrency` group, an `if: always()` close step and a reconciler expiring stale entries. |
-| **R39** | `container.clusters.update` granted to a pipeline identity to open the runner IP — lets any PR reconfigure the cluster. Mitigated by a minimal intermediate service that only opens and closes a /32. |
+| **R38** | *Retired* — the control plane DNS endpoint removes GKE authorized networks (`landing-zone-qa` DZ4). |
+| **R39** | *Retired* — with the DNS endpoint no pipeline identity needs `container.clusters.update` (`landing-zone-qa` DZ4). |
 | **R40** | Secret values stored in OpenTofu state, making the state a second secret store. Mitigated by ephemeral resources and write-only attributes. |
 | **R41** | Environment state-encryption key destroyed; GCP lacks a written equivalent of the AWS SCP. Mitigated by no destroy permission for pipelines, `prevent_destroy` and a minimum destroy-scheduled duration. |
 | **R42** | IdP federation credential (Keycloak in the upstream IdP) expires and nobody can log in. Mitigated by a certificate credential and an expiry alert to the owning team. |
@@ -606,6 +606,7 @@ Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mi
 | **R46** | Upstream Helm chart ships a privileged or root init container. Mitigated by disabling it and moving the requirement to the node, expressed as a trait. |
 | **R47–R53** | SonarQube on `qa`: compute engine queue saturation, pull-request analysis recorded as `main`, multi-JVM OOMKill, loss of the settings encryption key, leaked global analysis token, irreversible upgrade migration, zonal volume loss. See `risk-register.md` §8. |
 | **R55–R57** | CMDB: the sync writing to `main`; edges silently empty so the destroy guard counts 0; a secret value reaching the CMDB. See `risk-register.md` §7. |
+| **R58–R60** | Landing zone: an unrepeatable bootstrap; a project-singleton policy (Binary Authorization) written by an environment; a project-level grant where a resource-level one would do. See `risk-register.md`. |
 
 **Top five risks** (ranked by likelihood × impact, mitigation not yet in place): 1) R2 (missing `after`), 2) R12 (wildcard OIDC `sub`), 3) R26 (pod range sized for too few nodes), 4) R34 (registry drift), 5) R5 (shared platform destroyed by instance teardown).
 
