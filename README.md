@@ -40,6 +40,7 @@ Inside each language folder:
 | `proposals/network-qa/` | The network part of the layer-1 `environment` archetype on `qa`: VPC, Cloud NAT with dynamic ports, Google APIs through private DNS zones and the private VIP, PSA, the `qa.internal` zone, and the `network` 3.0.0 contract |
 | `proposals/edge-qa/` | The edge of the layer-1 `environment` archetype on `qa`: public zone and wildcard, Certificate Manager, Cloud Armor with preview-then-deny and SAML exclusions, the managed Global external Application LB to Envoy's NEG, L4 exceptions, and the `env-edge` 1.0.0 contract |
 | `proposals/cmdb-qa/` | The `qa` CMDB, levels 0 and 1 of AM §11: the declared half generated and checked in the PR on `main`, the observed half on its own `cmdb-observed` branch, a private release asset as the read model, and the guards that use it — reference counting by edges before a destroy, broken contracts and blast radius in the PR |
+| `proposals/infra-repo-qa/` | The deployment repository (`disasterproject/infra`): layout, trunk-based branches and why there is no `qa` branch, GitHub Environments per environment, rulesets and CODEOWNERS, and workflow templates — preview, deploy per environment, drift, destroy, CMDB sync, image mirroring |
 | `proposals/landing-zone-qa/` | Layer 0 for `qa`: the one-time bootstrap, folders and projects, org policies, KMS key rings per environment, Artifact Registry and image mirroring, GitHub federation and pipeline identities, the parent zone and the public identifier, and the shared Binary Authorization policy the landing zone must own |
 
 The two halves meet at `binding.tm.hcl`: the resolver writes globals, the generators
@@ -53,16 +54,21 @@ consume them.
 | `registry/` | **Source of truth** for capabilities, traits, zones, labels |
 | `schemas/` | JSON Schema — **generated** from `registry/`, never hand-edited |
 | `.github/workflows/` | `validate.yml`: schema and registry well-formedness, manifest validation, policy tests |
+| `poc/` | Phase 0 evidence: the two-stack Terramate PoC and its measured results |
 
 Planned, not yet present: `policy/` (Rego for conftest, plus `*_test.rego`), `archetypes/`, `components/`, `environments/`, `cmdb-data/`, and the Terramate tree listed in `CLAUDE.md`. The validation commands below skip what does not exist yet.
 
 ## Status
 
-Documentation complete. **Nothing built yet.**
+Documentation complete. **Nothing deployed yet.** This repository holds documentation
+and proposals only; the deployment repository it describes — layout, branches,
+GitHub Environments and workflow templates — is specified in
+`docs/en/proposals/infra-repo-qa/`.
 
-Next step is Phase 0 of the roadmap (architecture document §16): confirm the Terramate
-assumptions in a throwaway repository before writing any generators. It is an
-afternoon's work and it gates everything else.
+Phase 0 of the roadmap (architecture document §16) is done locally: `poc/` measured the
+Terramate assumptions against a pinned version (`poc/RESULTS.md`). The late-binding model
+holds; globals in `stack.after` are a parse error, so the resolver writes literal tags.
+The cloud half of Phase 0 is checked in the first `qa` deployment.
 
 ## Validating
 

@@ -175,7 +175,7 @@ Los claims los hace el arquetipo; en el fichero se atribuyen al stack que crea e
 
 **Un extractor para dos consumidores.** La regla de G1 que comprueba que cada `input` tiene su `after` (R2) necesita exactamente los mismos pares `(stack, from_stack_id)`. Se escribe una vez, en `archetypectl`, y lo usan G1 y la CMDB: si el extractor se equivoca, se equivocan los dos a la vez y se nota antes.
 
-**La comprobación (DI2).** `archetypectl cmdb check` regenera la mitad declarada y falla si difiere de lo que hay en el PR, igual que G0 con `terramate generate --check`. Sin ella alguien corrige a mano un `consumes`, la revisión lo aprueba y la siguiente generación lo revierte en silencio.
+**La comprobación (DI2).** `archetypectl cmdb check` regenera la mitad declarada y falla si difiere de lo que hay en el PR, igual que G0 con `terramate generate --detailed-exit-code`. Sin ella alguien corrige a mano un `consumes`, la revisión lo aprueba y la siguiente generación lo revierte en silencio.
 
 La herramienta no existe todavía. La rama `claude/fervent-goodall-m3r9eg` tiene un `archetypectl` con el subcomando `enrich`, sin integrar; `cmdb` sería un subcomando nuevo.
 

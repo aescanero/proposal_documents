@@ -715,7 +715,7 @@ Pregunta abierta con terceros:
 | Fase | Contenido | Criterio de salida | Estimación |
 |---|---|---|---|
 | **0 · Prerrequisitos** | Plataforma de `qa` hasta Gateway, cert-manager, ESO y monitorización; PSA; app registration en Entra (Q-K1); VK1, VK2, VK6 | Las tres verificaciones cerradas | Depende de la plataforma |
-| **1 · Esqueleto** | Manifiesto, chart del arquetipo por partes, asserts y reglas nuevas, script de arranque de claves | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 y preview con mocks en verde | 3 días |
+| **1 · Esqueleto** | Manifiesto, chart del arquetipo por partes, asserts y reglas nuevas, script de arranque de claves | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 y preview con mocks en verde | 3 días |
 | **2 · Servidor** | `iam`, `secrets`, `data`, `firewall`, `operator`, `app` | Dos pods listos contra Cloud SQL; **VK3**; restauración de la BD ensayada | 3 días |
 | **3 · Realm y Entra** | `realm`, `frontdoor` | Login de una persona por Entra en la cuenta de prueba; **VK4**, **VK5**, **VK8** | 3 días |
 | **4 · Tenants** | Reconciliador con clientes de prueba; reglas conftest y Gatekeeper | **VK7**; un cliente con hostname ajeno rechazado en CI | 2 días |

@@ -404,7 +404,7 @@ Source: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | Phase | Contents | Exit criterion | Estimate |
 |---|---|---|---|
 | **0 · Prerequisites** | `qa` GKE and Gatekeeper; VT3, VT8 | Verifications closed | Depends on the platform |
-| **1 · Skeleton** | Manifest, charts, asserts, G1 rules and constraints | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 and preview with mocks green | 1 day |
+| **1 · Skeleton** | Manifest, charts, asserts, G1 rules and constraints | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 and preview with mocks green | 1 day |
 | **2 · Controllers** | `controllers` | cert-manager, approver-policy and trust-manager healthy; **VT6** | 1 day |
 | **3 · CA** | `ca` | Criterion from §10; **VT1**, **VT2** | 1 day |
 | **4 · Consumers** | ESO and monitoring webhooks; Keycloak; Gateway | **VT4**, **VT5**; **VT7** in an ephemeral environment | With each consumer |

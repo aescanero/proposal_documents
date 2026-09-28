@@ -490,7 +490,7 @@ Requirements **accepted**. The `gcp-qa-gke` one is recorded in S1 §4.1 and the 
 | Phase | Contents | Exit criterion | Estimate |
 |---|---|---|---|
 | **0 · Prerequisites** | GKE with the settings in §12; ESO; notification destinations configured (§16); VM1, VM3 | Verifications closed | Depends on the platform |
-| **1 · Skeleton** | Manifest, charts, asserts, CI rules and constraints | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 and preview with mocks green | 2 days |
+| **1 · Skeleton** | Manifest, charts, asserts, CI rules and constraints | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 and preview with mocks green | 2 days |
 | **2 · Metrics and alerts** | `iam`, `secrets`, `firewall`, `crds`, `metrics`; layer 1b | Watchdog and test alert delivered; **VM2**, **VM4**, **VM5**, **VM9** | 3 days |
 | **3 · Logs** | `storage`, `logs` | Logs from every namespace in Loki; **VM6**, **VM8** | 2 days |
 | **4 · Grafana** | `grafana`, `frontdoor` | Login with local account; platform dashboards; **VM7** once Keycloak exists | 2 days |

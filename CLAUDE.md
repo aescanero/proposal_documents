@@ -112,6 +112,10 @@ These are the failure modes that have already been identified. Do not rediscover
 
 **Outputs sharing does not create execution order.** Every `input` block needs a matching `after` in `stack.tm.hcl`. An unresolved ordering applies a stale value with **no error**. This is risk R2, the top risk, and the G1 conftest policy exists specifically to catch it.
 
+**Globals do not resolve in `stack.after` — it is a parse error, not a silent one** (measured, Terramate 0.16.0, `poc/RESULTS.md`). The resolver must write literal values; prefer `after = ["tag:<capability>"]` over a path so a stack can move. The silent failure that remains is a *forgotten* `after`: a consumer with an `input` and no ordering generates cleanly and can be scheduled before its producer, with no error at any stage. That is R2, and G1 is what catches it.
+
+**The G0 flag is `terramate generate --detailed-exit-code`** (0 = up to date, 2 = drift, 1 = error). `--check` does not exist in Terramate and fails with `unknown flag`. A wrong-typed mock changes no generated file, so G0 cannot catch it; G1 checks mock shape against the contract.
+
 **`mock_on_fail` must be true in preview and false in deploy.** Separate named `script` blocks so it cannot be got wrong. A deployment that silently falls back to a mock applies nonsense.
 
 **Mocks must be type-correct.** A base64 field mocked as `"mock"` breaks `base64decode()`. A list field mocked as a string type-checks locally and explodes on apply. Prefix every mock with `mock-`.
@@ -196,24 +200,26 @@ The generator (`registry-generate`) is **not yet written**. It is the first task
 | Contracts | `imports/contracts/contract_<capability>[_<cloud>].tm.hcl` | |
 | Mocks | prefixed `mock-` | `mock-endpoint.example.invalid` |
 
-Generated code **is committed to git**, prefixed with `_`, and covered by `CODEOWNERS`. The `terramate generate --check` gate (G0) exists because of this: without it, someone hand-edits a `_main.tf`, the scan passes, and the next generate silently reverts the fix.
+Generated code **is committed to git**, prefixed with `_`, and covered by `CODEOWNERS`. The `terramate generate --detailed-exit-code` gate (G0) exists because of this: without it, someone hand-edits a `_main.tf`, the scan passes, and the next generate silently reverts the fix.
 
 ---
 
 ## Where to start
 
-Roadmap is in `terramate-outputs-sharing-architecture.md` §16. Current position: **nothing built yet; documentation complete**.
+Roadmap is in `terramate-outputs-sharing-architecture.md` §16. Current position: **Phase 0 local PoC done (`poc/`); nothing deployed; documentation complete**. This repository holds documentation and proposals only; the deployment repository it describes is laid out in `docs/en/proposals/infra-repo-qa/`.
 
-**Phase 0 first.** Build a throwaway repository with two stacks and confirm, against a pinned Terramate version:
+**Phase 0 results** (Terramate 0.16.0, OpenTofu 1.10.6, measured 2026-09-16, re-run 2026-09-28 — `poc/RESULTS.md`):
 
-- `from_stack_id` resolves a global **inherited from a parent directory**, not only one defined in the stack
-- `from_stack_id` accepts **interpolation** (`"${global.env}-gke"`), not only a bare reference
-- `stack.after` accepts a globals-derived path, **or** tag filters work as a fallback — this one **fails silently**, so test it deliberately
-- `--mock-on-fail` behaves as documented when the producer has no state
-- Cross-project / cross-account state reads work with the OIDC roles
-- A private control plane is reachable from the chosen runner type
+| Assumption | Result |
+|---|---|
+| `from_stack_id` resolves a global **inherited from a parent directory** | Confirmed |
+| `from_stack_id` accepts **interpolation** (`"${global.env}-gke"`) | Confirmed |
+| `stack.after` accepts a globals-derived path | **Refuted, loudly** — parse error. Tag filters and literal paths work; the resolver writes literals |
+| `--mock-on-fail` behaves as documented when the producer has no state | Confirmed; it does not mask a missing producer stack |
+| Cross-project state reads work with the OIDC roles | Not tested — first `qa` deployment, `landing-zone-qa` VZ1–VZ3 |
+| The control plane is reachable from the runner | Not tested — now the DNS endpoint with IAM only, `landing-zone-qa` VZ5 |
 
-These are an afternoon's work and they gate everything else.
+Two side findings: a Terramate project is **one git repository with one root config** (it cannot be nested in another), and `output.description` is not emitted into the generated block.
 
 ---
 

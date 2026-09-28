@@ -1,0 +1,13 @@
+# Nothing generated or stateful belongs in git for the PoC.
+#
+# NOTE: this is the OPPOSITE of the real repository's convention, where
+# generated `_*.tf` IS committed and guarded by the G0 gate and CODEOWNERS
+# (see CLAUDE.md, "Conventions"). Here the tree is a source-only fixture that
+# run-poc.sh copies elsewhere to execute, so committing generated output would
+# only create drift with nothing to check it against.
+_*.tf
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+stacks/_probe/

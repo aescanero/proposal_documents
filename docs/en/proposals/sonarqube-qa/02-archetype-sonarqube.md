@@ -844,7 +844,7 @@ The diagram's dates are **illustrative** (assumed start on 5 October); what matt
 | Phase | Content | Exit criterion | Estimate |
 |---|---|---|---|
 | **0 · Prerequisites** | Roadmap phase 0; `qa`'s platform through S1 §6's phase B; V1, V2, V3, V9 | All four verifications closed | Depends on the platform |
-| **1 · Skeleton** | `manifest.yaml`, the empty wrapper chart in parts, new generators and contracts, asserts, new G1 rules | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 and a preview with mocks, all green | 3–4 days |
+| **1 · Skeleton** | `manifest.yaml`, the empty wrapper chart in parts, new generators and contracts, asserts, new G1 rules | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 and a preview with mocks, all green | 3–4 days |
 | **2 · Identity, secrets and data** | `iam`, `secrets`, `data-tenant` stacks deployed | Secrets synced by ESO; a healthy `Cluster`; a completed backup; **V5** (restore) passed | 3 days |
 | **3 · Application** | `firewall`, `app`, `frontdoor` | `/api/system/status` = `UP` over the public URL; **V6** with a large analysis; OOM and latency observed for 48 h | 3 days |
 | **4 · Human identity** | `sso`, `config` (`keycloak` requirements met) | **V3** and **V8**: login from Entra ID with a `team-*` group applied; `teams.yaml` applied idempotently (two runs, no changes) | 3 days |

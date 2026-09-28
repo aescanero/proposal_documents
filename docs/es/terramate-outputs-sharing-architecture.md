@@ -329,7 +329,7 @@ output "private_service_range" {
 | label | sí | Nombre del output. Es la **clave pública del contrato** — trata los renombrados como cambios disruptivos. |
 | `backend` | sí | Debe coincidir con un label de `sharing_backend`. |
 | `value` | sí | Expresión evaluada **en el código OpenTofu generado**, así que puede referenciar `module.*`, `resource.*`, `data.*`. |
-| `description` | no | Se emite en el bloque `output` generado. Úsala — se convierte en la documentación de tu contrato. |
+| `description` | no | Documenta el contrato en `imports/contracts/`. **No** se emite en el bloque `output` generado (medido, Terramate 0.16.0, `poc/RESULTS.es.md`), así que no llega a `tofu output`. Úsala igualmente — es donde un revisor lee qué significa la clave. |
 | `sensitive` | no | Solo se emite cuando se fija. Ver la advertencia más abajo. |
 
 > **Valores sensibles.** Outputs sharing resuelve valores en variables de entorno `TF_VAR_<name>` en el proceso del consumidor. Las variables de entorno son visibles para cualquier cosa en ese árbol de procesos y se filtran fácilmente a los logs de CI. **Nunca compartas secretos a través de outputs sharing.** Comparte *referencias* — un ID de secreto de Secret Manager, un nombre de parámetro SSM, un ARN de clave KMS — y deja que el stack consumidor lea el secreto mediante un data source bajo su propia identidad IAM.
@@ -417,20 +417,22 @@ globals "platform" {
 
 Los bloques `input` del arquetipo se escriben **una sola vez**, en `imports/contracts/`, referenciando `global.platform.cluster_stack_id`. Ligar una instancia a una plataforma demo compartida o a una plataforma de producción dedicada es entonces un **fichero de cinco líneas**. Esto es lo que reemplaza la capa de "configuración del componente wrapper del stack" del patrón HCP Stacks — binding tardío mediante globals en lugar de anidamiento.
 
-> **Decisión de diseño: `from_stack_id` es una expresión.** Esta arquitectura asume
-> que `from_stack_id` resuelve globals, que es lo que permite que un único fichero
-> de contrato por capability sirva a cada instancia. Tres variantes aún necesitan
-> confirmarse contra tu versión fijada de Terramate, porque que la forma básica
-> funcione no las garantiza: globals **heredados** de un directorio padre en lugar
-> de definidos en el stack; **interpolación** (`"${global.env}-gke"`) en lugar de
-> una referencia desnuda; y el comportamiento de `mock` bajo `--mock-on-fail` cuando
-> el productor todavía no tiene estado.
+> **Decisión de diseño: `from_stack_id` es una expresión — medido.** Esta
+> arquitectura se apoya en que `from_stack_id` resuelva globals, que es lo que
+> permite que un único fichero de contrato por capability sirva a cada instancia.
+> La PoC de la fase 0 (`poc/`, Terramate 0.16.0) confirmó las tres variantes que la
+> forma básica no garantiza: globals **heredados** de un directorio padre;
+> **interpolación** (`"${global.env}-gke"`); y el comportamiento de `mock` bajo
+> `--mock-on-fail` cuando el productor no tiene estado. También mostró que
+> `--mock-on-fail` **no** enmascara un `from_stack_id` que nombra un stack
+> inexistente, así que un error tipográfico en un contrato falla en la preview.
 >
-> Los globals en `stack.after` siguen siendo una cuestión abierta, y falla **de
-> forma silenciosa** — una expresión no resuelta deja el ordenamiento vacío en
-> lugar de lanzar un error, así que un consumidor puede ejecutarse antes que su
-> productor. Ese es el riesgo R2. El lint de §14.4 lo detecta; si los globals no
-> se resuelven ahí, recurre al ordenamiento basado en tags (§4.5).
+> **Los globals no se resuelven en `stack.after`** — es un error de análisis que
+> aborta todos los comandos de Terramate, no uno silencioso. El resolver escribe
+> ahí valores literales, preferiblemente `after = ["tag:<capability>"]` (§4.5). El
+> fallo silencioso que queda es un `after` *olvidado*: un consumidor con un
+> `input` y sin orden se genera limpiamente y puede programarse antes que su
+> productor. Ese es el riesgo R2; el lint de §14.4 lo detecta.
 
 #### Los mocks no son opcionales
 
@@ -3289,7 +3291,7 @@ Todo lo demás se **genera** a partir de estos:
 | Bundle `registry/*.json` | `conftest --data` |
 | `values.yaml` del chart de Gatekeeper | Parámetros de `ConstraintTemplate`: etiquetas obligatorias, registros permitidos y los namespaces con un nivel de Pod Security distinto de `restricted` (propuesta de Gatekeeper §7.1) |
 
-Protégelo con una puerta `registry-generate --check` en CI, exactamente igual que `terramate generate --check`. El YAML es la fuente; un schema editado a mano es un bug.
+Protégelo con una puerta `registry-generate --check` en CI, exactamente igual que `terramate generate --detailed-exit-code`. El YAML es la fuente; un schema editado a mano es un bug.
 
 ---
 
@@ -3569,16 +3571,16 @@ Los cinco sobre los que actuar primero:
 
 ### Fase 0 — Validar suposiciones (1 semana)
 
-Construye un repositorio desechable con dos stacks y confirma, contra tu versión fijada de Terramate. El soporte de expresiones en `from_stack_id` se toma como una decisión de diseño; lo que queda es confirmar sus variantes:
+Construye un repositorio desechable con dos stacks y confirma, contra tu versión fijada de Terramate. El soporte de expresiones en `from_stack_id` se toma como una decisión de diseño; lo que queda es confirmar sus variantes. **Las cinco primeras se midieron el 2026-09-16 (Terramate 0.16.0, OpenTofu 1.10.6) y se repitieron el 2026-09-28; la evidencia está en `poc/RESULTS.es.md`.** El resto necesita un proyecto en la nube y se comprueba en el primer despliegue de `qa` (`landing-zone-qa` VZ1–VZ5):
 
-- [ ] `from_stack_id` resuelve un global **heredado de un directorio padre**, no solo uno definido en el propio stack
-- [ ] `from_stack_id` acepta **interpolación** (`"${global.env}-gke"`), no solo una referencia desnuda
-- [ ] `stack.after` acepta una ruta derivada de globals, **o** los filtros de tag (`after = ["tag:network"]`) funcionan como fallback — este falla silenciosamente, así que pruébalo deliberadamente
-- [ ] `--mock-on-fail` se comporta como está documentado cuando el productor no tiene estado
-- [ ] `tofu output -json` se ejecuta con éxito como `sharing_backend.command` en tu imagen de CI
+- [x] `from_stack_id` resuelve un global **heredado de un directorio padre**, no solo uno definido en el propio stack
+- [x] `from_stack_id` acepta **interpolación** (`"${global.env}-gke"`), no solo una referencia desnuda
+- [x] `stack.after` acepta una ruta derivada de globals — **refutado, con un error de análisis, no en silencio**; los filtros de tag (`after = ["tag:network"]`) y las rutas literales funcionan, así que el resolver escribe literales
+- [x] `--mock-on-fail` se comporta como está documentado cuando el productor no tiene estado — y no enmascara un stack productor inexistente
+- [x] `tofu output -json` se ejecuta con éxito como `sharing_backend.command` (en local; repetir en la imagen de CI)
 - [ ] Las lecturas de estado entre proyectos / entre cuentas funcionan con tus roles OIDC
 - [ ] La federación OIDC funciona de extremo a extremo con una condición de confianza **sin comodines** (§11.2, §11.3)
-- [ ] Un plano de control privado es alcanzable desde el tipo de runner elegido, o has aceptado runners autoalojados (§11.9)
+- [ ] El plano de control es alcanzable desde el tipo de runner elegido — en GKE por el endpoint DNS solo con IAM, así que no hace falta camino de red del runner (`landing-zone-qa` DZ4, VZ5); en otras nubes, o has aceptado runners autoalojados (§11.9)
 - [ ] Las claves de cifrado de estado de OpenTofu están restringidas por entorno, no por stack (§11.5)
 
 Si las variantes de globals heredados o de interpolación fallan, el modelo de binding tardío de §12.2 necesita reemplazarse por un fichero de contrato generado por instancia por el resolver — más maquinaria y pull requests más ruidosas, pero no un rediseño. Mejor averiguarlo ahora.

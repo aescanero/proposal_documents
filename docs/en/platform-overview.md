@@ -48,7 +48,7 @@ flowchart LR
 flowchart TD
     PR([Pull request opened]) --> SCH["Schema validation<br/>manifests, bindings, ledgers"]
     SCH --> RESOLVE["archetypectl resolve<br/>17 steps — fails closed"]
-    RESOLVE -->|"binding.tm.hcl<br/>ledger writes"| G0["G0 · terramate generate --check<br/>generated code is current"]
+    RESOLVE -->|"binding.tm.hcl<br/>ledger writes"| G0["G0 · terramate generate --detailed-exit-code<br/>generated code is current"]
     G0 --> G1["G1 · conftest<br/>structure, composition, input↔after"]
     G1 --> G2["G2 · Checkov on generated HCL"]
     G2 --> PLAN["terramate script run --changed tofu preview<br/>sharing ON · mocks ON"]

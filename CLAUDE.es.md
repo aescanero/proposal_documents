@@ -112,6 +112,10 @@ Estos son los modos de fallo que ya se han identificado. No los redescubras.
 
 **Outputs sharing no crea orden de ejecución.** Cada bloque `input` necesita un `after` correspondiente en `stack.tm.hcl`. Un ordenamiento no resuelto aplica un valor obsoleto **sin ningún error**. Este es el riesgo R2, el riesgo principal, y la política conftest G1 existe específicamente para detectarlo.
 
+**Los globals no se resuelven en `stack.after` — es un error de análisis, no uno silencioso** (medido, Terramate 0.16.0, `poc/RESULTS.es.md`). El resolver debe escribir valores literales; preferir `after = ["tag:<capability>"]` a una ruta para que un stack pueda moverse. El fallo silencioso que queda es un `after` *olvidado*: un consumidor con un `input` y sin orden se genera limpiamente y puede programarse antes que su productor, sin error en ninguna fase. Eso es R2, y G1 es lo que lo detecta.
+
+**La opción de G0 es `terramate generate --detailed-exit-code`** (0 = al día, 2 = deriva, 1 = error). `--check` no existe en Terramate y falla con `unknown flag`. Un mock de tipo incorrecto no cambia ningún fichero generado, así que G0 no puede detectarlo; G1 comprueba la forma del mock contra el contrato.
+
 **`mock_on_fail` debe ser true en preview y false en deploy.** Bloques `script` nombrados por separado para que no se pueda confundir. Un deployment que cae silenciosamente en un mock aplica un sinsentido.
 
 **Los mocks deben tener el tipo correcto.** Un campo base64 mockeado como `"mock"` rompe `base64decode()`. Un campo lista mockeado como una cadena valida el tipo localmente y explota al aplicar. Prefijar cada mock con `mock-`.
@@ -196,24 +200,26 @@ El generador (`registry-generate`) **todavía no está escrito**. Es la primera 
 | Contratos | `imports/contracts/contract_<capability>[_<cloud>].tm.hcl` | |
 | Mocks | prefijados con `mock-` | `mock-endpoint.example.invalid` |
 
-El código generado **se commitea a git**, prefijado con `_`, y cubierto por `CODEOWNERS`. La puerta `terramate generate --check` (G0) existe por esto: sin ella, alguien edita a mano un `_main.tf`, el escaneo pasa, y el siguiente generate revierte silenciosamente el arreglo.
+El código generado **se commitea a git**, prefijado con `_`, y cubierto por `CODEOWNERS`. La puerta `terramate generate --detailed-exit-code` (G0) existe por esto: sin ella, alguien edita a mano un `_main.tf`, el escaneo pasa, y el siguiente generate revierte silenciosamente el arreglo.
 
 ---
 
 ## Por dónde empezar
 
-El roadmap está en `terramate-outputs-sharing-architecture.md` §16. Posición actual: **nada construido todavía; documentación completa**.
+El roadmap está en `terramate-outputs-sharing-architecture.md` §16. Posición actual: **PoC local de la fase 0 hecha (`poc/`); nada desplegado; documentación completa**. Este repositorio contiene solo documentación y propuestas; el repositorio de despliegue que describe se organiza en `docs/es/proposals/infra-repo-qa/`.
 
-**Fase 0 primero.** Construir un repositorio desechable con dos stacks y confirmar, contra una versión fijada de Terramate:
+**Resultados de la fase 0** (Terramate 0.16.0, OpenTofu 1.10.6, medido el 2026-09-16, repetido el 2026-09-28 — `poc/RESULTS.es.md`):
 
-- `from_stack_id` resuelve un global **heredado de un directorio padre**, no solo uno definido en el stack
-- `from_stack_id` acepta **interpolación** (`"${global.env}-gke"`), no solo una referencia simple
-- `stack.after` acepta una ruta derivada de globals, **o** los filtros de tags funcionan como fallback — esto último **falla silenciosamente**, así que probarlo deliberadamente
-- `--mock-on-fail` se comporta como está documentado cuando el producer no tiene state
-- Las lecturas de state entre proyectos/cuentas funcionan con los roles OIDC
-- Un control plane privado es alcanzable desde el tipo de runner elegido
+| Suposición | Resultado |
+|---|---|
+| `from_stack_id` resuelve un global **heredado de un directorio padre** | Confirmada |
+| `from_stack_id` acepta **interpolación** (`"${global.env}-gke"`) | Confirmada |
+| `stack.after` acepta una ruta derivada de globals | **Refutada, ruidosamente** — error de análisis. Los filtros por tag y las rutas literales funcionan; el resolver escribe literales |
+| `--mock-on-fail` se comporta como está documentado cuando el producer no tiene state | Confirmada; no enmascara un stack productor inexistente |
+| Las lecturas de state entre proyectos funcionan con los roles OIDC | No probada — primer despliegue de `qa`, `landing-zone-qa` VZ1–VZ3 |
+| El control plane es alcanzable desde el runner | No probada — ahora el endpoint DNS solo con IAM, `landing-zone-qa` VZ5 |
 
-Esto es el trabajo de una tarde y condiciona todo lo demás.
+Dos hallazgos laterales: un proyecto Terramate es **un repositorio git con una configuración raíz** (no puede anidarse en otro), y `output.description` no se emite en el bloque generado.
 
 ---
 

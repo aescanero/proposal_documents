@@ -203,8 +203,8 @@ Technical terms and definitions drawn from `platform-overview.md`, `archetype-mo
 | **Generator versioning** | Generators live under `imports/generators/v1/` etc., gated by `condition = global.generators.version == "v1"`, so a breaking change ships as `v2/` and migrates environment-by-environment by flipping a global. |
 | **`script` block** (`terramate script`) | Names a multi-step workflow (init/plan/apply) invokable identically from a laptop or CI; sharing flags (`enable_sharing`, `mock_on_fail`) are set per command here. Separate `preview`/`deploy` scripts prevent mock behaviour from being swapped. |
 | **`assert` block** | Fails `terramate generate` when an invariant is violated, enforcing architectural rules (e.g. production clusters must have deletion protection) rather than merely documenting them. |
-| **`terramate generate`** | Runs all generators and writes generated files. **`terramate generate --check`** is gate **G0**: ensures nobody hand-edited a generated file, since the next `generate` would silently revert the fix. |
-| **`terramate run`** | Orchestrates actual `tofu` invocations across stacks (e.g. `terramate run --tags <cloud>:<env>:network --enable-sharing -- tofu apply`). Supports `--changed` for incremental runs and tag-based `--tags` selection as a fallback ordering mechanism when globals-derived `stack.after` fails to resolve (which fails **silently** — test this deliberately). |
+| **`terramate generate`** | Runs all generators and writes generated files. **`terramate generate --detailed-exit-code`** is gate **G0**: ensures nobody hand-edited a generated file, since the next `generate` would silently revert the fix. |
+| **`terramate run`** | Orchestrates actual `tofu` invocations across stacks (e.g. `terramate run --tags <cloud>:<env>:network --enable-sharing -- tofu apply`). Supports `--changed` for incremental runs and `--tags` selection. Ordering comes from `stack.after`, which takes literal paths or `tag:` filters only: a global there is a parse error (measured, `poc/RESULTS.md`). |
 | **`--enable-sharing`** | The `terramate run` flag activating outputs-sharing resolution for that invocation. |
 | **`--mock-on-fail`** | Falls back to the input's declared `mock` on a failed outputs-sharing read; must never appear in a real deploy path. |
 | **`terramate.tm.hcl`** | Repository-root config: pins `required_version`, declares `experiments` (required to unlock `sharing_backend`/`input`/`output`), sets `config.git` defaults for change detection, and `config.run.env`. |
@@ -395,7 +395,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 | **`exemptNamespaces`** | Gatekeeper config excluding `kube-system` and the Gatekeeper namespace from enforcement, so `failurePolicy: Fail` cannot lock out the platform's own recovery. |
 | **Layer 2b (policy)** | Admission control's architectural placement — between the cluster (layer 2) and platform services (layer 3) — because admission must precede everything it governs. |
 | **The single registry** (`registry/{capabilities,traits,zones,labels}.yaml`) | The sole source of truth from which the JSON Schema `enum` blocks, the `conftest --data` JSON bundle, and the Gatekeeper chart's `values.yaml` are all generated. **Never hand-edit an `enum` in `schemas/`** — that is a bug (risk R34). |
-| **`registry-generate`** | The (not-yet-written) tool generating schema enums, conftest data bundle and Gatekeeper chart values from `registry/*.yaml`; guarded in CI by `registry-generate --check`, analogous to `terramate generate --check`. Roadmap phase 2c's first task. |
+| **`registry-generate`** | The (not-yet-written) tool generating schema enums, conftest data bundle and Gatekeeper chart values from `registry/*.yaml`; guarded in CI by `registry-generate --check`, analogous to `terramate generate --detailed-exit-code`. Roadmap phase 2c's first task. |
 
 ---
 
@@ -416,7 +416,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 
 | Phase | Focus |
 |---|---|
-| **Phase 0** | Validate assumptions — a one-week throwaway-repo spike confirming: `from_stack_id` resolves an inherited global and accepts interpolation; `stack.after` resolves globals-derived paths or falls back to tag filters (and fails silently if not — test deliberately); `--mock-on-fail` behaviour; cross-project/account state reads with OIDC roles; private control-plane reachability from the chosen runner type. **These are an afternoon's work and gate everything else.** |
+| **Phase 0** | Validate assumptions — a one-week throwaway-repo spike confirming: `from_stack_id` resolves an inherited global and accepts interpolation; `stack.after` resolves globals-derived paths or falls back to tag filters; `--mock-on-fail` behaviour; cross-project/account state reads with OIDC roles; control-plane reachability from the chosen runner type. The local part was measured in `poc/` (Terramate 0.16.0): the first two and the mock behaviour hold, globals in `stack.after` are a parse error and tag filters are the answer; the cloud part is checked in the first `qa` deployment. |
 | **Phase 0b** | Resolver skeleton — JSON Schema validation, resolution steps 1–8 (no ledger writes), proving a resolver-generated `binding.tm.hcl` drives `terramate generate` unchanged. |
 | **Phase 1** | One cloud, one shared platform — root config, `sharing_backend`, mixins, `gen_network`/`gen_cluster`, first demos platform, preview/deploy workflows with G0/G1, one archetype instance. |
 | **Phase 2** | Second cloud — second mixin/generator set proving contract files are cloud-agnostic; adds G2 plan scanning and permission boundaries. |

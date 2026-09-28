@@ -404,7 +404,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | Fase | Contenido | Criterio de salida | Estimación |
 |---|---|---|---|
 | **0 · Prerrequisitos** | GKE y Gatekeeper de `qa`; VT3, VT8 | Verificaciones cerradas | Depende de la plataforma |
-| **1 · Esqueleto** | Manifiesto, charts, asserts, reglas G1 y constraints | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 y preview con mocks en verde | 1 día |
+| **1 · Esqueleto** | Manifiesto, charts, asserts, reglas G1 y constraints | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 y preview con mocks en verde | 1 día |
 | **2 · Controladores** | `controllers` | cert-manager, approver-policy y trust-manager sanos; **VT6** | 1 día |
 | **3 · CA** | `ca` | Criterio de §10; **VT1**, **VT2** | 1 día |
 | **4 · Consumidores** | Webhooks de ESO y monitorización; Keycloak; Gateway | **VT4**, **VT5**; **VT7** en efímero | Con cada consumidor |

@@ -200,7 +200,7 @@ registry/
 | `registry/*.json` bundle | `conftest --data` |
 | Gatekeeper chart `values.yaml` | `ConstraintTemplate` parameters |
 
-The YAML is the source. A schema edited by hand is a bug, guarded by a `registry-generate --check` gate in CI exactly like `terramate generate --check`.
+The YAML is the source. A schema edited by hand is a bug, guarded by a `registry-generate --check` gate in CI exactly like `terramate generate --detailed-exit-code`.
 
 ### 4.5 Capability version semantics
 

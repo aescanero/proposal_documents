@@ -219,7 +219,7 @@ Four consequences worth stating plainly:
 | **`metadata.version`** | **Generated** by the pipeline from the tag. Committed, so the manifest is self-contained and Terramate can read it, but not authored |
 | **CI gate** | `archetypectl version --check` recomputes the version from the ref and fails if `metadata.version` differs |
 
-The gate exists for the same reason G0 (`terramate generate --check`) exists: the value is committed, so somebody will edit it. When they do, three things silently disagree — the image tag, the CMDB record, and the mandatory `app.kubernetes.io/version` label from `registry/labels.yaml`, which Gatekeeper validates at admission. The deployment is then rejected in the cluster, which is the worst place to find out.
+The gate exists for the same reason G0 (`terramate generate --detailed-exit-code`) exists: the value is committed, so somebody will edit it. When they do, three things silently disagree — the image tag, the CMDB record, and the mandatory `app.kubernetes.io/version` label from `registry/labels.yaml`, which Gatekeeper validates at admission. The deployment is then rejected in the cluster, which is the worst place to find out.
 
 Pre-release versions, per branch:
 

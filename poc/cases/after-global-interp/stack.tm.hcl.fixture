@@ -1,0 +1,13 @@
+// A3 probe — interpolated global in `stack.after`.
+//
+// Same handling as cases/after-global-expr/. Interpolation is probed separately
+// because `from_stack_id` accepts it (A2) and it would be reasonable to assume
+// `after` does too. It does not.
+
+stack {
+  id   = "poc-after-global-interp"
+  name = "A3 probe — interpolated global in after"
+  tags = ["poc", "probe"]
+
+  after = ["${global.producer_path}"]
+}

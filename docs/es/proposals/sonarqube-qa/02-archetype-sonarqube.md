@@ -844,7 +844,7 @@ Las fechas del diagrama son **ilustrativas** (inicio supuesto el 5 de octubre); 
 | Fase | Contenido | Criterio de salida | Estimación |
 |---|---|---|---|
 | **0 · Prerrequisitos** | Fase 0 del roadmap; plataforma de `qa` hasta la fase B de E1 §6; V1, V2, V3, V9 | Las cuatro verificaciones cerradas | Depende de la plataforma |
-| **1 · Esqueleto** | `manifest.yaml`, chart envoltorio vacío por partes, generadores y contratos nuevos, asserts, reglas G1 nuevas | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 y preview con mocks en verde | 3–4 días |
+| **1 · Esqueleto** | `manifest.yaml`, chart envoltorio vacío por partes, generadores y contratos nuevos, asserts, reglas G1 nuevas | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 y preview con mocks en verde | 3–4 días |
 | **2 · Identidad, secretos y datos** | Stacks `iam`, `secrets`, `data-tenant` desplegados | Secretos sincronizados por ESO; `Cluster` sano; backup completado; **V5** (restauración) superada | 3 días |
 | **3 · Aplicación** | `firewall`, `app`, `frontdoor` | `/api/system/status` = `UP` por la URL pública; **V6** con un análisis grande; OOM y latencia observados 48 h | 3 días |
 | **4 · Identidad de personas** | `sso`, `config` (requisitos de `keycloak` cumplidos) | **V3** y **V8**: login desde Entra ID con grupo `team-*` aplicado; `teams.yaml` aplicado de forma idempotente (dos ejecuciones sin cambios) | 3 días |

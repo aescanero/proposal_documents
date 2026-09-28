@@ -500,7 +500,7 @@ It stops at `prevent_destroy`. Tearing down ESO without tearing down its consume
 | Phase | Content | Exit criterion | Estimate |
 |---|---|---|---|
 | **0 · Prerequisites** | `qa` GKE, Gatekeeper and cert-manager; VE1, VE4 | Both verifications closed | Depends on the platform |
-| **1 · Skeleton** | Manifest, archetype chart (NetworkPolicy, constraints), asserts, conftest rules | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 and mocked preview green | 1 day |
+| **1 · Skeleton** | Manifest, archetype chart (NetworkPolicy, constraints), asserts, conftest rules | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 and mocked preview green | 1 day |
 | **2 · Deployment** | `gcp-qa-secrets` stack | ESO healthy with 2 replicas; VE2, VE3, VE6, VE8 | 1–2 days |
 | **3 · Contract** | `gcpsm` branch of `gen_secrets.tm.hcl`; test tenant | Test `ExternalSecret` in `Ready`; **VE5**, **VE7** | 1 day |
 | **4 · Observability** | Rules and scrape in `monitoring-oss` | Each alert fired once in a provoked test | 0.5 days |

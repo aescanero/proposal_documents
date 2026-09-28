@@ -604,7 +604,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | Fase | Contenido | Criterio de salida | Estimación |
 |---|---|---|---|
 | **0 · Prerrequisitos** | GKE de `qa` con Gateway API desactivado; Gatekeeper; cert-manager; VG1, VG2, VG10 | Verificaciones cerradas | Depende de la plataforma |
-| **1 · Esqueleto** | Manifiesto, charts, asserts, reglas G1 y constraints | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 y preview con mocks en verde | 1 día |
+| **1 · Esqueleto** | Manifiesto, charts, asserts, reglas G1 y constraints | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 y preview con mocks en verde | 1 día |
 | **2 · Controlador** | `controller` | Controlador sano; certificados xDS de cert-manager (**VG8**); **VG12** | 1 día |
 | **3 · Gateway** | `proxy`, luego `gcp-qa-edge` | Criterio de §10; **VG4**, **VG5**, **VG6**, **VG9**, **VG11** | 2 días |
 | **4 · Consumidores** | Keycloak, Grafana y SonarQube; **VG3** en efímero con carga | Tres rutas `Accepted`; **VG7** con una aplicación de prueba | Con cada consumidor |

@@ -490,7 +490,7 @@ Requisitos **aceptados**. El de `gcp-qa-gke` queda recogido en E1 §4.1 y el ass
 | Fase | Contenido | Criterio de salida | Estimación |
 |---|---|---|---|
 | **0 · Prerrequisitos** | GKE con los ajustes de §12; ESO; destinos de notificación configurados (§16); VM1, VM3 | Verificaciones cerradas | Depende de la plataforma |
-| **1 · Esqueleto** | Manifiesto, charts, asserts, reglas de CI y constraints | `archetypectl resolve --dry-run`, `terramate generate --check`, G1 y preview con mocks en verde | 2 días |
+| **1 · Esqueleto** | Manifiesto, charts, asserts, reglas de CI y constraints | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 y preview con mocks en verde | 2 días |
 | **2 · Métricas y alertas** | `iam`, `secrets`, `firewall`, `crds`, `metrics`; capa 1b | Watchdog y alerta de prueba entregados; **VM2**, **VM4**, **VM5**, **VM9** | 3 días |
 | **3 · Logs** | `storage`, `logs` | Logs de todos los namespaces en Loki; **VM6**, **VM8** | 2 días |
 | **4 · Grafana** | `grafana`, `frontdoor` | Login con cuenta local; dashboards de plataforma; **VM7** cuando exista Keycloak | 2 días |
