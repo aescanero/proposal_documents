@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 6 |
+| **Estado** | Propuesta · revisión 7 |
 | **Alcance** | El arquetipo de capa 3 `monitoring-oss` en `qa` (métricas, alertas, logs, dashboards, sondas) y lo que la capa 1b `cloud-monitoring-gcp` aporta junto a él: frontera entre ambos, pila, seguridad, contrato `monitoring`, enrutado de alertas, quién vigila al vigilante, red, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | SonarQube (E1 §4.7, E2 §5.9), la variante Cloud SQL (§8), Keycloak (§10) y ESO (§9) ya dan por hechos el selector `prometheus=qa`, el sidecar de dashboards, el blackbox exporter, Loki y el canal de notificación compartido. ESO además dejó aquí las reglas de los componentes de capa 3 |
 | **Especificación de referencia** | `archetype-model.md` (AM §n; §3 capa 1b, §4.2 traits de `monitoring`), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -145,7 +145,7 @@ Grafana hace login con OIDC contra Keycloak, pero Keycloak (capa 4) requiere `mo
 
 | Pieza | Cómo |
 |---|---|
-| URLs de Keycloak | Por convención del entorno: `https://sso.<dns_suffix>/realms/<env>`, lo mismo que publica el contrato `oidc-idp` (§11.3 de Keycloak). Un assert en `keycloak` comprueba que su hostname y su realm siguen la convención |
+| URLs de Keycloak | Por convención: `https://sso.<dns_suffix>/realms/disasterproject`, el mismo realm en todos los entornos (edge-qa DL10), lo mismo que publica el contrato `oidc-idp` (§11.3 de Keycloak). Un assert en `keycloak` comprueba que su hostname y su realm siguen la convención |
 | Cliente OIDC de Grafana | Lo declara el stack `realm` de Keycloak como cliente de plataforma (§6.6 de Keycloak) |
 | Secreto del cliente | `qa-monitoring-oss-grafana-oidc`, creado por el stack `secrets` de este arquetipo con `secretAccessor` para el principal de `qa-keycloak-config` (§6.5 de Keycloak). El principal se puede conceder antes de que exista el KSA |
 | Antes de que exista Keycloak | Grafana arranca; el login OIDC falla hasta entonces. Cuenta local `admin` (`qa-monitoring-oss-grafana-admin`) como break-glass |

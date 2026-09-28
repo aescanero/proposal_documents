@@ -3053,6 +3053,42 @@ deny contains msg if {
 
 The two contract rules run over the CMDB's declared half of the pull request (`index.json`), so the inventory is the same one the destroy guard reads. The collector that writes the observed half publishes only outputs without `sensitive = true`; the secret-name rule above is what keeps a secret value from being an output in the first place.
 
+**Public names never carry the environment name** (`edge-qa` proposal, DL10). Whatever is visible without credentials uses the environment's random `network.public_id`. The rule is checked twice, because the names live in two places: G1 checks the binding, where the identifier and the public suffix are declared; G3 checks the plan, where bucket names, public DNS records and certificate domains finally appear (§13.4). The realm of the identity provider, which shows in public OIDC/SAML URLs, is a global and is guarded by an `assert` in its own archetype.
+
+```rego
+package environment.public_names
+
+# Words that name an environment. No public name may contain one.
+env_words := {"prod", "prd", "production", "qa", "dev", "develop", "test", "tst", "uat",
+              "stg", "stage", "staging", "pre", "preprod", "demo", "demos", "sandbox", "sbx",
+              "ephemeral", "nonprod"}
+
+words := env_words | {input.metadata.name}
+
+# The public identifier is random; if a draw happens to contain an environment word, draw again.
+deny contains msg if {
+    input.kind == "EnvironmentBinding"
+    some w in words
+    contains(input.network.public_id, w)
+    msg := sprintf("public_id %q contains %q: generate a new one", [input.network.public_id, w])
+}
+
+# The public suffix is <public_id>.<domain>...
+deny contains msg if {
+    input.kind == "EnvironmentBinding"
+    not startswith(input.network.dns_suffix, sprintf("%s.", [input.network.public_id]))
+    msg := sprintf("dns_suffix %q must start with public_id %q", [input.network.dns_suffix, input.network.public_id])
+}
+
+# ...and none of its labels names an environment.
+deny contains msg if {
+    input.kind == "EnvironmentBinding"
+    some label in split(input.network.dns_suffix, ".")
+    label in words
+    msg := sprintf("dns_suffix %q carries the environment word %q", [input.network.dns_suffix, label])
+}
+```
+
 ```rego
 package archetype.composition
 
@@ -3099,6 +3135,47 @@ terramate run --changed -- \
           --config-file "${TM_ROOT}/.checkov/${TM_CLOUD}.yaml"
 
 conftest test --policy policy/ --data registry/ --namespace terraform plan.json
+```
+
+In G3 the plan carries the names G1 cannot see. `env_words` is imported from the G1 package, so both checks use the same list:
+
+```rego
+package terraform.public_names
+
+import data.environment.public_names.env_words
+
+# Every managed resource in the plan, at any module depth.
+resources contains r if {
+    walk(input.planned_values, [_, r])
+    is_object(r)
+    r.mode == "managed"
+}
+
+# Names that anyone can see without credentials.
+public_names contains [r.address, r.values.name] if {
+    some r in resources
+    r.type == "google_storage_bucket"                       # global namespace, can be probed
+}
+
+public_names contains [r.address, r.values.name] if {
+    some r in resources
+    r.type == "google_dns_record_set"
+    not endswith(r.values.name, ".internal.")              # private zones (qa.internal) keep the name
+}
+
+public_names contains [r.address, d] if {
+    some r in resources
+    r.type == "google_certificate_manager_certificate"     # lands in Certificate Transparency logs
+    some m in r.values.managed
+    some d in m.domains
+}
+
+deny contains msg if {
+    some [addr, name] in public_names
+    some token in split(replace(name, ".", "-"), "-")
+    token in env_words
+    msg := sprintf("%s: public name %q carries the environment word %q (edge-qa DL10)", [addr, name, token])
+}
 ```
 
 Per-cloud Checkov configuration, since checks differ:
@@ -3448,6 +3525,9 @@ The ordering invariant that previously relied on a shell script is now a Rego po
     conftest test --policy policy/ --data registry/ resolution.json stacks.json
     for m in archetypes/*/manifest.yaml; do
       conftest test --policy policy/ --data registry/ "$m"
+    done
+    for b in environments/*/binding.yaml; do  # public names: public_id and dns_suffix (§13.3)
+      conftest test --policy policy/ --data registry/ "$b"
     done
 ```
 

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 7 |
+| **Status** | Proposal · revision 8 |
 | **Scope** | The layer 4 `keycloak` archetype on `qa`: installation, data, configuration, `disasterproject` realm with Entra ID as upstream IdP, consumer clients as tenant resources, keys, publishing, network, availability, observability, stacks, policies, execution and plan |
 | **Data assumption** | The environment's global `database-platform` provider ([`../postgres-cloudsql-qa/`](../postgres-cloudsql-qa/README.md)). On `qa`, `postgres-cloudsql`: Keycloak creates its own Cloud SQL instance (`data` stack, §3). With `postgres-operator`, its own CNPG `Cluster` (`data-tenant` stack) |
 | **Known consumers** | SonarQube over SAML ([`../sonarqube-qa/`](../sonarqube-qa/README.md), S1/S2), Grafana over OIDC, future applications with an OIDC `SecurityPolicy` on the Gateway |
@@ -567,8 +567,12 @@ assert {
   message   = "keycloak: the public route exposes only /realms/disasterproject/ and /resources/ (§8.1)"
 }
 assert {
-  assertion = global.keycloak.hostname == "https://sso.${global.platform.dns_suffix}" && global.keycloak.realm == global.platform.env
-  message   = "keycloak: hostname https://sso.<dns_suffix> and realm = environment name; Grafana derives them by convention (monitoring §4.3)"
+  assertion = global.keycloak.hostname == "https://sso.${global.platform.dns_suffix}" && global.keycloak.realm == "disasterproject"
+  message   = "keycloak: hostname https://sso.<dns_suffix> and realm disasterproject; Grafana derives them by convention (monitoring §4.3)"
+}
+assert {
+  assertion = !tm_anytrue([for w in ["prod", "qa", "dev", "test", "uat", "stg", "staging", "pre", "demo", "sandbox", global.platform.env] : tm_length(tm_regexall(w, global.keycloak.realm)) > 0])
+  message   = "keycloak: the realm appears in public OIDC and SAML URLs; it must not name the environment (edge-qa DL10, RL7)"
 }
 assert {
   assertion = tm_startswith(global.keycloak.hostname, "https://")

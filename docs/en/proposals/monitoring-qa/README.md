@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 6 |
+| **Status** | Proposal · revision 7 |
 | **Scope** | The layer 3 `monitoring-oss` archetype on `qa` (metrics, alerts, logs, dashboards, probes) and what layer 1b `cloud-monitoring-gcp` contributes alongside it: the boundary between them, stack, security, the `monitoring` contract, alert routing, who watches the watcher, network, stacks, policies, execution and plan |
 | **Why now** | SonarQube (S1 §4.7, S2 §5.9), the Cloud SQL variant (§8), Keycloak (§10) and ESO (§9) already take for granted the `prometheus=qa` selector, the dashboard sidecar, the blackbox exporter, Loki and the shared notification channel. ESO also left the rules for layer 3 components here |
 | **Reference specification** | `archetype-model.md` (AM §n; §3 layer 1b, §4.2 `monitoring` traits), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -145,7 +145,7 @@ Grafana logs in with OIDC against Keycloak, but Keycloak (layer 4) requires `mon
 
 | Piece | How |
 |---|---|
-| Keycloak URLs | By environment convention: `https://sso.<dns_suffix>/realms/<env>`, the same that the `oidc-idp` contract publishes (Keycloak §11.3). An assert in `keycloak` checks that its hostname and realm follow the convention |
+| Keycloak URLs | By convention: `https://sso.<dns_suffix>/realms/disasterproject`, the same realm in every environment (edge-qa DL10), the same that the `oidc-idp` contract publishes (Keycloak §11.3). An assert in `keycloak` checks that its hostname and realm follow the convention |
 | Grafana's OIDC client | Declared by Keycloak's `realm` stack as a platform client (Keycloak §6.6) |
 | Client secret | `qa-monitoring-oss-grafana-oidc`, created by this archetype's `secrets` stack with `secretAccessor` for the `qa-keycloak-config` principal (Keycloak §6.5). The principal can be granted before the KSA exists |
 | Before Keycloak exists | Grafana starts; OIDC login fails until then. Local `admin` account (`qa-monitoring-oss-grafana-admin`) as break-glass |

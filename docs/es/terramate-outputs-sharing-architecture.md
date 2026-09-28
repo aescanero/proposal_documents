@@ -3064,6 +3064,42 @@ deny contains msg if {
 
 Las dos reglas de contrato se ejecutan sobre la mitad declarada de la CMDB de la pull request (`index.json`), así que el inventario es el mismo que lee la guarda de destroy. El colector que escribe la mitad observada solo publica salidas sin `sensitive = true`; la regla de nombres de secreto de arriba es la que impide que un valor secreto llegue a ser una salida.
 
+**Los nombres públicos nunca llevan el nombre del entorno** (propuesta `edge-qa`, DL10). Todo lo visible sin credenciales usa el `network.public_id` aleatorio del entorno. La regla se comprueba dos veces, porque los nombres viven en dos sitios: G1 comprueba el binding, donde se declaran el identificador y el sufijo público; G3 comprueba el plan, donde aparecen por fin los nombres de bucket, los registros DNS públicos y los dominios de los certificados (§13.4). El realm del proveedor de identidad, que sale en las URLs públicas de OIDC/SAML, es un global y lo guarda un `assert` en su propio arquetipo.
+
+```rego
+package environment.public_names
+
+# Palabras que nombran un entorno. Ningún nombre público puede contener una.
+env_words := {"prod", "prd", "production", "qa", "dev", "develop", "test", "tst", "uat",
+              "stg", "stage", "staging", "pre", "preprod", "demo", "demos", "sandbox", "sbx",
+              "ephemeral", "nonprod"}
+
+words := env_words | {input.metadata.name}
+
+# El identificador público es aleatorio; si una tirada contiene por azar una palabra de entorno, se repite.
+deny contains msg if {
+    input.kind == "EnvironmentBinding"
+    some w in words
+    contains(input.network.public_id, w)
+    msg := sprintf("public_id %q contains %q: generate a new one", [input.network.public_id, w])
+}
+
+# El sufijo público es <public_id>.<dominio>...
+deny contains msg if {
+    input.kind == "EnvironmentBinding"
+    not startswith(input.network.dns_suffix, sprintf("%s.", [input.network.public_id]))
+    msg := sprintf("dns_suffix %q must start with public_id %q", [input.network.dns_suffix, input.network.public_id])
+}
+
+# ...y ninguna de sus etiquetas nombra un entorno.
+deny contains msg if {
+    input.kind == "EnvironmentBinding"
+    some label in split(input.network.dns_suffix, ".")
+    label in words
+    msg := sprintf("dns_suffix %q carries the environment word %q", [input.network.dns_suffix, label])
+}
+```
+
 ```rego
 package archetype.composition
 
@@ -3110,6 +3146,47 @@ terramate run --changed -- \
           --config-file "${TM_ROOT}/.checkov/${TM_CLOUD}.yaml"
 
 conftest test --policy policy/ --data registry/ --namespace terraform plan.json
+```
+
+En G3 el plan lleva los nombres que G1 no ve. `env_words` se importa del paquete de G1, así que las dos comprobaciones usan la misma lista:
+
+```rego
+package terraform.public_names
+
+import data.environment.public_names.env_words
+
+# Todo recurso gestionado del plan, a cualquier profundidad de módulo.
+resources contains r if {
+    walk(input.planned_values, [_, r])
+    is_object(r)
+    r.mode == "managed"
+}
+
+# Nombres que cualquiera ve sin credenciales.
+public_names contains [r.address, r.values.name] if {
+    some r in resources
+    r.type == "google_storage_bucket"                       # espacio de nombres global, se puede sondear
+}
+
+public_names contains [r.address, r.values.name] if {
+    some r in resources
+    r.type == "google_dns_record_set"
+    not endswith(r.values.name, ".internal.")              # las zonas privadas (qa.internal) conservan el nombre
+}
+
+public_names contains [r.address, d] if {
+    some r in resources
+    r.type == "google_certificate_manager_certificate"     # queda en los logs de Certificate Transparency
+    some m in r.values.managed
+    some d in m.domains
+}
+
+deny contains msg if {
+    some [addr, name] in public_names
+    some token in split(replace(name, ".", "-"), "-")
+    token in env_words
+    msg := sprintf("%s: public name %q carries the environment word %q (edge-qa DL10)", [addr, name, token])
+}
 ```
 
 Configuración de Checkov por cloud, ya que las comprobaciones difieren:
@@ -3459,6 +3536,9 @@ El invariante de ordenamiento que antes dependía de un script de shell es ahora
     conftest test --policy policy/ --data registry/ resolution.json stacks.json
     for m in archetypes/*/manifest.yaml; do
       conftest test --policy policy/ --data registry/ "$m"
+    done
+    for b in environments/*/binding.yaml; do  # nombres públicos: public_id y dns_suffix (§13.3)
+      conftest test --policy policy/ --data registry/ "$b"
     done
 ```
 
