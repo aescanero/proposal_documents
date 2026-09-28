@@ -65,7 +65,7 @@ Source: [`diagrams/02-arranque.mmd`](diagrams/02-arranque.mmd)
 | 3 | The same account | Restores the generated backend and runs `tofu init -migrate-state` to the bucket; the state is written encrypted | In the bucket, encrypted |
 | 4 | Normal pull request review | Removes the *fallback* and enforces encryption (`enforced = true`) | In the bucket, encrypted |
 | 5 | Repository administrator | Repository variables and the GitHub Environments `landing-zone`, `landing-zone-destroy` | — |
-| 6 | Pipeline, `tf-apply-lz@` | The rest of the `gcp-lz-*` stacks (§2–§10), through pull requests | In the bucket, encrypted |
+| 6 | Pipeline, `tf-apply-lz@` | The rest of the `gcp-lz-*` stacks (§2–§10): the first time with the manual `first-deploy` workflow for `landing-zone`, which writes its deploy marker; afterwards through pull requests (`infra-repo-qa` §6) | In the bucket, encrypted |
 
 The procedure for steps 2 and 3 is kept in the deployment repository as `docs/runbooks/lz-bootstrap.md` (`infra-repo-qa` §2), because the next time it is needed will be to rebuild the organisation and nobody will remember it (RZ1). This section is that runbook.
 

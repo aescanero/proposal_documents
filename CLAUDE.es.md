@@ -114,6 +114,8 @@ Estos son los modos de fallo que ya se han identificado. No los redescubras.
 
 **Los globals no se resuelven en `stack.after` — es un error de análisis, no uno silencioso** (medido, Terramate 0.16.0, `poc/RESULTS.es.md`). El resolver debe escribir valores literales; preferir `after = ["tag:<capability>"]` a una ruta para que un stack pueda moverse. El fallo silencioso que queda es un `after` *olvidado*: un consumidor con un `input` y sin orden se genera limpiamente y puede programarse antes que su productor, sin error en ninguna fase. Eso es R2, y G1 es lo que lo detecta.
 
+**Los tags de Terramate no pueden contener `:`** (medido, 0.16.0: solo minúsculas, dígitos, `.`, `_`, `-`, `/`). En un filtro, `:` significa AND y `,` significa OR, y dos opciones `--tags` son OR. Por eso los tags de instancia y de arquetipo son `instance/<id>` y `archetype/<name>`, y `--tags gcp:qa:network` selecciona los stacks que llevan los tres tags. Un tag escrito `instance:alpha` hace fallar la carga entera de la configuración.
+
 **La opción de G0 es `terramate generate --detailed-exit-code`** (0 = al día, 2 = deriva, 1 = error). `--check` no existe en Terramate y falla con `unknown flag`. Un mock de tipo incorrecto no cambia ningún fichero generado, así que G0 no puede detectarlo; G1 comprueba la forma del mock contra el contrato.
 
 **`mock_on_fail` debe ser true en preview y false en deploy.** Bloques `script` nombrados por separado para que no se pueda confundir. Un deployment que cae silenciosamente en un mock aplica un sinsentido.
@@ -194,7 +196,7 @@ El generador (`registry-generate`) **todavía no está escrito**. Es la primera 
 |---|---|---|
 | ID de stack | `<cloud>-<env>-<capability>[-<instance>]` | `gcp-demos-gke`, `aws-prod-eks` |
 | Nombres públicos | `<app>.<public_id>.<dominio>`; buckets `disasterproject-<public_id>-<propósito>` | `sonar.tqbvzkr.disasterproject.com` (`public_id` es un ejemplo) |
-| Tags de stack | cloud, env, capability, `platform`\|`archetype:<name>`, `instance:<id>`, `producer`\|`consumer`, `protected` | |
+| Tags de stack | cloud, env, capability, `platform`\|`archetype/<name>`, `instance/<id>`, `producer`\|`consumer`, `protected` | |
 | Archivos generados | `_<propósito>.tf` | `_main.tf`, `_sharing_generated.tf` |
 | Generadores | `imports/generators/v<N>/gen_<capability>.tm.hcl` | |
 | Contratos | `imports/contracts/contract_<capability>[_<cloud>].tm.hcl` | |

@@ -313,7 +313,7 @@ Todos los stacks comparten:
 stack {
   id    = "gcp-qa-sonarqube-main-app"
   name  = "qa — sonarqube-main — app"
-  tags  = ["gcp", "qa", "app", "archetype:sonarqube", "instance:sonarqube-main", "consumer"]
+  tags  = ["gcp", "qa", "app", "archetype/sonarqube", "instance/sonarqube-main", "consumer"]
   after = [
     "/stacks/archetypes/sonarqube/instances/main/secrets",
     "/stacks/archetypes/sonarqube/instances/main/firewall",
@@ -772,14 +772,14 @@ terramate generate && git diff --exit-code          # G0
 conftest test ...                                   # G1
 checkov -d stacks/archetypes/sonarqube              # G2
 # API server por el endpoint DNS del plano de control, solo IAM (E1 §4.13)
-terramate script run --tags instance:sonarqube-main --changed tofu preview   # sharing ON, mocks ON
+terramate script run --tags instance/sonarqube-main --changed tofu preview   # sharing ON, mocks ON
 conftest/checkov sobre plan.json                    # G3
 ```
 
 ### 8.2 Merge a `main` (deploy)
 
 ```bash
-terramate script run --tags instance:sonarqube-main --changed tofu deploy    # sharing ON, mocks OFF
+terramate script run --tags instance/sonarqube-main --changed tofu deploy    # sharing ON, mocks OFF
 ```
 
 El orden sale de los `after` (§3). El primer despliegue ejecuta los 9 stacks; los siguientes, solo los cambiados. Entorno de GitHub con revisores obligatorios (arquitectura §14.2).
@@ -802,7 +802,7 @@ El paso 3 se automatiza como un stack `pre-upgrade` solo si los cambios de versi
 
 ### 8.4 Destrucción
 
-`terramate run --tags instance:sonarqube-main --reverse -- tofu destroy` (arquitectura §12.4). Se detiene en `qa-sonarqube-secret-key` (`prevent_destroy`) a propósito: destruir la instancia exige quitar esa protección en un PR explícito.
+`terramate run --tags instance/sonarqube-main --reverse -- tofu destroy` (arquitectura §12.4). Se detiene en `qa-sonarqube-secret-key` (`prevent_destroy`) a propósito: destruir la instancia exige quitar esa protección en un PR explícito.
 
 ---
 

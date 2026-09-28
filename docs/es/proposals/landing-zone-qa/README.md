@@ -65,7 +65,7 @@ Fuente: [`diagrams/02-arranque.mmd`](diagrams/02-arranque.mmd)
 | 3 | La misma cuenta | Restaura el backend generado y `tofu init -migrate-state` al bucket; el estado se escribe cifrado | En el bucket, cifrado |
 | 4 | Revisión normal por PR | Quita el *fallback* y fuerza el cifrado (`enforced = true`) | En el bucket, cifrado |
 | 5 | Administrador del repositorio | Variables del repositorio y GitHub Environments `landing-zone`, `landing-zone-destroy` | — |
-| 6 | Pipeline, `tf-apply-lz@` | El resto de stacks `gcp-lz-*` (§2–§10), por PR | En el bucket, cifrado |
+| 6 | Pipeline, `tf-apply-lz@` | El resto de stacks `gcp-lz-*` (§2–§10): la primera vez con el workflow manual `first-deploy` para `landing-zone`, que escribe su marcador de deploy; después por PR (`infra-repo-qa` §6) | En el bucket, cifrado |
 
 El procedimiento de los pasos 2 y 3 se guarda en el repositorio de despliegue como `docs/runbooks/lz-bootstrap.md` (`infra-repo-qa` §2), porque la próxima vez que haga falta será para reconstruir la organización y nadie lo recordará (RZ1). Esta sección es ese runbook.
 

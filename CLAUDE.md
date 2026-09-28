@@ -114,6 +114,8 @@ These are the failure modes that have already been identified. Do not rediscover
 
 **Globals do not resolve in `stack.after` — it is a parse error, not a silent one** (measured, Terramate 0.16.0, `poc/RESULTS.md`). The resolver must write literal values; prefer `after = ["tag:<capability>"]` over a path so a stack can move. The silent failure that remains is a *forgotten* `after`: a consumer with an `input` and no ordering generates cleanly and can be scheduled before its producer, with no error at any stage. That is R2, and G1 is what catches it.
 
+**Terramate tags cannot contain `:`** (measured, 0.16.0: only lowercase letters, digits, `.`, `_`, `-`, `/`). In a filter, `:` means AND and `,` means OR, and two `--tags` flags are OR. So instance and archetype tags are `instance/<id>` and `archetype/<name>`, and `--tags gcp:qa:network` selects stacks carrying all three tags. A tag written `instance:alpha` fails the whole configuration load.
+
 **The G0 flag is `terramate generate --detailed-exit-code`** (0 = up to date, 2 = drift, 1 = error). `--check` does not exist in Terramate and fails with `unknown flag`. A wrong-typed mock changes no generated file, so G0 cannot catch it; G1 checks mock shape against the contract.
 
 **`mock_on_fail` must be true in preview and false in deploy.** Separate named `script` blocks so it cannot be got wrong. A deployment that silently falls back to a mock applies nonsense.
@@ -194,7 +196,7 @@ The generator (`registry-generate`) is **not yet written**. It is the first task
 |---|---|---|
 | Stack ID | `<cloud>-<env>-<capability>[-<instance>]` | `gcp-demos-gke`, `aws-prod-eks` |
 | Public names | `<app>.<public_id>.<domain>`; buckets `disasterproject-<public_id>-<purpose>` | `sonar.tqbvzkr.disasterproject.com` (`public_id` is an example) |
-| Stack tags | cloud, env, capability, `platform`\|`archetype:<name>`, `instance:<id>`, `producer`\|`consumer`, `protected` | |
+| Stack tags | cloud, env, capability, `platform`\|`archetype/<name>`, `instance/<id>`, `producer`\|`consumer`, `protected` | |
 | Generated files | `_<purpose>.tf` | `_main.tf`, `_sharing_generated.tf` |
 | Generators | `imports/generators/v<N>/gen_<capability>.tm.hcl` | |
 | Contracts | `imports/contracts/contract_<capability>[_<cloud>].tm.hcl` | |

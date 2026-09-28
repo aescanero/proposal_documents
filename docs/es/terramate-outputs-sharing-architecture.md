@@ -696,7 +696,7 @@ terramate run --tags <cloud>:<env>:cluster  --enable-sharing -- tofu apply -auto
 terramate run --tags <cloud>:<env>:platform-services --enable-sharing -- tofu apply -auto-approve
 
 # Una vez que la plataforma existe, una instancia se despliega en una sola ejecución ordenada.
-terramate run --tags instance:<name> --enable-sharing -- tofu apply -auto-approve
+terramate run --tags instance/<name> --enable-sharing -- tofu apply -auto-approve
 ```
 
 El escalonamiento solo se requiere en un **primer** apply de un entorno nuevo, porque
@@ -2875,7 +2875,7 @@ La operación más peligrosa en un entorno compartido es desmontar una demo. `te
 ```bash
 # CORRECTO: destruye solo los stacks propios de la instancia
 terramate run \
-  --tags instance:alpha \
+  --tags instance/alpha \
   --reverse \
   --enable-sharing \
   -- tofu destroy -auto-approve
@@ -2894,7 +2894,8 @@ stack {
 
 ```bash
 # En el job de destroy, antes de ejecutar nada:
-if terramate list --tags protected --tags instance:${INSTANCE} | grep -q .; then
+# --tags a:b es a Y b. Dos opciones --tags son O: la guarda casaría con todo stack protegido y bloquearía cualquier destroy
+if terramate list --tags protected:instance/${INSTANCE} | grep -q .; then
   echo "::error::El selector de destroy coincidió con un stack de plataforma protegido. Abortando."
   exit 1
 fi
@@ -3036,8 +3037,8 @@ deny contains msg if {
 deny contains msg if {
     some s in input.stacks
     s.capability == "app"
-    count({t | some t in s.tags; startswith(t, "instance:")}) == 0
-    msg := sprintf("el stack de aplicación %q no tiene tag instance:", [s.id])
+    count({t | some t in s.tags; startswith(t, "instance/")}) == 0
+    msg := sprintf("el stack de aplicación %q no tiene tag instance/", [s.id])
 }
 ```
 
@@ -3425,16 +3426,16 @@ jobs:
   changes:                   # por entorno: ¿cambiado desde su último deploy con éxito?
     runs-on: ubuntu-latest
     outputs:
-      lz:      ${{ steps.c.outputs.lz }}        # {"env":"landing-zone","base":"<sha>"} or ""
+      lz:      ${{ steps.c.outputs.lz }}        # {"env":"landing-zone","base":"<sha>"} o ""
       nonprod: ${{ steps.c.outputs.nonprod }}   # [{"env":"qa","base":"<sha>"}, …]
-      prod:    ${{ steps.c.outputs.prod }}      # {"env":"prod","base":"<sha>"} or ""
+      prod:    ${{ steps.c.outputs.prod }}      # {"env":"prod","base":"<sha>"} o ""
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: jdx/mise-action@v2
       - run: git fetch origin cmdb-observed
       - id: c
-        run: ./ci/changed-envs.sh >> "$GITHUB_OUTPUT"   # reads cmdb-data/observed/deployed/<env>.json
+        run: ./ci/changed-envs.sh   # lee cmdb-data/observed/deployed/<env>.json; escribe lz, nonprod, prod
 
   landing-zone:
     needs: changes
@@ -3789,7 +3790,7 @@ Secuenciada para que nada bloquee un despliegue real hasta que se haya observado
 | Cosa | Patrón | Ejemplo |
 |---|---|---|
 | ID de stack | `<cloud>-<env>-<capability>[-<instance>]` | `aws-demos-eks`, `gcp-prod-disasterproject-app` |
-| Tags de stack | `<cloud>`, `<env>`, `<capability>`, `platform`\|`archetype:<name>`, `instance:<id>`, `producer`\|`consumer`, `protected` | |
+| Tags de stack | `<cloud>`, `<env>`, `<capability>`, `platform`\|`archetype/<name>`, `instance/<id>`, `producer`\|`consumer`, `protected` | |
 | Ficheros generados | `_<purpose>.tf` | `_main.tf`, `_backend.tf`, `_sharing_generated.tf` |
 | Directorio de generador | `imports/generators/v<N>/gen_<capability>.tm.hcl` | `imports/generators/v1/gen_cluster.tm.hcl` |
 | Fichero de contrato | `imports/contracts/contract_<capability>[_<cloud>].tm.hcl` | `contract_cluster_eks.tm.hcl` |
@@ -3807,8 +3808,8 @@ Secuenciada para que nada bloquee un despliegue real hasta que se haya observado
 | Inspeccionar el orden de ejecución | `terramate experimental run-graph` |
 | Plan con sharing + mocks | `terramate script run --changed tofu preview` |
 | Apply con sharing | `terramate script run --changed tofu deploy` |
-| Desplegar una instancia | `terramate run --tags instance:alpha --enable-sharing -- tofu apply -auto-approve` |
-| Destruir una instancia | `terramate run --tags instance:alpha --reverse --enable-sharing -- tofu destroy -auto-approve` |
+| Desplegar una instancia | `terramate run --tags instance/alpha --enable-sharing -- tofu apply -auto-approve` |
+| Destruir una instancia | `terramate run --tags instance/alpha --reverse --enable-sharing -- tofu destroy -auto-approve` |
 | Comprobación de drift | `terramate run --tags prod --enable-sharing -- tofu plan -detailed-exitcode` |
 | Regenerar el registro | `registry-generate` |
 | Verificar que el registro está al día | `registry-generate --check` |

@@ -688,7 +688,7 @@ terramate run --tags <cloud>:<env>:cluster  --enable-sharing -- tofu apply -auto
 terramate run --tags <cloud>:<env>:platform-services --enable-sharing -- tofu apply -auto-approve
 
 # Once the platform exists, an instance deploys in one ordered run.
-terramate run --tags instance:<name> --enable-sharing -- tofu apply -auto-approve
+terramate run --tags instance/<name> --enable-sharing -- tofu apply -auto-approve
 ```
 
 Staging is required only on a **first** apply of a new environment, because a
@@ -2866,7 +2866,7 @@ The most dangerous operation in a shared environment is tearing down a demo. `te
 ```bash
 # CORRECT: destroys only the instance's own stacks
 terramate run \
-  --tags instance:alpha \
+  --tags instance/alpha \
   --reverse \
   --enable-sharing \
   -- tofu destroy -auto-approve
@@ -2885,7 +2885,8 @@ stack {
 
 ```bash
 # In the destroy job, before running anything:
-if terramate list --tags protected --tags instance:${INSTANCE} | grep -q .; then
+# --tags a:b is a AND b. Two --tags flags are OR: the guard would match every protected stack and block every destroy
+if terramate list --tags protected:instance/${INSTANCE} | grep -q .; then
   echo "::error::Destroy selector matched a protected platform stack. Aborting."
   exit 1
 fi
@@ -3027,8 +3028,8 @@ deny contains msg if {
 deny contains msg if {
     some s in input.stacks
     s.capability == "app"
-    count({t | some t in s.tags; startswith(t, "instance:")}) == 0
-    msg := sprintf("application stack %q has no instance: tag", [s.id])
+    count({t | some t in s.tags; startswith(t, "instance/")}) == 0
+    msg := sprintf("application stack %q has no instance/ tag", [s.id])
 }
 ```
 
@@ -3425,7 +3426,7 @@ jobs:
       - uses: jdx/mise-action@v2
       - run: git fetch origin cmdb-observed
       - id: c
-        run: ./ci/changed-envs.sh >> "$GITHUB_OUTPUT"   # reads cmdb-data/observed/deployed/<env>.json
+        run: ./ci/changed-envs.sh   # reads cmdb-data/observed/deployed/<env>.json; writes lz, nonprod, prod
 
   landing-zone:
     needs: changes
@@ -3780,7 +3781,7 @@ Sequenced so that nothing blocks a real deployment until it has been observed in
 | Thing | Pattern | Example |
 |---|---|---|
 | Stack ID | `<cloud>-<env>-<capability>[-<instance>]` | `aws-demos-eks`, `gcp-prod-disasterproject-app` |
-| Stack tags | `<cloud>`, `<env>`, `<capability>`, `platform`\|`archetype:<name>`, `instance:<id>`, `producer`\|`consumer`, `protected` | |
+| Stack tags | `<cloud>`, `<env>`, `<capability>`, `platform`\|`archetype/<name>`, `instance/<id>`, `producer`\|`consumer`, `protected` | |
 | Generated files | `_<purpose>.tf` | `_main.tf`, `_backend.tf`, `_sharing_generated.tf` |
 | Generator directory | `imports/generators/v<N>/gen_<capability>.tm.hcl` | `imports/generators/v1/gen_cluster.tm.hcl` |
 | Contract file | `imports/contracts/contract_<capability>[_<cloud>].tm.hcl` | `contract_cluster_eks.tm.hcl` |
@@ -3798,8 +3799,8 @@ Sequenced so that nothing blocks a real deployment until it has been observed in
 | Inspect execution order | `terramate experimental run-graph` |
 | Plan with sharing + mocks | `terramate script run --changed tofu preview` |
 | Apply with sharing | `terramate script run --changed tofu deploy` |
-| Deploy one instance | `terramate run --tags instance:alpha --enable-sharing -- tofu apply -auto-approve` |
-| Destroy one instance | `terramate run --tags instance:alpha --reverse --enable-sharing -- tofu destroy -auto-approve` |
+| Deploy one instance | `terramate run --tags instance/alpha --enable-sharing -- tofu apply -auto-approve` |
+| Destroy one instance | `terramate run --tags instance/alpha --reverse --enable-sharing -- tofu destroy -auto-approve` |
 | Drift check | `terramate run --tags prod --enable-sharing -- tofu plan -detailed-exitcode` |
 | Regenerate the registry | `registry-generate` |
 | Verify registry is current | `registry-generate --check` |

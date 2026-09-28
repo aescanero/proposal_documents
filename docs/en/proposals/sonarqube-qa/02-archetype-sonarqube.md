@@ -313,7 +313,7 @@ Every stack shares this:
 stack {
   id    = "gcp-qa-sonarqube-main-app"
   name  = "qa — sonarqube-main — app"
-  tags  = ["gcp", "qa", "app", "archetype:sonarqube", "instance:sonarqube-main", "consumer"]
+  tags  = ["gcp", "qa", "app", "archetype/sonarqube", "instance/sonarqube-main", "consumer"]
   after = [
     "/stacks/archetypes/sonarqube/instances/main/secrets",
     "/stacks/archetypes/sonarqube/instances/main/firewall",
@@ -772,14 +772,14 @@ terramate generate && git diff --exit-code          # G0
 conftest test ...                                   # G1
 checkov -d stacks/archetypes/sonarqube              # G2
 # API server through the control plane DNS endpoint, IAM only (S1 §4.13)
-terramate script run --tags instance:sonarqube-main --changed tofu preview   # sharing ON, mocks ON
+terramate script run --tags instance/sonarqube-main --changed tofu preview   # sharing ON, mocks ON
 conftest/checkov over plan.json                     # G3
 ```
 
 ### 8.2 Merge to `main` (deploy)
 
 ```bash
-terramate script run --tags instance:sonarqube-main --changed tofu deploy    # sharing ON, mocks OFF
+terramate script run --tags instance/sonarqube-main --changed tofu deploy    # sharing ON, mocks OFF
 ```
 
 The order comes from the `after`s (§3). The first deployment runs all 9 stacks; later ones, only the changed ones. A GitHub Environment with required reviewers (architecture §14.2).
@@ -802,7 +802,7 @@ Step 3 is automated as a `pre-upgrade` stack only if version changes become freq
 
 ### 8.4 Destruction
 
-`terramate run --tags instance:sonarqube-main --reverse -- tofu destroy` (architecture §12.4). It stops at `qa-sonarqube-secret-key` (`prevent_destroy`) on purpose: destroying the instance requires removing that protection in an explicit PR.
+`terramate run --tags instance/sonarqube-main --reverse -- tofu destroy` (architecture §12.4). It stops at `qa-sonarqube-secret-key` (`prevent_destroy`) on purpose: destroying the instance requires removing that protection in an explicit PR.
 
 ---
 

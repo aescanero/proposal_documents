@@ -359,7 +359,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 | **`global.platform.model`** | The global flag (`"dedicated"` or `"shared"`) conditioning generator output — e.g. tenancy guard rails only emitted when `"shared"`. |
 | **Tenancy guard rails (shared model)** | Per-instance resources generated only for shared-model instances: a dedicated `kubernetes_namespace` with `pod-security.kubernetes.io/enforce: restricted`, a `kubernetes_resource_quota`, a `kubernetes_limit_range`, a default-deny `kubernetes_network_policy`. |
 | **`global.quota`** | Required globals object (cpu, memory, pods, loadbalancers) shared-model instances must define, enforced by assertion. |
-| **Tag-scoped destroy** | The mandated shared-environment teardown (`terramate run --tags instance:<name> --reverse ...`) — never a path/`--changed`-based selector, which could sweep in platform stacks. |
+| **Tag-scoped destroy** | The mandated shared-environment teardown (`terramate run --tags instance/<name> --reverse ...`) — never a path/`--changed`-based selector, which could sweep in platform stacks. |
 | **`protected` tag** | Marks platform stacks so CI refuses to destroy them outside a break-glass workflow. |
 | **Reference counting (platform destroy)** | Counting instances still bound to a shared platform before allowing the platform itself to be destroyed. |
 | **Ephemeral environment** (`ephemeral-*`) | A short-lived platform (e.g. `ephemeral/conf-2026-q3`) created by copying `demos/` and changing three globals (`env`, `project_id`, `vpc_cidr`); expiry handled via a human-approved destroy PR, never automatic. |
