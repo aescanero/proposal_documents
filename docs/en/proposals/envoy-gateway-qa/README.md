@@ -38,7 +38,7 @@ Source: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 
 | Segment or function | Who | Reason |
 |---|---|---|
-| Global IP, `*.qa.disasterproject.com` certificate, Cloud Armor, backend service, URL map | **`gcp-qa-edge`**, layer 1 (S1 §4.15) | Must share a project with the load balancer |
+| Global IP, `*.tqbvzkr.disasterproject.com` certificate, Cloud Armor, backend service, URL map | **`gcp-qa-edge`**, layer 1 (S1 §4.15) | Must share a project with the load balancer |
 | NEG `eg-qa-neg` | The **GKE NEG controller**, from the annotation on the Service that Envoy Gateway generates | Outside Terraform state (§10.2, R20); `gcp-qa-edge` reads it as a `data` source |
 | GLB → Envoy leg | **HTTP**, no certificate (DG14) | Public TLS terminates at the GLB with the layer-1 certificate. A certificate from the internal CA on this leg made the edge (layer 1) depend on cert-manager (layer 3), and the GLB did not validate it: it encrypted without authenticating |
 | Routing by host and path, traffic policies | This archetype: the `qa` Gateway and the consumers' `HTTPRoute`s | Gateway API: the route lives with whoever publishes it (§10.6) |
@@ -110,7 +110,7 @@ The GLB appends `<client IP>,<GLB IP>` to `X-Forwarded-For`. A `ClientTrafficPol
 
 Source: [`diagrams/03-tenencia.mmd`](diagrams/03-tenencia.mmd)
 
-With a shared Gateway, Gateway API precedence decides between routes **from different namespaces**. The most specific path match wins, wherever it comes from. A tenant's `HTTPRoute` with host `sso.qa.disasterproject.com` and `Exact: /realms/qa/protocol/openid-connect/auth` would take Keycloak's login page. An `HTTPRoute` **without `hostnames`** applies to every host on the listener. This is the archetype's main risk (RG1).
+With a shared Gateway, Gateway API precedence decides between routes **from different namespaces**. The most specific path match wins, wherever it comes from. A tenant's `HTTPRoute` with host `sso.tqbvzkr.disasterproject.com` and `Exact: /realms/disasterproject/protocol/openid-connect/auth` would take Keycloak's login page. An `HTTPRoute` **without `hostnames`** applies to every host on the listener. This is the archetype's main risk (RG1).
 
 ### 4.1 Attaching a route
 
@@ -342,7 +342,7 @@ metadata: { name: sonarqube, namespace: sonarqube }
 spec:
   parentRefs:
     - { name: qa, namespace: envoy-gateway-system, sectionName: https }   # = gateway_name, gateway_namespace, listener_name
-  hostnames: [sonar.qa.disasterproject.com]                               # = the instance's claim
+  hostnames: [sonar.tqbvzkr.disasterproject.com]                               # = the instance's claim
   rules:
     - matches: [{ path: { type: PathPrefix, value: / } }]
       backendRefs: [{ name: sonarqube, port: 9000 }]
@@ -545,7 +545,7 @@ Default-deny ingress and egress `NetworkPolicy` in `envoy-gateway-system`:
 | # | Decision | Status | Recommendation | Alternative |
 |---|---|---|---|---|
 | DG1 | Gateways | Consequence of §10.6 | One, `qa`, in `envoy-gateway-system` | One per tenant (fan-in, one NEG per Gateway) |
-| DG2 | Listener | Proposal | HTTP 8080 without `hostname`; routes decide the host | Listener with `*.qa.disasterproject.com` |
+| DG2 | Listener | Proposal | HTTP 8080 without `hostname`; routes decide the host | Listener with `*.tqbvzkr.disasterproject.com` |
 | DG3 | Gateway API CRDs | Proposal | Installed by the archetype, standard channel; GKE's Gateway API disabled | Managed by GKE |
 | DG4 | Hostname ownership | Proposal | Claim + namespace annotation + referential Gatekeeper + G1 | Trust the tenants |
 | DG5 | Envoy Gateway extensions | Proposal | `EnvoyPatchPolicy` and `Backend` disabled; `EnvoyExtensionPolicy` only in the Gateway's namespace | Available to tenants |

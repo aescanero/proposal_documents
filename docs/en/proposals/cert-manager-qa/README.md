@@ -38,7 +38,7 @@ Source: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 
 | Certificate | Who issues it | Reason |
 |---|---|---|
-| **Public** `*.qa.disasterproject.com` on the GLB | **Certificate Manager**, layer 1 `cert` capability (S1 §3.3) | Must be in the same project as the load balancer; validation is by DNS; nobody in the cluster touches it |
+| **Public** `*.tqbvzkr.disasterproject.com` on the GLB | **Certificate Manager**, layer 1 `cert` capability (S1 §3.3) | Must be in the same project as the load balancer; validation is by DNS; nobody in the cluster touches it |
 | Keycloak pod TLS (`keycloak-service.keycloak.svc`) | cert-manager | Tokens travel over the back-channel (Keycloak §4) |
 | ESO and prometheus-operator webhooks | cert-manager, with the CA injected by **cainjector** | ESO §4.1, monitoring §8.3 |
 | **Gatekeeper** webhook | **Gatekeeper**, with its own rotator | Gatekeeper is in layer 2b, **before** cert-manager: it cannot depend on it (AM §3) |

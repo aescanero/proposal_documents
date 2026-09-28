@@ -85,9 +85,9 @@ Todo se construye de cero. **Registro** indica si la capability existe en `regis
 
 | Capa | Capability | Implementación en GCP | Licencia | Por qué la necesita SonarQube | Registro |
 |---|---|---|---|---|---|
-| 0 | `dns-zone` | Cloud DNS, zona `disasterproject.com` en el proyecto de landing zone, que **delega** `qa.disasterproject.com` a una zona en `disasterproject-nonprod` | cloud | Registro wildcard `*.qa.disasterproject.com` | ✓ |
+| 0 | `dns-zone` | Cloud DNS, zona `disasterproject.com` en el proyecto de landing zone, que **delega** `tqbvzkr.disasterproject.com` a una zona en `disasterproject-nonprod` | cloud | Registro wildcard `*.tqbvzkr.disasterproject.com` | ✓ |
 | 0 | `cidr-pool` | Ledger del modelo (AM §9) | — | Una `/17` del bloque permanente `10.4.0.0/14` (ejemplo de AM §9.2: `10.4.128.0/17`) | ✓ |
-| 1 | `cert` | Certificate Manager en `disasterproject-nonprod`, certificado **wildcard** `*.qa.disasterproject.com` con DNS authorization | cloud | TLS público en el borde | ✓ |
+| 1 | `cert` | Certificate Manager en `disasterproject-nonprod`, certificado **wildcard** `*.tqbvzkr.disasterproject.com` con DNS authorization | cloud | TLS público en el borde | ✓ |
 | 1 | `waf` | Cloud Armor en `disasterproject-nonprod` | cloud | Única protección de red posible con runners alojados por GitHub (D3) | ✓ |
 | 1 | `edge-ip` | IP global reservada en `disasterproject-nonprod` | cloud | Destino del wildcard | ✓ |
 | 0 | *(KMS)* | Cloud KMS en el proyecto de landing zone, key ring `qa` en `europe-west1` | cloud | Estado de OpenTofu, secretos de etcd, firma de imágenes (§4.14) | ✗ — deliberado, §4.14 |
@@ -105,7 +105,7 @@ Todo se construye de cero. **Registro** indica si la capability existe en `regis
 | 3 | `monitoring` | **kube-prometheus-stack**, **Grafana**, **Loki** (sobre GCS), **Fluent Bit**, **Blackbox exporter** | Apache-2.0 / AGPL-3.0 | Métricas, logs, alertas, sonda externa | ✓ (+ trait) |
 | 4 | `object-store` | **No se enlaza** | — | El bucket de backups lo crea el propio arquetipo (etapa 2 §1); el de Loki, el arquetipo de monitorización | ✓ sin uso |
 | 4 | `database-platform` | **CloudNativePG** | Apache-2.0 | SonarQube y Keycloak crean su propio `Cluster` | ✓ (+ trait) |
-| 4 | `oidc-idp` | **Keycloak**, realm `qa` | Apache-2.0 | Personas vía **SAML** | ✓ (+ trait) |
+| 4 | `oidc-idp` | **Keycloak**, realm `disasterproject` | Apache-2.0 | Personas vía **SAML** | ✓ (+ trait) |
 | 5 | — | **SonarQube Community Build**, chart oficial `sonarqube/sonarqube` | LGPL-3.0 | La aplicación | — |
 | CI | — | **GitHub Actions** + `SonarSource/sonarqube-scan-action`, **Trivy**, **cosign** | — / Apache-2.0 | Análisis; build, escaneo y firma de la imagen propia | — |
 
@@ -206,8 +206,8 @@ Backups a GCS con **Workload Identity**: IAM `roles/storage.objectAdmin` sobre e
 
 | Elemento | Propuesta |
 |---|---|
-| Hostname | `sonar.qa.disasterproject.com` — **claim** en el ledger aunque el DNS sea wildcard: la unicidad del nombre sigue siendo escasa |
-| DNS | Registro wildcard `*.qa.disasterproject.com` → IP global, creado una vez por `gcp-qa-edge-base` (propuesta `edge-qa` §1) |
+| Hostname | `sonar.tqbvzkr.disasterproject.com` — **claim** en el ledger aunque el DNS sea wildcard: la unicidad del nombre sigue siendo escasa |
+| DNS | Registro wildcard `*.tqbvzkr.disasterproject.com` → IP global, creado una vez por `gcp-qa-edge-base` (propuesta `edge-qa` §1) |
 | TLS público | Certificate Manager, wildcard, en el GLB |
 | Tramo GLB → Envoy | HTTP, sin certificado: el TLS público termina en el GLB, y el borde no depende de cert-manager (propuesta de Envoy Gateway DG14, borde DL9) |
 | Gateway | Uno por entorno, `allowedRoutes.namespaces.from: Selector` (§10.6); NEG standalone `eg-qa-neg` (§10.2, R20) |
@@ -225,18 +225,18 @@ La plataforma prevé OIDC en el Gateway con `SecurityPolicy`. **No sirve para So
 
 | Quién | Mecanismo | Dónde se valida |
 |---|---|---|
-| Personas | **SAML 2.0** contra Keycloak (realm `qa`, cliente `sonarqube`) | SonarQube |
+| Personas | **SAML 2.0** contra Keycloak (realm `disasterproject`, cliente `sonarqube`) | SonarQube |
 | GitHub Actions | **Token de análisis de proyecto** (D9) | SonarQube |
 | Break-glass | Cuenta local `admin` | SonarQube |
 | Anónimos | Prohibidos: `sonar.forceAuthentication=true` | SonarQube |
 
 `HTTPRoute` de SonarQube **sin `SecurityPolicy` OIDC**, igual que la de Keycloak. SAML es front-channel: SonarQube no necesita red hacia Keycloak.
 
-**Identidades en Entra ID.** Keycloak no es fuente de verdad de usuarios: hace de **broker** hacia Entra ID (identity provider OpenID Connect en el realm `qa`) y emite SAML hacia SonarQube. MFA y acceso condicional se aplican en Entra ID, antes de llegar a Keycloak.
+**Identidades en Entra ID.** Keycloak no es fuente de verdad de usuarios: hace de **broker** hacia Entra ID (identity provider OpenID Connect en el realm `disasterproject`) y emite SAML hacia SonarQube. MFA y acceso condicional se aplican en Entra ID, antes de llegar a Keycloak.
 
 | Tema | Propuesta | Por qué |
 |---|---|---|
-| Registro en Entra ID | Una *app registration* `keycloak-qa`, redirect URI `https://sso.qa.disasterproject.com/realms/qa/broker/entra/endpoint` | Un solo punto de confianza con Entra para todas las aplicaciones de `qa` |
+| Registro en Entra ID | Una *app registration* `keycloak-qa`, redirect URI `https://sso.tqbvzkr.disasterproject.com/realms/disasterproject/broker/entra/endpoint` | Un solo punto de confianza con Entra para todas las aplicaciones de `qa` |
 | Credencial de Keycloak ante Entra | **Certificado** (client assertion firmada), no client secret | Los client secrets de Entra caducan (≤ 24 meses) y suelen caducar en producción sin aviso. Clave privada en Secret Manager (`qa-keycloak-entra-cert`) |
 | Grupos | **App roles** en la app registration (`sonar-administrators`, `sonar-users`, `team-<x>`), asignados a grupos de Entra | El claim `groups` de Entra trae **GUIDs**, no nombres, y con más de 200 grupos se sustituye por un *overage* que exige llamar a Graph. El claim `roles` trae nombres estables y solo los de esta aplicación |
 | Mapeo en Keycloak | Un mapper *Attribute Importer* copia el claim `roles` al atributo multivalor de usuario `entra_roles`; sincronización `force` en cada login. Sin mapper por rol ni grupos de Keycloak (propuesta de Keycloak §5.3) | Un cambio de pertenencia en Entra se refleja en el siguiente login. Dar de alta un equipo toca solo Entra y `teams.yaml` |
@@ -263,7 +263,7 @@ Con 200 proyectos, los permisos **solo** por plantillas: un proyecto nuevo nace 
 
 | Señal | Recogida | Alertas propuestas |
 |---|---|---|
-| Disponibilidad externa | Blackbox → `https://sonar.qa.disasterproject.com/api/system/status` (pasa por GLB, Cloud Armor y Gateway) | ≠ `UP` durante 5 min |
+| Disponibilidad externa | Blackbox → `https://sonar.tqbvzkr.disasterproject.com/api/system/status` (pasa por GLB, Cloud Armor y Gateway) | ≠ `UP` durante 5 min |
 | **Cola del compute engine** | `PodMonitor` sobre `/api/monitoring/metrics` | Pendientes > 20 durante 15 min; tarea más antigua > 10 min. **La alerta clave con 200 proyectos** |
 | Tareas CE fallidas | Idem | Tasa de fallos > 5 % en 1 h |
 | JVM | Idem | Heap > 90 % sostenido |
@@ -301,7 +301,7 @@ GKE aplica `NetworkPolicy` con Dataplane V2; el egress a las APIs de Google se e
 
 | Qué | Cómo | Dónde | Retención |
 |---|---|---|---|
-| PostgreSQL | CNPG barman-cloud: base diaria + WAL continuo (PITR) | `gs://disasterproject-qa-sonarqube-main-pgbackup` (del arquetipo) | 14 días (§12.6) |
+| PostgreSQL | CNPG barman-cloud: base diaria + WAL continuo (PITR) | `gs://disasterproject-tqbvzkr-sonarqube-main-pgbackup` (del arquetipo) | 14 días (§12.6) |
 | Secretos (incluye la clave de cifrado de SonarQube) | Versiones de Secret Manager; sin backup adicional | Secret Manager | Protección frente a borrado (§4.3) |
 | Índices de ES | No se respaldan | — | Reindexado |
 | Configuración | Git | — | — |
@@ -427,7 +427,7 @@ Lo que la documentación **no** dice: qué stack crea las claves, en qué capa, 
 |---|---|---|
 | Global external Application LB (backend service, URL map, proxy, forwarding rule) | Stack `gcp-qa-edge`, capa 1, en `disasterproject-nonprod`, después del proxy de Envoy (propuesta `edge-qa` §4) | El backend service y el NEG de Envoy quedan en la misma VPC. Un LB externo global no necesita subred proxy-only |
 | IP global, política de Cloud Armor, certificado wildcard | Stack `gcp-qa-edge-base`, capa 1, en `disasterproject-nonprod`, en la fase A: el certificado queda activo antes que el Gateway (propuesta `edge-qa` DL1) | Deben estar en el **mismo proyecto que el LB**. Con los entornos fuera del proyecto de la landing zone, las capabilities `cert`, `waf` y `edge-ip` las provee el entorno, no la landing zone |
-| Zona `qa.disasterproject.com` | En `disasterproject-nonprod`, **creada por la landing zone** junto con la delegación desde `disasterproject.com` y el `DS` de DNSSEC; el entorno escribe los registros con `dns.admin` sobre esa zona | Así la capa 0 no lee name servers de la capa 1, y zona, delegación y `DS` no se desincronizan (propuesta `edge-qa` DL2) |
+| Zona `tqbvzkr.disasterproject.com` | En `disasterproject-nonprod`, **creada por la landing zone** junto con la delegación desde `disasterproject.com` y el `DS` de DNSSEC; el entorno escribe los registros con `dns.admin` sobre esa zona | Así la capa 0 no lee name servers de la capa 1, y zona, delegación y `DS` no se desincronizan (propuesta `edge-qa` DL2) |
 | Zona privada `qa.internal` | Cloud DNS **privada** en `disasterproject-nonprod`, enlazada solo a la VPC de `qa`; la crea el stack de red y cada arquetipo escribe sus registros bajo `<namespace>.qa.internal` | Nombres para clientes de la VPC fuera del cluster (propuesta de Kafka §6.3). `.internal` está reservado para uso privado: no resuelve fuera de la VPC, ni por el peering con el hub salvo que se enlace allí a propósito |
 | KMS, Artifact Registry, WIF de GitHub | Proyecto de landing zone | Permisos entre proyectos: agente de GKE de `disasterproject-nonprod` sobre la clave `gke-secrets`; SA de nodos lectora del registro; identidades de pipeline por WIF |
 | Plano de control de GKE | Endpoint público con redes autorizadas vacías; nodos privados en la VPC de `qa` | Acceso del pipeline según §4.13 |
@@ -594,8 +594,9 @@ bindings:
   # dns: sin enlazar — wildcard en env-edge
 network:
   cidr: 10.4.128.0/17               # ejemplo de AM §9.2; la asigna el ledger
-  dns_zone: qa-disasterproject-com
-  dns_suffix: qa.disasterproject.com
+  public_id: tqbvzkr                # identificador público aleatorio (edge-qa DL10); nunca el nombre del entorno
+  dns_zone: qa-public
+  dns_suffix: tqbvzkr.disasterproject.com
 cluster:
   max_nodes: 32                     # techo, no tamaño: 13 nodos + surge (propuesta de GKE §5.3)
   max_pods_per_node: 64
@@ -649,7 +650,7 @@ Añadidos en `registry/traits.yaml`, con el `enum` de `schemas/archetype-manifes
 | D1 | Backend de secretos | **Cerrada** | ESO + Secret Manager; OpenBao fuera de `qa` | — |
 | D2 | PostgreSQL | **Cerrada** (propuesta `postgres-cloudsql`) | Lo decide el proveedor global del entorno: Cloud SQL en `qa` y `prod`; con CNPG, `Cluster` propio | — |
 | D3 | Exposición | **Cerrada** | Pública tras GLB + Cloud Armor, sin filtrado por IP; auth en SonarQube | — |
-| D4 | Autenticación de personas | **Cerrada** | SAML desde Keycloak, que hace broker OIDC hacia Entra ID; grupos por app roles | SAML directo SonarQube ↔ Entra ID: menos piezas, pero rompe la uniformidad del realm `qa` |
+| D4 | Autenticación de personas | **Cerrada** | SAML desde Keycloak, que hace broker OIDC hacia Entra ID; grupos por app roles | SAML directo SonarQube ↔ Entra ID: menos piezas, pero rompe la uniformidad del realm `disasterproject` |
 | D5 | Runtime | **Cerrada** | GKE Standard | — (Autopilot sin sysctl) |
 | D6 | Ramas / PR | **Cerrada** | Solo `main` | Plugin comunitario de ramas (acoplado a versión); Developer Edition |
 | D7 | Logs | **Cerrada** | Fluent Bit → Loki | Grafana Alloy |

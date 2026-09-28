@@ -554,8 +554,9 @@ bindings:
 
 network:
   cidr: 10.4.0.0/17
-  dns_zone: demos-disasterproject-com
-  dns_suffix: demos.disasterproject.com
+  public_id: mfrwzdp                # random public identifier (edge-qa DL10)
+  dns_zone: demos-public
+  dns_suffix: mfrwzdp.disasterproject.com
 
 cluster:
   max_nodes: 128
@@ -582,6 +583,8 @@ policy:
   demo_archetypes_allowed: true
   default_expiry_days: 60
 ```
+
+**`network.public_id` is the environment's name to the outside world.** Seven random lowercase letters, generated once by the landing zone and never derived from the environment name. Whatever someone without credentials can see uses it instead of `demos`: the public zone and hostnames (`dns_suffix` is `<public_id>.disasterproject.com`), the wildcard certificate that lands in Certificate Transparency logs, globally unique bucket names, and the Keycloak realm name (which is the same, `disasterproject`, in every environment). Internal names — resources inside the project, labels, KSA prefixes, stack IDs, namespaces — keep the environment name, because whoever sees them already has access. Changing it renames the whole edge (`edge-qa` proposal, DL10).
 
 > **Design decision: late binding through expressions.** `from_stack_id` in a
 > Terramate `input` block accepts an expression, so one contract file per
@@ -1144,7 +1147,7 @@ archetypectl resolve --instance demos-alpha
     { "name": "data-tenant", "reason": "condition false: database-platform is postgres-cloudsql (trait cloudsql, not cnpg)" }
   ],
   "claims": [
-    { "kind": "hostname", "value": "alpha.demos.disasterproject.com", "state": "active", "pr": 412 },
+    { "kind": "hostname", "value": "alpha.mfrwzdp.disasterproject.com", "state": "active", "pr": 412 },
     { "kind": "cidr", "zone": "data", "purpose": "db-subnet", "value": "10.4.20.0/24", "state": "active", "pr": 412 }
   ],
   "tenant_resources": [
@@ -1360,7 +1363,7 @@ Sixteen archetypes; the application declared six.
 
 **Step 11** validates 6 topics and 1 user against Kafka's limits of 20 and 3, all prefixed `alpha-`.
 
-**Step 12** allocates two claims: hostname `alpha.demos.disasterproject.com`, and a `/24` in zone `data` with purpose `db-subnet` for the dedicated instance. The environment's node and pod ranges were claimed at layers 1 and 2 and are not re-allocated.
+**Step 12** allocates two claims: hostname `alpha.mfrwzdp.disasterproject.com`, and a `/24` in zone `data` with purpose `db-subnet` for the dedicated instance. The environment's node and pod ranges were claimed at layers 1 and 2 and are not re-allocated.
 
 **Step 17** writes `binding.tm.hcl`, which the architecture document's generators consume:
 
@@ -1381,7 +1384,7 @@ globals "platform" {
 globals {
   instance  = "alpha"
   archetype = "webapp-3tier"
-  hostname  = "alpha.demos.disasterproject.com"
+  hostname  = "alpha.mfrwzdp.disasterproject.com"
   env_cidr  = "10.4.0.0/17"
   kafka_prefix = "alpha-"
 }
@@ -1434,7 +1437,7 @@ stacks:
 claims:
   - kind: hostname
     pool: "{{ environment.dns_zone }}"
-    value: "disasterproject-graph.demos.disasterproject.com"
+    value: "disasterproject-graph.mfrwzdp.disasterproject.com"
 
 capacity:
   cpu_millicores: 6000

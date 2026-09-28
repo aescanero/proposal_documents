@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 4 |
+| **Estado** | Propuesta · revisión 5 |
 | **Alcance** | El borde público de `qa`: IP, zona DNS pública y registros, certificado, Cloud Armor, el Global external Application LB hacia el NEG de Envoy, TLS, las excepciones L4 (patrón B), observabilidad, el contrato `env-edge`, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | Es la última pieza para que SonarQube, Keycloak y Grafana sean alcanzables. La propuesta de Envoy Gateway le dejó requisitos (health check, drenaje, `after`, NEG como `data`) y la de SonarQube, dos más (timeout de 120 s y exclusiones de Cloud Armor) |
 | **Base** | E1 §4.5 (publicación), §4.15 (VPC separada y borde propio); propuesta de Envoy Gateway §1, §2, §4.4, §5.2, §7.1; propuesta `network-qa`; arquitectura §10.2 y §10.8; AM §3 (capabilities de borde en la capa 1). No se repite lo que ya está allí |
@@ -23,7 +23,7 @@ Fuente: [`diagrams/06-bloques-presentacion.py`](diagrams/06-bloques-presentacion
 | Pregunta | Respuesta | Consecuencia |
 |---|---|---|
 | Qué es | El borde del arquetipo `environment` (capa 1), versión **3.1.0**. Provee **`env-edge` 1.0.0**, y `cert`, `waf` y `edge-ip`, que pasan a la capa 1 con los entornos fuera del proyecto de la landing zone (AM §3) | Stacks `gcp-qa-edge-base` y `gcp-qa-edge`; `gcp-qa-edge-l4` solo si hay excepciones |
-| Qué publica | `sonar.qa.disasterproject.com`, `sso.qa.disasterproject.com`, `grafana.qa.disasterproject.com`: los hostnames reclamados | Un certificado wildcard, una IP, un Gateway |
+| Qué publica | `sonar.tqbvzkr.disasterproject.com`, `sso.tqbvzkr.disasterproject.com`, `grafana.tqbvzkr.disasterproject.com`: los hostnames reclamados | Un certificado wildcard, una IP, un Gateway |
 | Qué **no** hace | Enrutar por host (lo hace Envoy), autenticar (cada aplicación, o `SecurityPolicy`), exponer Kafka (nunca sale de la VPC) | El URL map tiene un solo backend |
 | Trait `iac-owned-edge` | **No** en GCP: el NEG lo crea el controlador de GKE (R20) | Se declara la ausencia en vez de ocultarla (AM §4.3) |
 
@@ -40,7 +40,7 @@ Fuente: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 | Envoy Gateway §5.2, §7.1 | Health check HTTP al puerto de readiness (`health_check` del contrato); `connection_draining_timeout_sec: 60`; NEG `eg-qa-neg` como `data` por zona; `after` al stack `proxy` | §4 |
 | Envoy Gateway §2.1 | HTTP → HTTPS en el URL map; HTTP hacia el backend (Envoy Gateway DG14) | §4, §6 |
 | Envoy Gateway §4.4 | Balanceador passthrough por excepción (patrón B), con `sources` en la regla | §5 |
-| E1 §4.15 | Zona `qa.disasterproject.com` delegada; wildcard creado una vez | §1 |
+| E1 §4.15 | Zona `tqbvzkr.disasterproject.com` delegada; wildcard creado una vez | §1 |
 
 ---
 
@@ -48,12 +48,19 @@ Fuente: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 
 | Pieza | Diseño | Motivo |
 |---|---|---|
-| Zona `qa.disasterproject.com` | Zona pública de Cloud DNS en `disasterproject-nonprod`, **creada por la landing zone**, igual que el proyecto; DNSSEC activado | La delegación necesita los name servers de la zona hija, que Cloud DNS asigna al crearla. Si la creara el entorno, la landing zone (capa 0) tendría que leer una salida de la capa 1 para escribir el `NS` en la zona padre. Creándola ella, zona, delegación y registro `DS` de DNSSEC están en un solo stack (DL2) |
+| Identificador público `tqbvzkr` | 7 letras minúsculas **aleatorias**, generadas una vez por la landing zone (`random_string`, sin números ni mayúsculas) al dar de alta el entorno, y fijadas en el binding (`network.public_id`). El valor de este documento es un ejemplo | Todo nombre que se ve desde fuera lleva el identificador en vez de `qa`: la zona y los hostnames, el wildcard (que queda en los logs públicos de Certificate Transparency) y los nombres de bucket, que son globales. No puede derivarse del nombre: los 7 primeros caracteres de `sha256("qa")` los calcula cualquiera (DL10) |
+| Zona `tqbvzkr.disasterproject.com` | Zona pública de Cloud DNS en `disasterproject-nonprod`, **creada por la landing zone**, igual que el proyecto; DNSSEC activado | La delegación necesita los name servers de la zona hija, que Cloud DNS asigna al crearla. Si la creara el entorno, la landing zone (capa 0) tendría que leer una salida de la capa 1 para escribir el `NS` en la zona padre. Creándola ella, zona, delegación y registro `DS` de DNSSEC están en un solo stack (DL2) |
 | Quién escribe registros | El entorno (`gcp-qa-edge-base`), con `roles/dns.admin` **sobre esa zona** | La landing zone crea el contenedor; el contenido es del entorno |
-| `*.qa.disasterproject.com` | `A` → IP global de §2, TTL 300 | Un registro para todos los hostnames (E1 §4.5). Los hostnames siguen siendo claims: el wildcard resuelve, el ledger garantiza la unicidad |
-| `CAA` | `0 issue "pki.goog"` y `0 issue "letsencrypt.org"` en `qa.disasterproject.com` | Solo las dos CA que usa Certificate Manager para certificados gestionados pueden emitir para el dominio **(verificar, VL3)**. Sin `CAA`, cualquier CA pública puede |
-| Registro de autorización | `CNAME` `_acme-challenge.qa.disasterproject.com` del `google_certificate_manager_dns_authorization` | §2 |
+| `*.tqbvzkr.disasterproject.com` | `A` → IP global de §2, TTL 300 | Un registro para todos los hostnames (E1 §4.5). Los hostnames siguen siendo claims: el wildcard resuelve, el ledger garantiza la unicidad |
+| `CAA` | `0 issue "pki.goog"` y `0 issue "letsencrypt.org"` en `tqbvzkr.disasterproject.com` | Solo las dos CA que usa Certificate Manager para certificados gestionados pueden emitir para el dominio **(verificar, VL3)**. Sin `CAA`, cualquier CA pública puede |
+| Registro de autorización | `CNAME` `_acme-challenge.tqbvzkr.disasterproject.com` del `google_certificate_manager_dns_authorization` | §2 |
 | Sin external-dns | `dns` sin enlazar (E1 §3.3) | Un Gateway y una IP por entorno: el wildcard basta |
+
+**Qué lleva el identificador y qué no (DL10).** Lo lleva lo que ve alguien sin credenciales: hostnames y zona pública, certificado, nombres de bucket y el nombre del realm de Keycloak, que sale en las URLs de OIDC y SAML (por eso el realm se llama `disasterproject` en todos los entornos, no `qa`). **No** lo llevan los nombres internos —recursos del proyecto, etiquetas (la facturación va por `environment`), prefijos de KSA, IDs de stack, namespaces, la zona privada `qa.internal`—: quien los ve ya tiene acceso al proyecto, y cambiarlos solo empeora la operación. El nombre del recurso de la zona pública es `qa-public`: interno, con el prefijo del entorno como el resto.
+
+**Subdominio, no guion.** `sonar.tqbvzkr.disasterproject.com`, no `sonar-tqbvzkr.disasterproject.com`. Con subdominio, el wildcard `*.tqbvzkr…` es lo único que llega a los logs de CT; con guion haría falta un certificado con cada nombre (todos quedarían en CT, agrupados por el sufijo) o `*.disasterproject.com`, que también valdría para los nombres de `prod`. Además, la zona delegada sigue siendo del entorno y una cookie con `Domain=.tqbvzkr.disasterproject.com` no alcanza a otros entornos.
+
+**Cambiarlo es renombrar el borde.** Certificado nuevo, cookies y sesiones invalidadas, URLs de SAML/OIDC y la redirección registrada en Entra ID, integraciones de CI que llaman a SonarQube. Se genera una vez y no rota.
 
 ---
 
@@ -63,7 +70,7 @@ Fuente: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 |---|---|---|
 | IP | `qa-edge-ip`, `google_compute_global_address` `EXTERNAL`, IPv4; **claim** del entorno (`kind: static_ip`) y `prevent_destroy` | Si se libera, el wildcard apunta a una IP que puede acabar en otro cliente de Google |
 | IPv6 | No en `qa` | Sin requisito; se añade con otra dirección y otra forwarding rule sin tocar lo demás (DL8) |
-| Certificado | Certificate Manager: `*.qa.disasterproject.com` con **DNS authorization**, en un `certificate_map` con una entrada para el wildcard | La autorización por DNS no necesita que el balanceador exista ni que el tráfico llegue: el certificado queda `ACTIVE` antes que el Gateway (DL1) |
+| Certificado | Certificate Manager: `*.tqbvzkr.disasterproject.com` con **DNS authorization**, en un `certificate_map` con una entrada para el wildcard | La autorización por DNS no necesita que el balanceador exista ni que el tráfico llegue: el certificado queda `ACTIVE` antes que el Gateway (DL1) |
 | Renovación | Automática, de Google | La alerta vigila el estado, no la fecha (§7) |
 
 ---
@@ -74,7 +81,7 @@ Fuente: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 
 | Prioridad | Regla | Acción en `qa` | Motivo |
 |---|---|---|---|
-| 100 | Host fuera de `*.qa.disasterproject.com` (`!request.headers['host'].endsWith('.qa.disasterproject.com')`) | `deny(403)` | Los escáneres llegan por IP o con hosts inventados. Envoy devolvería 404, pero así no llegan al cluster (RL5) |
+| 100 | Host fuera de `*.tqbvzkr.disasterproject.com` (`!request.headers['host'].endsWith('.tqbvzkr.disasterproject.com')`) | `deny(403)` | Los escáneres llegan por IP o con hosts inventados. Envoy devolvería 404, pero así no llegan al cluster (RL5) |
 | 900–990 | Exclusiones de §3.2 | Excluyen campos de reglas concretas, no rutas enteras | — |
 | 1000–1090 | Reglas preconfiguradas OWASP CRS: `sqli`, `xss`, `lfi`, `rfi`, `rce`, `scannerdetection`, `protocolattack`, `sessionfixation`, sensibilidad 1 | **Preview** dos semanas, luego `deny(403)` | Una regla nueva en `deny` sin haberla visto en tráfico real rompe el login antes que a un atacante (RL1) |
 | 2000 | Límite por IP: 1200 peticiones/min, `throttle` | Preview | Un runner de GitHub hace pocas peticiones; 1200/min solo lo alcanza un abuso |
@@ -93,7 +100,7 @@ Fuente: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 |---|---|---|
 | SonarQube `POST /api/ce/submit` | El informe de análisis es un ZIP binario: `protocolattack` y `rce` ven secuencias arbitrarias en el cuerpo (E2 §9) | Excluir el cuerpo de esas reglas en esa ruta; la ruta exige token de SonarQube |
 | SonarQube `POST /oauth2/callback/saml` | La respuesta SAML es XML firmado en base64 en el campo `SAMLResponse`: `xss` y `protocolattack` saltan con XML | Excluir `SAMLResponse` de `xss` y `protocolattack` en esa ruta. **Sin esto, nadie entra en SonarQube** en cuanto las reglas pasan a `deny` (RL1) |
-| Keycloak `POST /realms/qa/broker/entra/endpoint` | Parámetros `code`, `state`, `id_token` de Entra ID | Excluir `id_token` de `sqli` y `xss` si la preview lo muestra |
+| Keycloak `POST /realms/disasterproject/broker/entra/endpoint` | Parámetros `code`, `state`, `id_token` de Entra ID | Excluir `id_token` de `sqli` y `xss` si la preview lo muestra |
 
 La lista final sale de las dos semanas de preview: se excluye un campo en una ruta, nunca una regla para todo el entorno.
 
@@ -173,7 +180,7 @@ Blackbox (monitorización §3) sigue sondeando los hostnames públicos desde el 
 | Valor | Cómo llega | Valor en `qa` |
 |---|---|---|
 | `edge_ip` | Global (claim) | La IP asignada |
-| `dns_suffix`, `public_zone` | Globals | `qa.disasterproject.com`, `qa-disasterproject-com` |
+| `dns_suffix`, `public_zone` | Globals | `tqbvzkr.disasterproject.com`, `qa-public` |
 | `certificate_map` | Global | `qa-edge` |
 | `security_policy` | Global | `qa-edge` |
 
@@ -279,7 +286,7 @@ assert {
 |---|---|
 | Arranque | La landing zone crea la zona pública, la delega con `DS` y concede `dns.admin` sobre ella |
 | Fase A | `edge-base` junto a la red: el certificado queda `ACTIVE` antes que el cluster |
-| Fase B | `edge` después de `gcp-qa-gateway-proxy`. Criterio de salida: `https://sso.qa.disasterproject.com/realms/qa/.well-known/openid-configuration` responde 200 desde internet |
+| Fase B | `edge` después de `gcp-qa-gateway-proxy`. Criterio de salida: `https://sso.tqbvzkr.disasterproject.com/realms/disasterproject/.well-known/openid-configuration` responde 200 desde internet |
 | Reglas de Cloud Armor | Preview dos semanas → revisión de logs → `deny` por PR |
 | Destrucción | `edge` antes que el Gateway; `edge-base` y la zona, con la identidad de destroy y el tag `protected` |
 
@@ -293,6 +300,7 @@ assert {
 | RL4 | **DNSSEC roto** por un cambio de claves o de zona sin actualizar el `DS` en la padre | Baja | Crítico — ningún resolvedor con validación resuelve el entorno | Zona y `DS` en el mismo stack de la landing zone (DL2) |
 | RL5 | **Tráfico con host arbitrario** hasta el cluster | Alta sin la regla | Baja — Envoy devuelve 404, pero consume y ensucia los logs | Regla 100 de Cloud Armor |
 | RL6 | **IP de borde liberada** por un `destroy` o un cambio de nombre | Baja | Alta — el wildcard apunta a una IP que puede reasignarse | Claim, `prevent_destroy`, tag `protected` |
+| RL7 | **Identificador público que delata el entorno**: derivado del nombre (un hash de `qa`), con el entorno en otra parte del nombre público, o una zona recorrible | Media | Media — el mapa de entornos y de lo que corre en cada uno, a la vista | Aleatorio y generado por la landing zone; regla de G1 que rechaza un `dns_suffix`, un nombre de bucket o un realm con el nombre de un entorno; NSEC3 en la zona (VL7) |
 
 ### 9.4 Verificaciones
 
@@ -304,6 +312,7 @@ assert {
 | VL4 | `EXTERNAL_MANAGED` con NEG standalone, HTTP a 8080; cifrado de red del GLB a los backends confirmado en la documentación vigente | Los tres NEG sanos; Envoy recibe el host correcto (= VG1) |
 | VL5 | Regla de host | Petición a la IP con `Host` arbitrario → 403 en el borde; health checks no afectados |
 | VL6 | `X-Forwarded-For` con el esquema gestionado | Envoy registra la IP real del cliente (= VG5) |
+| VL7 | Identificador público | En crt.sh solo aparece `*.tqbvzkr.disasterproject.com`; la zona firmada con DNSSEC responde con NSEC3 y no se puede recorrer; ningún nombre público contiene `qa` |
 
 ---
 
@@ -315,6 +324,7 @@ assert {
 | Log del backend | 100 % | 10 % | 100 % |
 | Cloud Armor Enterprise | No | A valorar (protección DDoS con soporte, Threat Intelligence) | No |
 | IPv6 | No | Si hay usuarios que lo necesiten | No |
+| Identificador público | Sí | Sí: los nombres del producto de cara al cliente, si los hay, son alias delante del borde, decididos por el producto | Sí, uno para el entorno; las demos cuelgan de él |
 
 ---
 
@@ -329,6 +339,7 @@ assert {
 | Propuesta de monitorización §10.3 | Alertas del borde de §7 en la capa 1b | **Aplicado** |
 | Propuesta `network-qa` §8.2 | El manifiesto pasa a 3.1.0 con el borde | **Aplicado** |
 | Propuestas de Envoy Gateway (§1, §2.1, DG14), cert-manager (§1, DT7) y SonarQube E1 §4.5 | El tramo GLB → Envoy pasa a HTTP; desaparece `gateway-backend-tls` (DL9) | **Aplicado** |
+| Todas las propuestas de `qa`, AM §7, §10 y §15, arquitectura §10.6, visión general; `schemas/environment-binding.schema.json`; `CLAUDE.md` | Hostnames bajo `tqbvzkr.disasterproject.com` (ejemplo); buckets `disasterproject-tqbvzkr-…`; realm `disasterproject`; zona `qa-public`; campo `network.public_id` en el binding (DL10) | **Aplicado** |
 
 ---
 
@@ -345,6 +356,7 @@ assert {
 | DL7 | Excepciones L4 | **Aprobada** | Stack condicional; grupos de instancias por sharing desde GKE | Grupos de instancias leídos como `data` por nombre |
 | DL8 | IPv6 | **Aprobada** | No en `qa` | Doble pila |
 | DL9 | Tramo GLB → Envoy | **Aprobada** | HTTP: el borde solo depende de la capa 0 y de sí mismo | HTTPS con la CA interna (arista hacia la capa 3); CAS + `TrustConfig` |
+| DL10 | Nombre del entorno en lo público | **Aprobada** | Identificador aleatorio de 7 letras en lo visible desde fuera (zona, hostnames, certificado, buckets, realm); el nombre del entorno en lo interno; subdominio, no guion | El nombre del entorno en todo; un hash del nombre; el identificador también en los nombres internos |
 
 ---
 
@@ -352,7 +364,7 @@ assert {
 
 | Fase | Contenido | Criterio de salida | Estimación |
 |---|---|---|---|
-| **0 · Landing zone** | Zona pública, delegación, DNSSEC, `dns.admin` | `dig NS qa.disasterproject.com` y `DS` correctos | 0,5 días (de la landing zone) |
+| **0 · Landing zone** | Zona pública, delegación, DNSSEC, `dns.admin` | `dig NS tqbvzkr.disasterproject.com` y `DS` correctos | 0,5 días (de la landing zone) |
 | **1 · Base** | `edge-base`; **VL3** | Certificado `ACTIVE`; Cloud Armor creado | 0,5 días |
 | **2 · Balanceador** | `edge` tras el Gateway; **VL4**, **VL5**, **VL6**, **VL2** | Keycloak responde desde internet | 1 día |
 | **3 · Cloud Armor** | Dos semanas de preview; exclusiones; **VL1**; paso a `deny` | Login SAML y análisis con las reglas en `deny` | 1 día de trabajo, repartido |

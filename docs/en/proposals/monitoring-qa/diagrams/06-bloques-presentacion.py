@@ -104,7 +104,7 @@ text(ax+30,yy+24,"layer ≤ 3 rules",14,700,TXT); text(ax+30,yy+45,"GKE · Gatek
 
 stack(xs[3],by,colw,bh,'ops',7,"logs","Monolithic Loki",["Fluent Bit on every node","30 days · one tenant","no tokens or cookies"])
 stack(xs[3],by+bh+bg,colw,bh,'ops',8,"grafana","Dashboards as code",["OIDC with Keycloak","sre: Admin · teams: Viewer","Explore for SRE only"])
-stack(xs[3],by+2*(bh+bg),colw,bh,'ops',9,"frontdoor","Publishing",["grafana.qa.…","no SecurityPolicy","Prometheus, Loki: private"])
+stack(xs[3],by+2*(bh+bg),colw,bh,'ops',9,"frontdoor","Publishing",["grafana.tqbvzkr.…","no SecurityPolicy","Prometheus, Loki: private"])
 for i in range(3):
     cx=xs[i]+colw+gap/2; cy=by+ah/2
     o.append(f'<path d="M{cx-6},{cy-14} L{cx+6},{cy} L{cx-6},{cy+14}" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>')

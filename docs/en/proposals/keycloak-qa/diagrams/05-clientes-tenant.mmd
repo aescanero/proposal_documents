@@ -13,7 +13,7 @@ flowchart LR
         CJ["CronJob keycloak-config<br/>every 5 min · concurrencyPolicy Forbid"]
         MRG["1 · merges every ConfigMap<br/>into a single realm document"]
         KCC["2 · keycloak-config-cli<br/>remote state: manages only<br/>what it created"]
-        K["Keycloak · realm qa"]
+        K["Keycloak · realm disasterproject"]
     end
     SM[("Secret Manager")]
 

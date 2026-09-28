@@ -94,7 +94,7 @@ Fuente: [`diagrams/03-backups.mmd`](diagrams/03-backups.mmd)
 
 | Pieza | Diseño | Referencia |
 |---|---|---|
-| Destino | Un bucket **por consumidor**, `gs://disasterproject-<env>-<instancia>-pgbackup` (con el entorno: el proyecto non-prod es compartido), creado por el stack `data-tenant` del consumidor | E2 §5.3 |
+| Destino | Un bucket **por consumidor**, `gs://disasterproject-<public_id>-<instancia>-pgbackup` (con el entorno: el proyecto non-prod es compartido), creado por el stack `data-tenant` del consumidor | E2 §5.3 |
 | Identidad | Un KSA con el prefijo del entorno (`qa-<instancia>-db`, R54), creado por el stack `iam` del consumidor y referenciado con `spec.serviceAccountName` (§5), por Workload Identity directa; `objectAdmin` sobre **ese** bucket | E1 §4.4 |
 | Plugin | barman-cloud: base diaria (`ScheduledBackup`) y WAL continuo, con PITR | — |
 | Retención | 14 días en el `ObjectStore`; soft delete de GCS 7 días; **sin** versionado ni retention lock, que rompen la purga de barman | E1 §4.9 |

@@ -5,7 +5,7 @@ sequenceDiagram
     participant E as Envoy (Gateway qa)
     participant B as Backend (e.g. SonarQube)
 
-    C->>G: HTTPS to sonar.qa.disasterproject.com
+    C->>G: HTTPS to sonar.tqbvzkr.disasterproject.com
     Note over G: public TLS (Certificate Manager), Cloud Armor
     G->>E: HTTP to 8080, reused connection (keepalive 600 s)
     Note over E: no TLS: the GLB terminated it · X-Forwarded-Proto https · listener without hostname

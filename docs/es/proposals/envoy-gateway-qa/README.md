@@ -38,7 +38,7 @@ Fuente: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 
 | Tramo o función | Quién | Motivo |
 |---|---|---|
-| IP global, certificado `*.qa.disasterproject.com`, Cloud Armor, backend service, URL map | **`gcp-qa-edge`**, capa 1 (E1 §4.15) | Deben estar en el mismo proyecto que el balanceador |
+| IP global, certificado `*.tqbvzkr.disasterproject.com`, Cloud Armor, backend service, URL map | **`gcp-qa-edge`**, capa 1 (E1 §4.15) | Deben estar en el mismo proyecto que el balanceador |
 | NEG `eg-qa-neg` | El **controlador de NEG de GKE**, a partir de la anotación del Service que genera Envoy Gateway | Fuera del estado de Terraform (§10.2, R20); `gcp-qa-edge` lo lee como `data` |
 | Tramo GLB → Envoy | **HTTP**, sin certificado (DG14) | El TLS público termina en el GLB con el certificado de la capa 1. Un certificado de la CA interna en este tramo hacía depender el borde (capa 1) de cert-manager (capa 3), y el GLB no lo validaba: cifraba sin autenticar |
 | Enrutado por host y ruta, políticas de tráfico | Este arquetipo: Gateway `qa` y las `HTTPRoute` de los consumidores | Gateway API: la ruta vive con quien la publica (§10.6) |
@@ -110,7 +110,7 @@ El GLB añade `<IP del cliente>,<IP del GLB>` a `X-Forwarded-For`. `ClientTraffi
 
 Fuente: [`diagrams/03-tenencia.mmd`](diagrams/03-tenencia.mmd)
 
-Con un Gateway compartido, la precedencia de Gateway API decide entre rutas **de namespaces distintos**. La coincidencia de ruta más específica gana, venga de donde venga. Una `HTTPRoute` de un tenant con host `sso.qa.disasterproject.com` y `Exact: /realms/qa/protocol/openid-connect/auth` le quitaría a Keycloak la pantalla de login. Una `HTTPRoute` **sin `hostnames`** se aplica a todos los hosts del listener. Es el riesgo principal del arquetipo (RG1).
+Con un Gateway compartido, la precedencia de Gateway API decide entre rutas **de namespaces distintos**. La coincidencia de ruta más específica gana, venga de donde venga. Una `HTTPRoute` de un tenant con host `sso.tqbvzkr.disasterproject.com` y `Exact: /realms/disasterproject/protocol/openid-connect/auth` le quitaría a Keycloak la pantalla de login. Una `HTTPRoute` **sin `hostnames`** se aplica a todos los hosts del listener. Es el riesgo principal del arquetipo (RG1).
 
 ### 4.1 Enganchar una ruta
 
@@ -342,7 +342,7 @@ metadata: { name: sonarqube, namespace: sonarqube }
 spec:
   parentRefs:
     - { name: qa, namespace: envoy-gateway-system, sectionName: https }   # = gateway_name, gateway_namespace, listener_name
-  hostnames: [sonar.qa.disasterproject.com]                               # = claim de la instancia
+  hostnames: [sonar.tqbvzkr.disasterproject.com]                               # = claim de la instancia
   rules:
     - matches: [{ path: { type: PathPrefix, value: / } }]
       backendRefs: [{ name: sonarqube, port: 9000 }]
@@ -545,7 +545,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | # | Decisión | Estado | Recomendación | Alternativa |
 |---|---|---|---|---|
 | DG1 | Gateways | Consecuencia de §10.6 | Uno, `qa`, en `envoy-gateway-system` | Uno por tenant (fan-in, un NEG por Gateway) |
-| DG2 | Listener | Propuesta | HTTP 8080 sin `hostname`; el host lo deciden las rutas | Listener con `*.qa.disasterproject.com` |
+| DG2 | Listener | Propuesta | HTTP 8080 sin `hostname`; el host lo deciden las rutas | Listener con `*.tqbvzkr.disasterproject.com` |
 | DG3 | CRDs de Gateway API | Propuesta | Los instala el arquetipo, canal estándar; Gateway API de GKE desactivado | Gestionados por GKE |
 | DG4 | Propiedad de los hostnames | Propuesta | Claim + anotación del namespace + Gatekeeper referencial + G1 | Confianza en los tenants |
 | DG5 | Extensiones de Envoy Gateway | Propuesta | `EnvoyPatchPolicy` y `Backend` desactivados; `EnvoyExtensionPolicy` solo en el namespace del Gateway | Disponibles para tenants |

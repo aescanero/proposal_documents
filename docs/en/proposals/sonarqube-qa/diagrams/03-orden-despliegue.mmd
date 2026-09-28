@@ -4,7 +4,7 @@ flowchart TD
         LZ["gcp-lz-* · landing zone project<br/>parent dns-zone · KMS · Artifact Registry<br/>GitHub WIF · project disasterproject-nonprod"] --> N["gcp-qa-network"]
         N --> CM["gcp-qa-cloudmon"]
         N --> C["gcp-qa-gke<br/>node pools: general + sonar"]
-        LZ --> EB["gcp-qa-edge-base<br/>IP · Cloud Armor · Certificate Manager wildcard<br/>records in qa.disasterproject.com"]
+        LZ --> EB["gcp-qa-edge-base<br/>IP · Cloud Armor · Certificate Manager wildcard<br/>records in tqbvzkr.disasterproject.com"]
     end
 
     subgraph P["Phase B · qa platform"]

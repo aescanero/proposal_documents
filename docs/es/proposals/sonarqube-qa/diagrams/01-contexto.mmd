@@ -8,7 +8,7 @@ flowchart LR
     ENTRA["Microsoft Entra ID<br/>usuarios · MFA · app roles"]
 
     subgraph GCP0["Proyecto disasterproject-nonprod · borde (capa 1)"]
-        DNS["Cloud DNS<br/>*.qa.disasterproject.com"]
+        DNS["Cloud DNS<br/>*.tqbvzkr.disasterproject.com"]
         LB["Global external Application LB<br/>Certificate Manager (wildcard)<br/>Cloud Armor"]
     end
 
@@ -16,7 +16,7 @@ flowchart LR
         GW["Envoy Gateway<br/>NEG standalone<br/>TLS interno de cert-manager"]
         SQ["SonarQube Community Build<br/>ns sonarqube"]
         PG[("PostgreSQL<br/>CloudNativePG Cluster")]
-        KC["Keycloak<br/>realm qa · IdP SAML"]
+        KC["Keycloak<br/>realm disasterproject · IdP SAML"]
         ESO["External Secrets Operator"]
         MON["Prometheus · Alertmanager<br/>Grafana · Loki"]
         GK["Gatekeeper"]

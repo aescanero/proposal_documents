@@ -2335,7 +2335,7 @@ spec:
 
 Gateway API invierte la dirección de la dependencia de enrutamiento. Un `HTTPRoute` vive en el namespace de la aplicación y se adjunta al Gateway con `parentRefs`; el Gateway controla quién puede adjuntarse vía `allowedRoutes`. **El borde ya no necesita conocer a sus tenants.**
 
-Eso elimina tres cosas de la arquitectura: el URL map generado a partir de una lista `global.tenants` (§7.5), el ledger de listener-priority, y el stack de edge-routing que tenía que ejecutarse después de cada instancia. Lo que sigue siendo un claim es el hostname, porque solo un tenant puede poseer `alpha.demos.disasterproject.com`.
+Eso elimina tres cosas de la arquitectura: el URL map generado a partir de una lista `global.tenants` (§7.5), el ledger de listener-priority, y el stack de edge-routing que tenía que ejecutarse después de cada instancia. Lo que sigue siendo un claim es el hostname, porque solo un tenant puede poseer `alpha.mfrwzdp.disasterproject.com`.
 
 Usa **un Gateway por entorno** con `allowedRoutes.namespaces.from: Selector`, no uno por tenant — cada `Gateway` genera su propio Deployment de Envoy, Service y NEG, así que los Gateways por tenant reintroducen exactamente el fan-in que pretendían eliminar. Si más adelante necesitas varios (interno y externo, por ejemplo), `mergeGateways` en `EnvoyProxy` permite que compartan una flota de proxies.
 

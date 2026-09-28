@@ -555,8 +555,9 @@ bindings:
 
 network:
   cidr: 10.4.0.0/17
-  dns_zone: demos-disasterproject-com
-  dns_suffix: demos.disasterproject.com
+  public_id: mfrwzdp                # identificador público aleatorio (edge-qa DL10)
+  dns_zone: demos-public
+  dns_suffix: mfrwzdp.disasterproject.com
 
 cluster:
   max_nodes: 128
@@ -583,6 +584,8 @@ policy:
   demo_archetypes_allowed: true
   default_expiry_days: 60
 ```
+
+**`network.public_id` es el nombre del entorno hacia fuera.** Siete letras minúsculas aleatorias, generadas una vez por la landing zone y nunca derivadas del nombre del entorno. Todo lo que puede ver alguien sin credenciales lo usa en lugar de `demos`: la zona pública y los hostnames (`dns_suffix` es `<public_id>.disasterproject.com`), el certificado wildcard que queda en los logs de Certificate Transparency, los nombres de bucket, que son globales, y el nombre del realm de Keycloak (que es el mismo, `disasterproject`, en todos los entornos). Los nombres internos —recursos dentro del proyecto, etiquetas, prefijos de KSA, IDs de stack, namespaces— conservan el nombre del entorno, porque quien los ve ya tiene acceso. Cambiarlo es renombrar todo el borde (propuesta `edge-qa`, DL10).
 
 > **Decisión de diseño: binding tardío mediante expresiones.** `from_stack_id` en un
 > bloque `input` de Terramate acepta una expresión, así que un fichero de contrato por
@@ -1145,7 +1148,7 @@ archetypectl resolve --instance demos-alpha
     { "name": "data-tenant", "reason": "condition false: database-platform is postgres-cloudsql (trait cloudsql, not cnpg)" }
   ],
   "claims": [
-    { "kind": "hostname", "value": "alpha.demos.disasterproject.com", "state": "active", "pr": 412 },
+    { "kind": "hostname", "value": "alpha.mfrwzdp.disasterproject.com", "state": "active", "pr": 412 },
     { "kind": "cidr", "zone": "data", "purpose": "db-subnet", "value": "10.4.20.0/24", "state": "active", "pr": 412 }
   ],
   "tenant_resources": [
@@ -1361,7 +1364,7 @@ Dieciséis arquetipos; la aplicación declaró seis.
 
 **El paso 11** valida 6 topics y 1 usuario contra los límites de Kafka de 20 y 3, todos prefijados `alpha-`.
 
-**El paso 12** asigna dos claims: hostname `alpha.demos.disasterproject.com`, y un `/24` en la zona `data` con propósito `db-subnet` para la instancia dedicada. Los rangos de nodos y pods del entorno se reclamaron en las capas 1 y 2 y no se vuelven a asignar.
+**El paso 12** asigna dos claims: hostname `alpha.mfrwzdp.disasterproject.com`, y un `/24` en la zona `data` con propósito `db-subnet` para la instancia dedicada. Los rangos de nodos y pods del entorno se reclamaron en las capas 1 y 2 y no se vuelven a asignar.
 
 **El paso 17** escribe `binding.tm.hcl`, que consumen los generadores del documento de arquitectura:
 
@@ -1382,7 +1385,7 @@ globals "platform" {
 globals {
   instance  = "alpha"
   archetype = "webapp-3tier"
-  hostname  = "alpha.demos.disasterproject.com"
+  hostname  = "alpha.mfrwzdp.disasterproject.com"
   env_cidr  = "10.4.0.0/17"
   kafka_prefix = "alpha-"
 }
@@ -1435,7 +1438,7 @@ stacks:
 claims:
   - kind: hostname
     pool: "{{ environment.dns_zone }}"
-    value: "disasterproject-graph.demos.disasterproject.com"
+    value: "disasterproject-graph.mfrwzdp.disasterproject.com"
 
 capacity:
   cpu_millicores: 6000

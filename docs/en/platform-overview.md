@@ -358,7 +358,7 @@ flowchart LR
     style NEW fill:#e8f5e9
 ```
 
-Adopting Gateway API removes three things: the URL map generated from a tenant list, the listener-priority ledger, and the edge-routing stack that had to run last. What survives as a claim is the **hostname** — only one tenant can own `alpha.demos.disasterproject.com`.
+Adopting Gateway API removes three things: the URL map generated from a tenant list, the listener-priority ledger, and the edge-routing stack that had to run last. What survives as a claim is the **hostname** — only one tenant can own `alpha.mfrwzdp.disasterproject.com`.
 
 Specified in: architecture §10.6.
 

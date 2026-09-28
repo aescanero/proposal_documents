@@ -38,7 +38,7 @@ Fuente: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 
 | Certificado | Quién lo emite | Motivo |
 |---|---|---|
-| **Público** `*.qa.disasterproject.com` en el GLB | **Certificate Manager**, capability `cert` de la capa 1 (E1 §3.3) | Debe estar en el mismo proyecto que el balanceador; la validación es por DNS; nadie en el cluster lo toca |
+| **Público** `*.tqbvzkr.disasterproject.com` en el GLB | **Certificate Manager**, capability `cert` de la capa 1 (E1 §3.3) | Debe estar en el mismo proyecto que el balanceador; la validación es por DNS; nadie en el cluster lo toca |
 | TLS del pod de Keycloak (`keycloak-service.keycloak.svc`) | cert-manager | Por el back-channel viajan tokens (Keycloak §4) |
 | Webhooks de ESO y de prometheus-operator | cert-manager, con el CA inyectado por **cainjector** | ESO §4.1, monitorización §8.3 |
 | Webhook de **Gatekeeper** | **Gatekeeper**, con su propio rotador | Gatekeeper está en la capa 2b, **antes** que cert-manager: no puede depender de él (AM §3) |

@@ -241,7 +241,7 @@ Replaces the PostgreSQL row of S1 §4.9:
 | Before each upgrade | On-demand backup | Same | Until deleted by hand |
 | On instance deletion | Final backup | Same | 30 days |
 
-**The `disasterproject-qa-sonarqube-main-pgbackup` bucket disappears**, and with it its IAM and the Checkov exception for versioning (S2 §7.3).
+**The `disasterproject-tqbvzkr-sonarqube-main-pgbackup` bucket disappears**, and with it its IAM and the Checkov exception for versioning (S2 §7.3).
 
 | Situation | Procedure | Effect |
 |---|---|---|
@@ -388,8 +388,9 @@ bindings:
   # dns: unbound — wildcard in env-edge
 network:
   cidr: 10.4.128.0/17
-  dns_zone: qa-disasterproject-com
-  dns_suffix: qa.disasterproject.com
+  public_id: tqbvzkr                # random public identifier (edge-qa DL10); never the environment name
+  dns_zone: qa-public
+  dns_suffix: tqbvzkr.disasterproject.com
 cluster:
   max_pods_per_node: 64
 policy:

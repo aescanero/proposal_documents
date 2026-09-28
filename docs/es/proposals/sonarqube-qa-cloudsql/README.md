@@ -241,7 +241,7 @@ Sustituye la fila de PostgreSQL de E1 §4.9:
 | Antes de cada upgrade | Backup bajo demanda | Idem | Hasta que se borre a mano |
 | Al borrar la instancia | Backup final | Idem | 30 días |
 
-**Desaparece el bucket** `disasterproject-qa-sonarqube-main-pgbackup` y con él su IAM y la excepción de Checkov por versionado (E2 §7.3).
+**Desaparece el bucket** `disasterproject-tqbvzkr-sonarqube-main-pgbackup` y con él su IAM y la excepción de Checkov por versionado (E2 §7.3).
 
 | Situación | Procedimiento | Efecto |
 |---|---|---|
@@ -388,8 +388,9 @@ bindings:
   # dns: sin enlazar — wildcard en env-edge
 network:
   cidr: 10.4.128.0/17
-  dns_zone: qa-disasterproject-com
-  dns_suffix: qa.disasterproject.com
+  public_id: tqbvzkr                # identificador público aleatorio (edge-qa DL10); nunca el nombre del entorno
+  dns_zone: qa-public
+  dns_suffix: tqbvzkr.disasterproject.com
 cluster:
   max_pods_per_node: 64
 policy:

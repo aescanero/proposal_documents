@@ -2324,7 +2324,7 @@ spec:
 
 Gateway API inverts the direction of the routing dependency. An `HTTPRoute` lives in the application's namespace and attaches to the Gateway with `parentRefs`; the Gateway controls who may attach via `allowedRoutes`. **The edge no longer needs to know its tenants.**
 
-That removes three things from the architecture: the URL map generated from a `global.tenants` list (§7.5), the listener-priority ledger, and the edge-routing stack that had to run after every instance. What remains a claim is the hostname, because only one tenant can own `alpha.demos.disasterproject.com`.
+That removes three things from the architecture: the URL map generated from a `global.tenants` list (§7.5), the listener-priority ledger, and the edge-routing stack that had to run after every instance. What remains a claim is the hostname, because only one tenant can own `alpha.mfrwzdp.disasterproject.com`.
 
 Use **one Gateway per environment** with `allowedRoutes.namespaces.from: Selector`, not one per tenant — each `Gateway` spawns its own Envoy Deployment, Service and NEG, so per-tenant Gateways reintroduce exactly the fan-in they were meant to remove. If you later need several (internal and external, for instance), `mergeGateways` in `EnvoyProxy` lets them share one proxy fleet.
 
