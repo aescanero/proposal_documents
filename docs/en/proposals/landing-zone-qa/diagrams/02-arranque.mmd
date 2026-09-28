@@ -1,0 +1,16 @@
+sequenceDiagram
+    autonumber
+    participant P as Person (break-glass)
+    participant B as gcp-lz-bootstrap
+    participant G as GCS · KMS
+    participant CI as GitHub Actions
+    participant L as gcp-lz-* stacks
+    P->>B: tofu apply with local state
+    B->>G: lz project · bucket · key ring lz · github-pool · tf-apply-lz@
+    P->>G: tofu init -migrate-state (encrypted with lz/tofu-state)
+    P->>P: deletes the local state · drops their organisation roles
+    Note over P: remains as break-glass with a sign-in alert
+    CI->>L: PR with the landing-zone Environment · tf-apply-lz@
+    L->>G: org policies · projects · APIs · identities · KMS · registry · DNS
+    L->>L: qa onboarding: cidr · public_id · zone · keys · SAs · BinAuthz rule
+    Note over CI,L: the bootstrap is never run again

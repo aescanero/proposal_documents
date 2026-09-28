@@ -1,0 +1,40 @@
+flowchart LR
+    subgraph ORG["Organisation · layer 0 · gcp-lz-*"]
+        direction TB
+        subgraph LZP["folder platform · disasterproject-lz"]
+            direction TB
+            ST["bucket disasterproject-tfstate-gcp<br/>prefix per environment"]
+            KMS["key ring qa<br/>tofu-state · gke-secrets · cosign"]
+            AR["Artifact Registry<br/>apps · third-party · charts"]
+            WIF["github-pool<br/>tf-plan/apply/destroy-qa@"]
+            DZ["parent zone<br/>disasterproject.com"]
+        end
+        subgraph NP["folder nonprod · disasterproject-nonprod"]
+            direction TB
+            API["APIs and service agents"]
+            PZ["zone qa-public<br/>tqbvzkr.disasterproject.com"]
+            BA["Binary Authorization<br/>one policy · rule per cluster"]
+            SA["gke-nodes-qa@<br/>created by the landing zone"]
+        end
+        POL["org policies per folder"]
+        POOL["pool 10.0.0.0/8<br/>qa: 10.4.128.0/17"]
+    end
+    subgraph QA["qa · layers 1 to 5"]
+        direction TB
+        NET["gcp-qa-network"]
+        EDGE["gcp-qa-edge-base / edge"]
+        GKE["gcp-qa-gke"]
+    end
+    DZ -- "NS + DS" --> PZ
+    POOL -. "binding: network.cidr" .-> NET
+    KMS -. "encrypts state" .-> NET
+    KMS -. "gke-secrets" .-> GKE
+    WIF -. "identities" .-> QA
+    PZ -- "dns.admin on the zone" --> EDGE
+    SA -. "global" .-> GKE
+    AR -. "reader for gke-nodes-qa@" .-> GKE
+    BA -. "admits images" .-> GKE
+    POL -.-> NP
+
+    style LZP fill:#e8f0fe
+    style NP fill:#fff5e6

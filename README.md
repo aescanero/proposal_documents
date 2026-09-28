@@ -40,6 +40,7 @@ Inside each language folder:
 | `proposals/network-qa/` | The network part of the layer-1 `environment` archetype on `qa`: VPC, Cloud NAT with dynamic ports, Google APIs through private DNS zones and the private VIP, PSA, the `qa.internal` zone, and the `network` 3.0.0 contract |
 | `proposals/edge-qa/` | The edge of the layer-1 `environment` archetype on `qa`: public zone and wildcard, Certificate Manager, Cloud Armor with preview-then-deny and SAML exclusions, the managed Global external Application LB to Envoy's NEG, L4 exceptions, and the `env-edge` 1.0.0 contract |
 | `proposals/cmdb-qa/` | The `qa` CMDB, levels 0 and 1 of AM §11: the declared half generated and checked in the PR on `main`, the observed half on its own `cmdb-observed` branch, a private release asset as the read model, and the guards that use it — reference counting by edges before a destroy, broken contracts and blast radius in the PR |
+| `proposals/landing-zone-qa/` | Layer 0 for `qa`: the one-time bootstrap, folders and projects, org policies, KMS key rings per environment, Artifact Registry and image mirroring, GitHub federation and pipeline identities, the parent zone and the public identifier, and the shared Binary Authorization policy the landing zone must own |
 
 The two halves meet at `binding.tm.hcl`: the resolver writes globals, the generators
 consume them.
