@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 3 |
+| **Estado** | Propuesta · revisión 4 |
 | **Alcance** | El borde público de `qa`: IP, zona DNS pública y registros, certificado, Cloud Armor, el Global external Application LB hacia el NEG de Envoy, TLS, las excepciones L4 (patrón B), observabilidad, el contrato `env-edge`, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | Es la última pieza para que SonarQube, Keycloak y Grafana sean alcanzables. La propuesta de Envoy Gateway le dejó requisitos (health check, drenaje, `after`, NEG como `data`) y la de SonarQube, dos más (timeout de 120 s y exclusiones de Cloud Armor) |
 | **Base** | E1 §4.5 (publicación), §4.15 (VPC separada y borde propio); propuesta de Envoy Gateway §1, §2, §4.4, §5.2, §7.1; propuesta `network-qa`; arquitectura §10.2 y §10.8; AM §3 (capabilities de borde en la capa 1). No se repite lo que ya está allí |
@@ -38,7 +38,7 @@ Fuente: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 | E1 §4.5, R45 | Timeout del backend service de **120 s** | §4 |
 | E2 §9 | Exclusiones de Cloud Armor en `/api/ce/submit` | §3.2 |
 | Envoy Gateway §5.2, §7.1 | Health check HTTP al puerto de readiness (`health_check` del contrato); `connection_draining_timeout_sec: 60`; NEG `eg-qa-neg` como `data` por zona; `after` al stack `proxy` | §4 |
-| Envoy Gateway §2.1 | HTTP → HTTPS en el URL map; sin SNI hacia el backend | §4, §6 |
+| Envoy Gateway §2.1 | HTTP → HTTPS en el URL map; HTTP hacia el backend (Envoy Gateway DG14) | §4, §6 |
 | Envoy Gateway §4.4 | Balanceador passthrough por excepción (patrón B), con `sources` en la regla | §5 |
 | E1 §4.15 | Zona `qa.disasterproject.com` delegada; wildcard creado una vez | §1 |
 
@@ -108,15 +108,15 @@ Fuente: [`diagrams/02-borde.mmd`](diagrams/02-borde.mmd)
 | Pieza | Valor | Motivo |
 |---|---|---|
 | Esquema | `EXTERNAL_MANAGED` (Global external Application LB) | El clásico (`EXTERNAL`) es el anterior; el gestionado admite gestión de tráfico avanzada y es el que recibe las funciones nuevas (DL3) |
-| Backend service | `qa-envoy`, `protocol = HTTPS` hacia 8443, **120 s** de timeout (R45), `connection_draining_timeout_sec = 60`, `security_policy = qa-edge`, logs al 100 % en `qa` | Envoy Gateway §2.2 y §5.2 |
+| Backend service | `qa-envoy`, `protocol = HTTP` hacia 8080, **120 s** de timeout (R45), `connection_draining_timeout_sec = 60`, `security_policy = qa-edge`, logs al 100 % en `qa` | Envoy Gateway §2.2 y §5.2 |
 | Backends | Un NEG `eg-qa-neg` por zona (`b`, `c`, `d`), leídos con `data "google_compute_network_endpoint_group"`; `balancing_mode = RATE`, `max_rate_per_endpoint = 1000` | El NEG lo crea el controlador de GKE (R20). `RATE` es obligatorio con NEG; el valor reparte, no corta **(verificar el comportamiento a saturación, VL4)** |
-| Health check | HTTP, `USE_FIXED_PORT` al puerto de `health_check` del contrato `ingress` (`/ready`) | Contra 8443 una petición sin host devuelve 404 (Envoy Gateway §5.2) |
+| Health check | HTTP, `USE_FIXED_PORT` al puerto de `health_check` del contrato `ingress` (`/ready`) | Contra 8080 una petición sin host devuelve 404 (Envoy Gateway §5.2) |
 | Cabeceras de respuesta | `Strict-Transport-Security: max-age=31536000; includeSubDomains` en `custom_response_headers` | Una vez en el borde, para todas las aplicaciones |
 | URL map `qa-https` | Un solo backend por defecto, sin reglas de host | El host lo decide Envoy (Envoy Gateway DG2); duplicarlo aquí son dos sitios que se desincronizan |
 | Proxy HTTPS | `certificate_map` de §2; `ssl_policy` `qa-modern`: perfil `MODERN`, TLS ≥ 1.2 | TLS 1.0 y 1.1 fuera |
 | HTTP | Forwarding rule en el puerto 80 con URL map `qa-redirect` (`https_redirect = true`, 301) | Envoy Gateway §2.1: sin listener HTTP en Envoy |
 | Forwarding rules | 443 y 80 en `qa-edge-ip` | — |
-| Hacia el backend | TLS sin SNI y sin validar el certificado de Envoy | Cifrado en la red de Google; la validación la haría Envoy (Envoy Gateway §2.1, VG1) |
+| Hacia el backend | **HTTP**, sin certificado | El TLS público termina aquí. El borde no depende de ningún certificado de la capa 3: con HTTPS, el de Envoy salía de cert-manager, una arista hacia arriba, y el GLB no lo validaba. Google cifra a nivel de red el tráfico del GLB a los backends de la VPC **(verificar, VL4)** (DL9) |
 | Firewall | El de los rangos de health check y GFE lo declara Envoy Gateway (§5.2): quien reclama escribe la regla | — |
 
 **`after` y mock.** El stack `gcp-qa-edge` declara `after` al stack `proxy` de Envoy Gateway: es la arista ascendente de AM §3. En la preview de una PR, el `data` del NEG falla si el Gateway aún no existe y se usa el mock (`--mock-on-fail`); en despliegue, el mock está prohibido (`CLAUDE.md`).
@@ -144,7 +144,7 @@ Fuente: [`diagrams/02-borde.mmd`](diagrams/02-borde.mmd)
 | Tramo | Certificado | Quién valida |
 |---|---|---|
 | Cliente → GLB | Wildcard de Certificate Manager | El cliente |
-| GLB → Envoy | `gateway-backend-tls` de `internal-ca` | Nadie (§4) |
+| GLB → Envoy | **Ninguno**: HTTP; cifrado de red de Google (§4, DL9) | — |
 | Envoy → aplicación | `internal-ca`, con `BackendTLSPolicy` donde el backend lo exige (trait `backend-tls`) | Envoy |
 | Excepción L4 | El de la aplicación (Envoy Gateway §4.4, pregunta abierta sobre ACME) | El cliente |
 
@@ -301,7 +301,7 @@ assert {
 | VL1 | Login SAML en SonarQube y subida de un análisis con las reglas en `deny` y las exclusiones de §3.2 | Login correcto; `/api/ce/submit` de 100 MiB sin 403 (= VG11 de Envoy Gateway) |
 | VL2 | Timeout de 120 s | Una petición de 90 s termina sin 502 (= V6 de E1) |
 | VL3 | Certificado con DNS authorization en la zona delegada, con `CAA` | `ACTIVE` antes de que exista el balanceador; `CAA` no impide la emisión |
-| VL4 | `EXTERNAL_MANAGED` con NEG standalone, HTTPS a 8443 sin SNI | Los tres NEG sanos; Envoy recibe el host correcto (= VG1) |
+| VL4 | `EXTERNAL_MANAGED` con NEG standalone, HTTP a 8080; cifrado de red del GLB a los backends confirmado en la documentación vigente | Los tres NEG sanos; Envoy recibe el host correcto (= VG1) |
 | VL5 | Regla de host | Petición a la IP con `Host` arbitrario → 403 en el borde; health checks no afectados |
 | VL6 | `X-Forwarded-For` con el esquema gestionado | Envoy registra la IP real del cliente (= VG5) |
 
@@ -328,6 +328,7 @@ assert {
 | Propuesta de GKE §7.1 y §7.3 | Salida nueva por sharing `node_pool_instance_groups` desde `nodepools`, para `edge-l4` | **Aplicado** (DL7) |
 | Propuesta de monitorización §10.3 | Alertas del borde de §7 en la capa 1b | **Aplicado** |
 | Propuesta `network-qa` §8.2 | El manifiesto pasa a 3.1.0 con el borde | **Aplicado** |
+| Propuestas de Envoy Gateway (§1, §2.1, DG14), cert-manager (§1, DT7) y SonarQube E1 §4.5 | El tramo GLB → Envoy pasa a HTTP; desaparece `gateway-backend-tls` (DL9) | **Aplicado** |
 
 ---
 
@@ -343,6 +344,7 @@ assert {
 | DL6 | `CAA` | **Aprobada** | `pki.goog` y `letsencrypt.org` | Sin `CAA` |
 | DL7 | Excepciones L4 | **Aprobada** | Stack condicional; grupos de instancias por sharing desde GKE | Grupos de instancias leídos como `data` por nombre |
 | DL8 | IPv6 | **Aprobada** | No en `qa` | Doble pila |
+| DL9 | Tramo GLB → Envoy | **Aprobada** | HTTP: el borde solo depende de la capa 0 y de sí mismo | HTTPS con la CA interna (arista hacia la capa 3); CAS + `TrustConfig` |
 
 ---
 

@@ -130,7 +130,7 @@
 <circle cx="1012" cy="373" r="3" fill="#15803d"/>
 <text x="1022" y="378" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">EXTERNAL_MANAGED</text>
 <circle cx="1012" cy="397" r="3" fill="#15803d"/>
-<text x="1022" y="402" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">HTTPS :8443 · 120 s</text>
+<text x="1022" y="402" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">HTTP :8080 · 120 s</text>
 <circle cx="1012" cy="421" r="3" fill="#15803d"/>
 <text x="1022" y="426" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">60 s draining</text>
 <rect x="990" y="458" width="245" height="170" rx="12" fill="#ffffff" stroke="#15803d" stroke-width="2"/>
@@ -160,7 +160,7 @@
 <circle cx="1012" cy="765" r="3" fill="#15803d"/>
 <text x="1022" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">HSTS at the edge</text>
 <circle cx="1012" cy="789" r="3" fill="#15803d"/>
-<text x="1022" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">no SNI to Envoy</text>
+<text x="1022" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">HTTP to Envoy (DL9)</text>
 <rect x="1260" y="274" width="245" height="170" rx="12" fill="#ffffff" stroke="#7e22ce" stroke-width="2"/>
 <rect x="1260" y="274" width="245" height="46" rx="12" fill="#f4ecff"/>
 <rect x="1260" y="308" width="245" height="12" fill="#f4ecff"/>

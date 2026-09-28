@@ -161,7 +161,7 @@ spec:
 
 | Choice | Why |
 |---|---|
-| HTTPS only on the pod (`httpEnabled: false`) | Tokens and authorisation codes travel over the back-channel. TLS with the cert-manager internal CA, like GLB → Envoy (S1 §4.5) |
+| HTTPS only on the pod (`httpEnabled: false`) | Tokens and authorisation codes travel over the back-channel. TLS with the cert-manager internal CA |
 | Public `hostname` and `strict: true` | A single `iss`; a request with a different `Host` does not change the frontend URLs |
 | `backchannelDynamic: false` | Envoy and Grafana reach the internal Service but request the public URLs, which internal routing resolves (§8.2). Enabling it would make the discovery document depend on how the request arrives |
 | 2 replicas spread by zone | A node or a cluster zone does not take login down. The zonal database remains the single point (§9) |

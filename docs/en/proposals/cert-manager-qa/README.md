@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 4 |
+| **Status** | Proposal · revision 5 |
 | **Scope** | The layer 3 `cert-manager` archetype on `qa`: which certificates it issues and which it does not, the internal CA, who may request which name, how trust is distributed, renewal and rotation, network, the `certs` contract, stacks, policies, execution and plan |
 | **Why now** | ESO (§4.1), monitoring (§8.3), Keycloak (§4, §7, §8) and SonarQube (S1 §4.5) already request certificates from the internal `ClusterIssuer` and trust its CA, and each one took it for granted |
 | **Reference specification** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -39,7 +39,6 @@ Source: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 | Certificate | Who issues it | Reason |
 |---|---|---|
 | **Public** `*.qa.disasterproject.com` on the GLB | **Certificate Manager**, layer 1 `cert` capability (S1 §3.3) | Must be in the same project as the load balancer; validation is by DNS; nobody in the cluster touches it |
-| Backend that Envoy presents to the GLB | cert-manager | TLS on the GLB → Envoy leg (S1 §4.5) |
 | Keycloak pod TLS (`keycloak-service.keycloak.svc`) | cert-manager | Tokens travel over the back-channel (Keycloak §4) |
 | ESO and prometheus-operator webhooks | cert-manager, with the CA injected by **cainjector** | ESO §4.1, monitoring §8.3 |
 | **Gatekeeper** webhook | **Gatekeeper**, with its own rotator | Gatekeeper is in layer 2b, **before** cert-manager: it cannot depend on it (AM §3) |
@@ -50,7 +49,7 @@ Source: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 
 **Correction to AM §14.2 (applied).** The per-cloud provider table assigned "Certificate Manager / ACM / App Gateway certs" to `certs`. That described the edge `cert` capability, not `certs`: AM itself binds `certs` to `cert-manager` in `demos` (AM §7). The rows are now split: `cert` → Certificate Manager, ACM, App Gateway certs; `certs` → `cert-manager` on all three clouds, like Kafka or Keycloak (§11).
 
-**GLB → Envoy: encryption, not authentication.** The global external load balancer encrypts traffic to the backend but, unless backend authentication is configured with a `TrustConfig`, does not validate its certificate **(verify, VT8)**. On `qa` this is accepted: the leg runs over Google's network inside the VPC. Turning validation on would tie the internal root to a layer 1 resource, and every root rotation would require changing the edge (DT7).
+**GLB → Envoy: no cert-manager certificate.** The leg is HTTP (Envoy Gateway DG14, edge DL9). While it was HTTPS, the certificate Envoy presented to the GLB came from the internal CA: the edge (layer 1) depended on cert-manager (layer 3), and the GLB did not validate it either. If authenticating the leg is ever required, the root has to be a platform one (Certificate Authority Service in layer 1, with its `TrustConfig` in Certificate Manager), never the internal one: tying it to the edge would invert the dependency, and every root rotation would touch layer 1 (DT7).
 
 ---
 
@@ -103,7 +102,7 @@ With a shared `ClusterIssuer` and cert-manager's default approver, **any namespa
 
 A request that matches none is left **Denied** with the reason; the `Certificate` never reaches `Ready` and the platform alert fires (§6).
 
-**There is no policy for the Gateway backend.** An earlier version had `gateway-backend`, which authorised "the name the GLB expects". The GLB expects none: it does not validate the certificate (DT7), and Envoy carries no hostname on the listener. The backend certificate is `envoy-qa.envoy-gateway-system.svc`, covered by `namespace-services` (Envoy Gateway proposal §2.1). If backend validation with a `TrustConfig` is ever enabled, it will validate that same internal name against the internal CA; a public name will not be needed then either.
+**There is no policy for the Gateway backend.** An earlier version had `gateway-backend`, and later the listener's certificate was covered by `namespace-services`. Envoy's listener no longer carries a certificate (Envoy Gateway DG14): there is nothing left to authorise.
 
 **Why Gatekeeper was not enough.** A constraint on `Certificate` does not see `CertificateRequest`s created directly, which is what someone trying to bypass it would do. approver-policy decides on the signable request, the only point everything passes through.
 
@@ -363,7 +362,7 @@ Source: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | DT4 | Leaves | Proposed | ECDSA P-256, 90 days, renewal on day 60, new key | 1 year; RSA |
 | DT5 | Owner reference on `Secret` | Proposed | Disabled | Enabled: deleting the CRD drags the `Secret`s with it |
 | DT6 | Stacks | Proposed | `controllers` and `ca` separate | A single one |
-| DT7 | Backend validation on the GLB | Proposed | Not on `qa` | `TrustConfig` with the internal root (ties the root to layer 1) |
+| DT7 | GLB → Envoy leg | **Approved** | No cert-manager certificate: the leg is HTTP (Envoy Gateway DG14). If authenticating it is required, a platform root (CAS) in layer 1 | `TrustConfig` with the internal root (an edge from layer 1 to layer 3) |
 | DT8 | Gatekeeper | Consequence of AM §3 | Its own rotator | — (layer 2b comes first) |
 | DT9 | `cert-manager` trait | Proposed, applied to the registry | Yes | No trait |
 | DT10 | Scope of the internal CA | Accepted | Internal names only: `.svc` and the private `qa.internal` zone; TLS and mTLS inside the VPC. External traffic belongs to the load balancers, with SNI and wildcards | Also signing public hostnames |
@@ -395,7 +394,7 @@ Source: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | VT5 | Certificate reload in Envoy, Keycloak and every webhook | Forced renewal with no restart and no TLS errors |
 | VT6 | Uninstall the controllers in an ephemeral environment | The certificates' `Secret`s still exist |
 | VT7 | Root rotation from §5.2 in an ephemeral environment | No TLS outage in any of the four steps |
-| VT8 | GLB → Envoy with the internal certificate; backend validation | Health check green; confirmed that without a `TrustConfig` it does not validate |
+| VT8 | *Retired*: the GLB → Envoy leg no longer carries an internal certificate (DT7). Covered by Envoy Gateway's VG1 | — |
 | VT9 | mTLS with MongoDB and with CNPG using `internal-ca` | A client from the authorised namespace gets in; a valid certificate from another namespace is rejected by authorisation, not by TLS |
 
 ---

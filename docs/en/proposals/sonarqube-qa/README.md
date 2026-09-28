@@ -99,7 +99,7 @@ Everything is built from scratch. **Registry** states whether the capability alr
 | 2 | `cluster` | **GKE Standard**, regional, `general` and `sonar` node pools | cloud | Where it runs; `sonar` supplies the sysctl | ✓ (+ trait) |
 | 2b | `policy` | **OPA Gatekeeper** | Apache-2.0 | PSS `restricted`, labels, allowed registries | ✓ |
 | 3 | `ingress` | **Envoy Gateway** (`gateway-envoy-gke`) | Apache-2.0 | `HTTPRoute`, traffic policies | ✓ |
-| 3 | `certs` | **cert-manager** with an **internal CA** (`ClusterIssuer` CA) | Apache-2.0 | TLS from the GLB to Envoy. No ACME: the public certificate comes from Certificate Manager | ✓ |
+| 3 | `certs` | **cert-manager** with an **internal CA** (`ClusterIssuer` CA) | Apache-2.0 | TLS and mTLS inside the cluster (Keycloak, webhooks, Envoy xDS). No ACME: the public certificate comes from Certificate Manager | ✓ |
 | 3 | `dns` | **Not bound** | — | Covered by `env-edge`'s wildcard; external-dns adds nothing with one Gateway and one IP per environment (same as `demos`, AM §7) | ✓ unused |
 | 3 | `secrets` | **External Secrets Operator** (interface) + **Secret Manager** (backend) | Apache-2.0 / cloud | Credentials, passcode, encryption key, SAML | ✓ |
 | 3 | `monitoring` | **kube-prometheus-stack**, **Grafana**, **Loki** (on GCS), **Fluent Bit**, **Blackbox exporter** | Apache-2.0 / AGPL-3.0 | Metrics, logs, alerts, external probe | ✓ (+ trait) |
@@ -209,7 +209,7 @@ Backups to GCS via **Workload Identity**: IAM `roles/storage.objectAdmin` on the
 | Hostname | `sonar.qa.disasterproject.com` — a ledger **claim** even though the DNS record is a wildcard: name uniqueness remains a scarce resource |
 | DNS | Wildcard record `*.qa.disasterproject.com` → global IP, created once by `gcp-qa-edge-base` (`edge-qa` proposal §1) |
 | Public TLS | Certificate Manager, wildcard, on the GLB |
-| Internal TLS | GLB → Envoy over HTTPS, certificate from cert-manager's internal CA |
+| GLB → Envoy leg | HTTP, no certificate: public TLS terminates at the GLB, and the edge does not depend on cert-manager (Envoy Gateway proposal DG14, edge DL9) |
 | Gateway | One per environment, `allowedRoutes.namespaces.from: Selector` (§10.6); standalone NEG `eg-qa-neg` (§10.2, R20) |
 | Backend service timeout | **120 s** (30 s by default): a large project's report upload exceeds it |
 | Envoy | `timeouts.request: 120s` on the `HTTPRoute` (standard channel). No body limit: Envoy does not impose one while streaming (Envoy Gateway proposal §2.2, §2.3) |

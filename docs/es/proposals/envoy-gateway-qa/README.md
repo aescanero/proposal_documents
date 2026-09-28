@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 6 |
+| **Estado** | Propuesta · revisión 7 |
 | **Alcance** | El arquetipo de capa 3 `gateway-envoy-gke` en `qa`: el camino de una petición desde el GLB hasta el pod, el Gateway único del entorno, quién puede enganchar qué ruta y con qué política, los CRDs de Gateway API, la flota de proxies y su relación con el NEG, tiempos de espera, observabilidad, red, contrato `ingress`, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | SonarQube (E1 §4.5, E2 §5.8), Keycloak (§8), monitorización (Grafana) y cert-manager (§1, §3) ya publican rutas en el Gateway `qa` o le emiten certificados, y cada uno lo daba por hecho. E2 §9 le dejó tres requisitos pendientes |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -40,7 +40,7 @@ Fuente: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 |---|---|---|
 | IP global, certificado `*.qa.disasterproject.com`, Cloud Armor, backend service, URL map | **`gcp-qa-edge`**, capa 1 (E1 §4.15) | Deben estar en el mismo proyecto que el balanceador |
 | NEG `eg-qa-neg` | El **controlador de NEG de GKE**, a partir de la anotación del Service que genera Envoy Gateway | Fuera del estado de Terraform (§10.2, R20); `gcp-qa-edge` lo lee como `data` |
-| TLS GLB → Envoy | Este arquetipo, con un certificado de la CA interna (cert-manager §1) | El GLB cifra pero no valida (cert-manager DT7) |
+| Tramo GLB → Envoy | **HTTP**, sin certificado (DG14) | El TLS público termina en el GLB con el certificado de la capa 1. Un certificado de la CA interna en este tramo hacía depender el borde (capa 1) de cert-manager (capa 3), y el GLB no lo validaba: cifraba sin autenticar |
 | Enrutado por host y ruta, políticas de tráfico | Este arquetipo: Gateway `qa` y las `HTTPRoute` de los consumidores | Gateway API: la ruta vive con quien la publica (§10.6) |
 | Autenticación de usuarios | **Cada aplicación**; la `SecurityPolicy` OIDC solo si el consumidor la pide (§4.3) | SonarQube (E1 §4.6), Grafana y Keycloak no pueden llevarla |
 | Tráfico este-oeste | **Nadie**: DNS del Service | `CLAUDE.md`; Envoy no es un mesh |
@@ -59,10 +59,10 @@ Fuente: [`diagrams/02-camino-peticion.mmd`](diagrams/02-camino-peticion.mmd)
 
 | Ajuste | Valor | Motivo |
 |---|---|---|
-| Listener | Uno, `https`, **puerto 8443**, `protocol: HTTPS`, `tls.mode: Terminate` | Por encima de 1024: sin remapeo de puertos y sin capacidades en el contenedor |
-| `hostname` del listener | **Ninguno** | El GLB no envía SNI hacia el backend salvo configuración expresa **(verificar, VG1)**. Un listener con `hostname` genera una cadena de filtros que exige SNI y rechazaría el handshake. El host se decide en las `HTTPRoute`, por la cabecera `Host` (DG2) |
-| Certificado | `Secret` `gateway-backend-tls`, emitido por `internal-ca` para `envoy-qa.envoy-gateway-system.svc` | Sin SNI ni validación en el GLB, el nombre es indiferente para el borde; uno del propio namespace lo cubre la política `namespace-services` de cert-manager (§11) |
-| Listener HTTP | **No** | La redirección a HTTPS la hace el URL map del GLB |
+| Listener | Uno, `http`, **puerto 8080**, `protocol: HTTP` | Por encima de 1024: sin remapeo de puertos y sin capacidades en el contenedor. Solo lo alcanzan los rangos del GFE (§5.2, §9.3) |
+| `hostname` del listener | **Ninguno** | El host se decide en las `HTTPRoute`, por la cabecera `Host` (DG2): un solo sitio donde se declara qué nombre va a qué servicio |
+| Certificado | **Ninguno** en el listener | cert-manager sigue emitiendo los certificados xDS del controlador (DG9) y los de `BackendTLSPolicy` hacia los backends que lo exigen; ninguno sale hacia el borde |
+| Listener HTTPS | **No** | El cliente solo habla TLS con el GLB; la redirección de HTTP a HTTPS la hace el URL map del GLB. La aplicación sabe que el origen era HTTPS por `X-Forwarded-Proto` y por su URL base fijada (`sonar.core.serverBaseURL`, `hostname` de Keycloak) (VG1) |
 | `allowedRoutes` | `kinds: [HTTPRoute]`, `namespaces.from: Selector` con `gateway.disasterproject.com/routes: "true"` | §4.1 |
 
 ### 2.2 Tiempos de espera
@@ -256,7 +256,7 @@ Fuente: [`diagrams/05-despliegue.mmd`](diagrams/05-despliegue.mmd)
 
 | Ajuste | Valor | Motivo |
 |---|---|---|
-| Service | `type: ClusterIP` con `cloud.google.com/neg: '{"exposed_ports":{"8443":{"name":"eg-qa-neg"}}}'` | Sin balanceador por Service; nombre de NEG determinista (§10.2) |
+| Service | `type: ClusterIP` con `cloud.google.com/neg: '{"exposed_ports":{"8080":{"name":"eg-qa-neg"}}}'` | Sin balanceador por Service; nombre de NEG determinista (§10.2) |
 | Réplicas | HPA **3–6**, CPU al 70 % | NEG zonal: ≥ 1 pod por zona de `europe-west1` (b, c, d); assert `minReplicas ≥ zonas` (§10.2, RG3) |
 | Reparto | `topologySpreadConstraints` por `topology.kubernetes.io/zone`, `maxSkew: 1`, `DoNotSchedule`; por nodo, `ScheduleAnyway` | Una zona sin pods deja su NEG vacío |
 | Node pool | El general, no `sonar` | El pool `sonar` es de una zona y lleva taint (E1 §4.1) |
@@ -264,15 +264,15 @@ Fuente: [`diagrams/05-despliegue.mmd`](diagrams/05-despliegue.mmd)
 | Rollout | `maxUnavailable: 0`, `maxSurge: 1`, `minReadySeconds: 30` | El pod nuevo tarda en aparecer como sano en el GLB. Con NEG standalone no hay *readiness gate* que lo espere **(verificar, VG3)** y un rollout rápido deja al GLB sin backends sanos durante unos segundos (RG4) |
 | Drenaje | `shutdown.drainTimeout: 60s`; `terminationGracePeriodSeconds: 90`; `connection_draining_timeout_sec: 60` en el backend service | El GLB deja de enviar antes de que Envoy cierre |
 | Recursos por pod | Petición 500m / 512 MiB; límite de memoria 1 GiB | Punto de partida; se ajusta con las métricas de la fase 3 |
-| Seguridad | PSS `restricted`: no root, `drop: [ALL]`, `seccompProfile: RuntimeDefault` | El puerto 8443 no necesita `NET_BIND_SERVICE` **(verificar el sidecar `shutdown-manager`, VG12)** |
+| Seguridad | PSS `restricted`: no root, `drop: [ALL]`, `seccompProfile: RuntimeDefault` | El puerto 8080 no necesita `NET_BIND_SERVICE` **(verificar el sidecar `shutdown-manager`, VG12)** |
 | Log de acceso | JSON a stdout; ruta con **`%REQ_WITHOUT_QUERY(:PATH)%`**; `x-request-id`, nombre de la ruta, `%RESPONSE_FLAGS%`, IP del cliente (§2.4) | La query del callback OIDC lleva `code` y `state`, y la de Keycloak, códigos de sesión: no deben acabar en Loki (RG8). Sin cabeceras `Authorization` ni `Cookie` |
 
 ### 5.2 Salud vista desde el GLB
 
 | Ajuste | Valor | Motivo |
 |---|---|---|
-| Health check | HTTP, `USE_FIXED_PORT` al puerto de readiness de Envoy, ruta `/ready` **(puerto a confirmar en la versión fijada, VG2)** | Contra 8443, una petición sin host conocido devuelve 404 y el GLB marcaría todos los backends como caídos |
-| Firewall de la VPC | `35.191.0.0/16` y `130.211.0.0/22` → nodos, TCP 8443 y el puerto de readiness | Tráfico de datos y health checks del GLB llegan desde esos rangos. Selector `cidr:` legítimo (AM §6.3); lo declara este manifiesto (§8.1) |
+| Health check | HTTP, `USE_FIXED_PORT` al puerto de readiness de Envoy, ruta `/ready` **(puerto a confirmar en la versión fijada, VG2)** | Contra 8080, una petición sin host conocido devuelve 404 y el GLB marcaría todos los backends como caídos |
+| Firewall de la VPC | `35.191.0.0/16` y `130.211.0.0/22` → nodos, TCP 8080 y el puerto de readiness | Tráfico de datos y health checks del GLB llegan desde esos rangos. Selector `cidr:` legítimo (AM §6.3); lo declara este manifiesto (§8.1) |
 
 ### 5.3 El controlador
 
@@ -297,7 +297,7 @@ Las reglas las declara el arquetipo de monitorización (monitorización §5.1): 
 | Rutas no aceptadas | kube-state-metrics (custom resource state) sobre `status.parents[].conditions` de `HTTPRoute` | `Accepted=False` o `ResolvedRefs=False` > 10 min: casi siempre un hostname o `parentRefs` mal puesto |
 | Gateway no programado | Igual, sobre `Gateway` | `Programmed=False` > 5 min |
 | Controlador | Métricas del controlador (errores de traducción xDS) **(nombres a confirmar, VG10)** | Cualquiera sostenido |
-| Certificado de backend y xDS | cert-manager §6 | < 14 días |
+| Certificados xDS | cert-manager §6 | < 14 días |
 | Backends caídos vistos desde el GLB | Cloud Monitoring, `loadbalancing.googleapis.com/https/backend_request_count` por clase de respuesta. Alerta basada en métricas de la **capa 1b** (`cloud-observability`) | 5xx de origen `backend` > 5 % durante 10 min |
 
 La última es la única que ve lo que Prometheus no puede ver: el GLB sin backends sanos no llega a Envoy.
@@ -410,11 +410,11 @@ firewall:                             # hacia los nodos donde corren los proxies
   - name: glb-gfe-to-envoy
     from: cidr:35.191.0.0/16
     to: self
-    ports: [8443, 19003]              # 19003: readiness del proxy, a confirmar (VG2)
+    ports: [8080, 19003]              # 19003: readiness del proxy, a confirmar (VG2)
   - name: glb-legacy-to-envoy
     from: cidr:130.211.0.0/22
     to: self
-    ports: [8443, 19003]
+    ports: [8080, 19003]
 
 capacity:
   cpu_millicores: 3200
@@ -430,7 +430,7 @@ capacity:
 | Stack | Contenido | Entradas por sharing |
 |---|---|---|
 | `controller` | Namespace `envoy-gateway-system` (PSS `restricted`); `helm_release` de los CRDs (canal estándar, `keep`) y del controlador de Envoy Gateway (§5.3); `Certificate` xDS; `NetworkPolicy` (§9.3); los `ConstraintTemplate` de los kinds de Gateway API y de Envoy Gateway | `cluster_endpoint`, `cluster_ca` |
-| `proxy` | Chart propio con `GatewayClass` `envoy-qa`, `EnvoyProxy` `edge-proxy`, `Gateway` `qa`, `Certificate` `gateway-backend-tls`, `ClientTrafficPolicy`, `BackendTrafficPolicy` por defecto, HPA, PDB y los `Constraint` de §9.2; `prevent_destroy` sobre el `helm_release` | `cluster_*` |
+| `proxy` | Chart propio con `GatewayClass` `envoy-qa`, `EnvoyProxy` `edge-proxy`, `Gateway` `qa`, `ClientTrafficPolicy`, `BackendTrafficPolicy` por defecto, HPA, PDB y los `Constraint` de §9.2; `prevent_destroy` sobre el `helm_release` | `cluster_*` |
 
 **Por qué dos stacks.** Un upgrade de Envoy Gateway es rutinario. Borrar el Gateway, no: borra el Service, el controlador de NEG borra `eg-qa-neg` y el GLB se queda sin backends, con el entorno entero fuera de servicio. Con los stacks separados, un PR de versión nunca planifica un cambio sobre el Gateway, y destruirlo exige un PR explícito que quite `prevent_destroy`. Es el mismo razonamiento que la CA de cert-manager §8.2.
 
@@ -457,7 +457,7 @@ assert {
 }
 assert {
   assertion = !tm_can(global.gateway_values.gateway.listeners[0].hostname)
-  message   = "ingress: el listener no lleva hostname; el GLB no envía SNI (VG1)"
+  message   = "ingress: el listener no lleva hostname; el host lo deciden las rutas (DG2)"
 }
 assert {
   assertion = global.gateway_values.clientTrafficPolicy.idleTimeoutSeconds > 600
@@ -499,7 +499,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 
 | Origen | Destino | Puerto | Nota |
 |---|---|---|---|
-| GFE del GLB (`35.191.0.0/16`, `130.211.0.0/22`) | Proxies | 8443 y readiness | `ipBlock`. Es la única entrada de fuera del cluster |
+| GFE del GLB (`35.191.0.0/16`, `130.211.0.0/22`) | Proxies | 8080 y readiness | `ipBlock`. Es la única entrada de fuera del cluster, y la única que alcanza el listener HTTP |
 | Prometheus | Proxies y controlador | Métricas (19001 en el proxy) **(verificar, VG10)** | |
 | Proxies | Controlador | 18000 (xDS) | |
 | Proxies | Namespaces con `route_namespace_label` | Puertos de sus Services | La `NetworkPolicy` de cada consumidor restringe el puerto (§7.2) |
@@ -545,18 +545,19 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | # | Decisión | Estado | Recomendación | Alternativa |
 |---|---|---|---|---|
 | DG1 | Gateways | Consecuencia de §10.6 | Uno, `qa`, en `envoy-gateway-system` | Uno por tenant (fan-in, un NEG por Gateway) |
-| DG2 | Listener | Propuesta | HTTPS 8443 sin `hostname`; el host lo deciden las rutas | Listener con `*.qa.disasterproject.com` (exige SNI desde el GLB) |
+| DG2 | Listener | Propuesta | HTTP 8080 sin `hostname`; el host lo deciden las rutas | Listener con `*.qa.disasterproject.com` |
 | DG3 | CRDs de Gateway API | Propuesta | Los instala el arquetipo, canal estándar; Gateway API de GKE desactivado | Gestionados por GKE |
 | DG4 | Propiedad de los hostnames | Propuesta | Claim + anotación del namespace + Gatekeeper referencial + G1 | Confianza en los tenants |
 | DG5 | Extensiones de Envoy Gateway | Propuesta | `EnvoyPatchPolicy` y `Backend` desactivados; `EnvoyExtensionPolicy` solo en el namespace del Gateway | Disponibles para tenants |
 | DG6 | Tiempos de espera | Propuesta | Idle 620 s; petición 60 s por defecto en el Gateway, ≤ 120 s por ruta | Los valores por defecto de Envoy (15 s de petición) |
 | DG7 | Flota | Propuesta | HPA 3–6, reparto por zona, PDB 2, `maxUnavailable: 0`, drenaje 60 s | Réplicas fijas |
-| DG8 | Health check del GLB | Propuesta | Puerto de readiness de Envoy | 8443 con una ruta `/healthz` de respuesta directa |
+| DG8 | Health check del GLB | Propuesta | Puerto de readiness de Envoy | 8080 con una ruta `/healthz` de respuesta directa |
 | DG9 | Certificados xDS | Propuesta, pendiente de VG8 | cert-manager | Job `certgen` sin renovación |
 | DG10 | Stacks | Propuesta | `controller` y `proxy` separados, `prevent_destroy` en `proxy` | Uno solo |
 | DG11 | Trait `backend-tls` | Propuesta, aplicada al registro | Sí | Sin trait (Keycloak no podría pedirlo) |
 | DG12 | Log de acceso | Propuesta | Sin query string ni cabeceras de credenciales | Formato por defecto |
 | DG13 | Tráfico que no es HTTP | **Decidida**: patrón B | Excepción por nombre, declarada en `exposures`, con justificación de negocio, origen acotado y caducidad; comunicación directa L4 con balanceador passthrough en `gcp-qa-edge` (D como variante interna) | Patrón C (proxy TCP con NEG); `Service` `LoadBalancer` creado por GKE |
+| DG14 | Tramo GLB → Envoy | **Aprobada** | HTTP: el TLS público termina en el GLB; el borde no depende de ningún certificado de la capa 3 | HTTPS con la CA interna (dependencia hacia arriba, sin validar); HTTPS con una CA de plataforma (CAS) y `TrustConfig`, si algún día se exige autenticar el tramo |
 
 ---
 
@@ -582,7 +583,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 
 | # | Verificación | Resultado que la cierra |
 |---|---|---|
-| VG1 | GLB → Envoy con listener sin `hostname` | Health check y tráfico en verde; captura que confirma si el GLB envía SNI |
+| VG1 | GLB → Envoy por HTTP a 8080 | Health check y tráfico en verde; la documentación vigente de Google confirma que el tráfico del GLB a backends en la VPC va cifrado a nivel de red; SonarQube y Keycloak reciben `X-Forwarded-Proto: https` y generan URLs `https://` (login SAML y OIDC completos) |
 | VG2 | Puerto y ruta de readiness del proxy en la versión fijada | Health check del GLB en verde a través del firewall |
 | VG3 | Rollout de los proxies con carga constante a través del GLB | Cero 502 durante un upgrade completo; confirmado si hay *readiness gate* para NEG standalone |
 | VG4 | Keepalive: prueba de 30 min con conexiones inactivas intercaladas | Cero 502 |

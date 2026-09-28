@@ -2287,6 +2287,7 @@ Terraform posee el backend service, el health check, el URL map, el target proxy
 - Nómbralo explícitamente en la anotación `EnvoyProxy` para que la búsqueda sea determinista.
 - Los NEG son **zonales**. Refuerza `minReplicas ≥ número de zonas` más topology spread con una aserción, o una zona sin pods de Envoy produce un NEG ausente y un apply fallido.
 - Arranque en frío: el NEG no existe hasta que los pods de Envoy están Ready. Divide en tres stacks (`aks`/`gke` → `gateway` → `edge`) con `after`, y confía en `--mock-on-fail` para las previews de PR.
+- **El tramo hacia el backend es HTTP.** El TLS público termina en el balanceador con el certificado de la capa 1 (Certificate Manager en GCP, ACM en AWS, certificados de App Gateway en Azure); el balanceador habla HTTP con Envoy. Un certificado de `cert-manager` en ese tramo haría depender la capa 1 de la capa 3, y el balanceador tampoco lo valida. La única arista hacia arriba que conserva el borde es el nombre del NEG (AM §3). Si algún día se exige autenticar el tramo, la raíz de confianza tiene que ser una CA de plataforma en la capa 1 (propuesta `envoy-gateway-qa`, DG14).
 
 ### 10.3 AWS — TargetGroupBinding
 
@@ -2321,7 +2322,7 @@ spec:
         type: ClusterIP                      # sin LB de cloud por Service
         annotations:
           # GCP
-          cloud.google.com/neg: '{"exposed_ports":{"8443":{"name":"eg-demos-neg"}}}'
+          cloud.google.com/neg: '{"exposed_ports":{"8080":{"name":"eg-demos-neg"}}}'
       envoyDeployment:
         replicas: 3
         pod:

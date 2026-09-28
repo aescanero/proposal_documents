@@ -15,7 +15,7 @@
 <text x="78" y="428" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">gatekeeper · referential</text>
 <rect x="60" y="472" width="290" height="90" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="78" y="510" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">certs</text>
-<text x="78" y="538" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">backend and xDS · internal-ca</text>
+<text x="78" y="538" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">xDS · internal-ca</text>
 <rect x="60" y="582" width="290" height="90" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5" stroke-dasharray="5 4"/>
 <text x="78" y="620" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">monitoring</text>
 <text x="78" y="648" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">NO: requires ingress (cycle)</text>
@@ -72,9 +72,9 @@
 <text x="498" y="673" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="21" font-weight="700" fill="#2563eb" text-anchor="start">Gateway qa</text>
 <text x="466" y="718" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start">One per environment</text>
 <circle cx="472" cy="741" r="3" fill="#2563eb"/>
-<text x="482" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">listener https 8443</text>
+<text x="482" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">listener http 8080</text>
 <circle cx="472" cy="765" r="3" fill="#2563eb"/>
-<text x="482" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">no hostname (no SNI)</text>
+<text x="482" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">no hostname</text>
 <circle cx="472" cy="789" r="3" fill="#2563eb"/>
 <text x="482" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">allowedRoutes Selector</text>
 <rect x="720" y="274" width="245" height="170" rx="12" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>
@@ -116,7 +116,7 @@
 <circle cx="742" cy="741" r="3" fill="#c2410c"/>
 <text x="752" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">Envoy readiness</text>
 <circle cx="742" cy="765" r="3" fill="#c2410c"/>
-<text x="752" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">GFE → 8443 and readiness</text>
+<text x="752" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">GFE → 8080 and readiness</text>
 <circle cx="742" cy="789" r="3" fill="#c2410c"/>
 <text x="752" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">60 s drain</text>
 <rect x="990" y="274" width="245" height="170" rx="12" fill="#ffffff" stroke="#15803d" stroke-width="2"/>

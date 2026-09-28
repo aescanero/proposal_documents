@@ -10,7 +10,7 @@ flowchart LR
         CTRL["controlador de Envoy Gateway<br/>2 réplicas · xDS"]
         NEG["NEG eg-qa-neg<br/>uno por zona · lo crea GKE"]
         PX["proxies Envoy<br/>HPA 3–6 · una zona, un pod o más"]
-        GW["Gateway qa · listener https 8443<br/>sin hostname · allowedRoutes Selector"]
+        GW["Gateway qa · listener http 8080<br/>sin hostname · allowedRoutes Selector"]
     end
 
     subgraph CONS["Consumidores · una HTTPRoute cada uno"]
@@ -20,11 +20,11 @@ flowchart LR
         SQ["SonarQube<br/>sonar.qa · timeout 120 s"]
     end
 
-    CM["cert-manager<br/>certificado de backend y xDS"]
+    CM["cert-manager<br/>certificados xDS"]
     GK["Gatekeeper<br/>hostnames, kinds reservados"]
 
     U --> GLB
-    GLB -->|"HTTPS · sin SNI"| NEG
+    GLB -->|"HTTP · cifrado de red de Google"| NEG
     NEG --> PX
     CTRL -. "configuración xDS" .-> PX
     GW -. "define" .-> PX

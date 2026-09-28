@@ -1,7 +1,7 @@
 flowchart LR
     GFE(["GFE del GLB<br/>35.191.0.0/16<br/>130.211.0.0/22"])
     subgraph NS["ns envoy-gateway-system · default-deny ingress + egress"]
-        PX["proxies Envoy<br/>8443 · readiness · 19001 métricas"]
+        PX["proxies Envoy<br/>8080 · readiness · 19001 métricas"]
         CTRL["controlador<br/>18000 xDS"]
     end
     P["Prometheus"]
@@ -11,7 +11,7 @@ flowchart LR
     DNS["kube-dns :53"]
     INET(["Internet"])
 
-    GFE -->|"TCP 8443 y readiness"| PX
+    GFE -->|"TCP 8080 y readiness"| PX
     P -->|"métricas"| PX
     P -->|"métricas"| CTRL
     PX -->|"TCP 18000"| CTRL

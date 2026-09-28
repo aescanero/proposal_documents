@@ -161,7 +161,7 @@ spec:
 
 | Elección | Por qué |
 |---|---|
-| Solo HTTPS en el pod (`httpEnabled: false`) | Por el back-channel viajan tokens y códigos de autorización. TLS con la CA interna de cert-manager, como GLB → Envoy (E1 §4.5) |
+| Solo HTTPS en el pod (`httpEnabled: false`) | Por el back-channel viajan tokens y códigos de autorización. TLS con la CA interna de cert-manager |
 | `hostname` público y `strict: true` | Un solo `iss`; una petición con otro `Host` no cambia las URLs de frontend |
 | `backchannelDynamic: false` | Envoy y Grafana llegan al Service interno pero piden las URLs públicas, que el enrutado interno resuelve (§8.2). Activarlo haría que el documento de discovery dependiera de por dónde llega la petición |
 | 2 réplicas repartidas por zona | Un nodo o una zona del cluster no tiran el login. La BD zonal queda como punto único (§9) |

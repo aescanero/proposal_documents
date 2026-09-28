@@ -7,8 +7,8 @@ sequenceDiagram
 
     C->>G: HTTPS to sonar.qa.disasterproject.com
     Note over G: public TLS (Certificate Manager), Cloud Armor
-    G->>E: HTTPS to 8443, no SNI, reused connection (keepalive 600 s)
-    Note over E: TLS with an internal-CA certificate, listener without hostname
+    G->>E: HTTP to 8080, reused connection (keepalive 600 s)
+    Note over E: no TLS: the GLB terminated it · X-Forwarded-Proto https · listener without hostname
     Note over E: HTTPRoute by Host header, client IP from X-Forwarded-For
     E->>B: HTTP to the Service in the consumer's namespace
     B-->>E: response (up to 120 s)

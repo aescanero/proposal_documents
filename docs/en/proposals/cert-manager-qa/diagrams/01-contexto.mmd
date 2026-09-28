@@ -13,7 +13,7 @@ flowchart LR
 
     subgraph CONS["Consumers"]
         direction TB
-        GW["Envoy · backend certificate<br/>presented to the GLB"]
+        GW["Envoy Gateway · controller xDS<br/>certificates (nothing towards the GLB)"]
         KC["Keycloak · pod TLS<br/>keycloak-service.keycloak.svc"]
         WH["ESO and prometheus-operator<br/>webhooks"]
     end

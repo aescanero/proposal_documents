@@ -6,11 +6,11 @@ flowchart LR
         FR80["forwarding rule :80<br/>URL map qa-redirect · 301"]
         FR443["forwarding rule :443<br/>certificate map · SSL MODERN"]
         CA["Cloud Armor qa-edge<br/>host · CRS · per-IP limit"]
-        BS["backend service qa-envoy<br/>HTTPS · 120 s · 60 s draining<br/>HSTS"]
+        BS["backend service qa-envoy<br/>HTTP · 120 s · 60 s draining<br/>HSTS"]
     end
     subgraph QA["VPC qa"]
         NEG["eg-qa-neg<br/>one per zone b · c · d"]
-        ENV["Envoy :8443<br/>routes by host"]
+        ENV["Envoy :8080<br/>routes by host"]
         APPS["SonarQube · Keycloak · Grafana"]
     end
     U --> DNS --> FR443 --> CA --> BS --> NEG --> ENV --> APPS
