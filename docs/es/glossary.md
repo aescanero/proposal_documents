@@ -108,7 +108,9 @@ Términos técnicos y definiciones extraídos de `platform-overview.md`, `archet
 | Nivel | Definición |
 |---|---|
 | **Nivel 0** | Ficheros en bruto en Git (`cmdb-data/`): manifiestos resueltos, entornos, instancias, un fichero por stack, ficheros de aristas (`depends-on.json`, `provides.json`, `tenant-resources.json`), ledgers de pools y un `index.json`. El sistema de registro. |
-| **Nivel 1** | Un modelo de lectura publicado: `index.json` más una proyección JSON-LD servida vía GitHub Pages / contenido crudo / Contents API / asset de release. |
+| **Nivel 1** | Un modelo de lectura publicado: `index.json` más una proyección JSON-LD que une las dos mitades del nivel 0. Se publica como asset de release privado (`cmdb-latest`); GitHub Pages solo en Enterprise con Pages privadas, porque unas Pages públicas expondrían el mapa del entorno. |
+| **Mitad declarada** | La parte del nivel 0 que se conoce sin la nube — stacks, aristas, claims, instancias — generada por `archetypectl cmdb generate` en la pull request, comprobada por `archetypectl cmdb check` igual que G0, y guardada en `main`. |
+| **Mitad observada** | La parte del nivel 0 que solo conoce un apply — `lastApply`, `driftAt`, `resourceCount`, salidas no sensibles — escrita como ficheros `kind: StackObserved` en la rama `cmdb-observed` por el workflow reutilizable `cmdb-sync`, nunca en `main` (riesgo R55). |
 | **Nivel 2** | Un modelo analítico: DuckDB sobre Parquet particionado, publicado como asset de release no committeado, consultado en el navegador vía DuckDB-WASM con peticiones HTTP range. |
 | **Nivel 3** | Una base de datos de grafos opcional (KuzuDB u Oxigraph), justificada solo cuando las consultas necesitan recorridos de longitud variable y tipo de arista mixto (p. ej. alcanzabilidad multi-salto de identidad/secreto) — no debe construirse de forma especulativa. |
 | **Arista (CMDB)** | Una relación extraída estáticamente antes del despliegue: aristas de dependencia (de `input.from_stack_id`), aristas de capability (de `provides`), aristas de tenant resource (de `creates_tenant_resources`). |
@@ -269,9 +271,9 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 | **Azure CNI Powered by Cilium** | Modo de AKS que combina direccionamiento overlay con un dataplane eBPF, elegido cuando se necesita NetworkPolicy con el rendimiento de eBPF. |
 | **AGFC (Application Gateway for Containers)** | La implementación de Gateway API de Azure; utilizable en modalidad BYO (traer el propio), aprovisionada en Terraform. Es en sí misma un gateway L7, así que poner Envoy Gateway detrás es un doble salto redundante. |
 | **Secrets Store CSI driver** | El mecanismo de AKS para montar secretos de Key Vault en pods vía workload identity, de modo que los Secrets de Kubernetes nunca son la fuente de verdad. |
-| **`artifact_registry_repo` / `cloud_armor_policy_id`** (Cloud Run) | Salidas del stack de red que consume un stack de runtime de Cloud Run. |
+| **`artifact_registry_repo` / `cloud_armor_policy_id`** (Cloud Run) | Salidas del stack de plataforma serverless (`gcp-ENV-srvless`) que consume un stack de servicio Cloud Run. |
 | **Agente de servicio de Cloud Run** | La identidad gestionada por GCP (`service-<número-de-proyecto>@serverless-robot-prod.iam.gserviceaccount.com`) que realmente hace pull de las imágenes de contenedor para un servicio de Cloud Run — distinta de la SA de runtime propia del servicio. Conceder permisos de pull a la SA de runtime en su lugar es "un fallo clásico del primer despliegue." |
-| **Direct VPC egress** | El mecanismo preferido (más reciente) para que Cloud Run alcance recursos privados de VPC sin un conector gestionado; requiere una subred `/24` dedicada como mínimo. |
+| **Direct VPC egress** | El mecanismo preferido (más reciente) para que Cloud Run alcance recursos privados de VPC sin un conector gestionado; requiere una subred `/24` dedicada como mínimo, creada por el stack `run-subnet` del propio arquetipo `cloudrun`, no por `network`. |
 | **Conector Serverless VPC Access** | El mecanismo heredado para el acceso a VPC de Cloud Run, usando un recurso/CIDR de conector fijo. |
 | **Binary Authorization** | Control basado en atestaciones que exige que las imágenes de contenedor lleven atestaciones verificadas antes del despliegue (GKE y Cloud Run). |
 | **Ocultación de metadata (GKE)** | Desactivar los endpoints de metadata heredados de GCE (`metadata.disable-legacy-endpoints = true`) para que los pods no puedan leer directamente el token de la SA del nodo, lo que anularía Workload Identity. |
@@ -549,7 +551,7 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 
 ---
 
-## 26. Registro de riesgos (`risk-register.md`) — 54 riesgos por dominio (53 activos)
+## 26. Registro de riesgos (`risk-register.md`) — 57 riesgos por dominio (56 activos)
 
 Cada riesgo tiene un número R estable y nunca reutilizado, una probabilidad, un impacto y una mitigación ligada a una sección del documento.
 
@@ -602,6 +604,7 @@ Cada riesgo tiene un número R estable y nunca reutilizado, una probabilidad, un
 | **R45** | El timeout por defecto de 30 s del LB de Application externo de GCP causa 502 intermitente en subidas grandes. Mitigado con un timeout explícito en el stack de borde. |
 | **R46** | El chart Helm de origen trae un init container privilegiado o como root. Mitigado desactivándolo y trasladando el requisito al nodo, expresado como un trait. |
 | **R47–R53** | SonarQube en `qa`: saturación de la cola del compute engine, un análisis de pull request registrado como `main`, OOMKill multi-JVM, pérdida de la clave de cifrado de settings, token global de análisis filtrado, migración de upgrade irreversible, pérdida del volumen zonal. Ver `risk-register.md` §8. |
+| **R55–R57** | CMDB: el sync que escribe en `main`; aristas vacías en silencio, con lo que la guarda de destroy cuenta 0; un valor secreto que llega a la CMDB. Ver `risk-register.md` §7. |
 
 **Los cinco principales riesgos** (ordenados por probabilidad × impacto, mitigación aún no implantada): 1) R2 (falta `after`), 2) R12 (`sub` comodín OIDC), 3) R26 (rango de pods dimensionado para pocos nodos), 4) R34 (divergencia del registro), 5) R5 (plataforma compartida destruida al desmontar una instancia).
 

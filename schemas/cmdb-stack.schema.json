@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://disasterproject.com/schemas/cmdb-stack.schema.json",
   "title": "CMDB Stack CI",
-  "description": "One file per stack. Level 0 of the CMDB; the system of record.",
+  "description": "One file per stack. Level 0 of the CMDB, declared half: generated in the pull request by archetypectl cmdb and checked like G0. What is only known after an apply lives in cmdb-observed.schema.json, on the cmdb-observed branch.",
   "type": "object",
   "required": [
     "apiVersion",
@@ -41,6 +41,10 @@
     },
     "environment": {
       "type": "string"
+    },
+    "project": {
+      "type": "string",
+      "description": "Cloud project, account or subscription. Several non-prod environments share one project, so environment alone does not locate a resource."
     },
     "capability": {
       "type": "string"
@@ -148,34 +152,6 @@
           }
         }
       }
-    },
-    "lastApply": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "at": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "commit": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{7,40}$"
-        },
-        "runId": {
-          "type": "string"
-        },
-        "outcome": {
-          "enum": [
-            "ok",
-            "failed",
-            "drifted"
-          ]
-        }
-      }
-    },
-    "resourceCount": {
-      "type": "integer",
-      "minimum": 0
     },
     "expiresOn": {
       "type": "string",

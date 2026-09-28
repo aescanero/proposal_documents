@@ -1,0 +1,25 @@
+sequenceDiagram
+    autonumber
+    participant PR as Pull request
+    participant M as main
+    participant D as deploy (tf-apply-qa@)
+    participant A as cmdb-aggregate
+    participant O as cmdb-observed
+    participant P as cmdb-publish
+    participant R as release cmdb-latest
+    PR->>PR: cmdb generate + check (no cloud)
+    PR->>PR: G1: contract · sensitive outputs<br/>comment: blast radius
+    PR->>M: merge with the declared half
+    M->>D: push to main
+    loop each changed stack
+        D->>D: tofu apply
+        D->>D: tofu show -json · tofu output -json<br/>drops sensitive · > 1 KiB → sha256
+        D-->>A: artifact observed/<id>.json
+    end
+    Note over A: concurrency: cmdb-write
+    A->>O: commit with the runId · push (rebase and retry)
+    Note over O: a push to this branch does not trigger deploy
+    A->>P: needs
+    P->>M: reads the declared half
+    P->>O: reads the observed half
+    P->>R: index.json · graph.jsonld

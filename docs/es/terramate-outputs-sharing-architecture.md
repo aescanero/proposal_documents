@@ -1336,7 +1336,8 @@ Cloud Run elimina el cluster de la topología, lo que cambia la forma de la capa
 
 ```mermaid
 graph LR
-    NET["<b>network</b><br/>gcp-ENV-network"] --> SP["<b>serverless-platform</b><br/>gcp-ENV-srvless"]
+    NET["<b>network</b><br/>gcp-ENV-network"] --> SUB["<b>run-subnet</b><br/>gcp-ENV-run-subnet"] --> APP["<b>app</b><br/>gcp-ENV-INST-run"]
+    NET --> SP["<b>serverless-platform</b><br/>gcp-ENV-srvless"]
     NET --> DATA["<b>data</b><br/>gcp-ENV-INST-data"]
     SP --> APP["<b>app</b><br/>gcp-ENV-INST-run"]
     DATA --> APP
@@ -1345,38 +1346,49 @@ graph LR
 
 | # | Stack | Produce | Consume |
 |---|---|---|---|
-| 1 | `gcp-ENV-network` | VPC, subred, subred de Direct VPC egress o conector Serverless VPC, Cloud NAT, rango PSA | — |
-| 2 | `gcp-ENV-srvless` | Artifact Registry, IP estática, mapa de Certificate Manager, política Cloud Armor, log sink | network |
+| 1 | `gcp-ENV-network` | VPC, Cloud NAT, rango PSA | — |
+| 2a | `gcp-ENV-run-subnet` | Subred de Direct VPC egress (o el conector Serverless VPC Access y su `/28`) — la reclamación del runtime (AM §9.5) — con Private Google Access y sus reglas de firewall | network |
+| 2b | `gcp-ENV-srvless` | Artifact Registry, IP estática, mapa de Certificate Manager, política Cloud Armor, log sink | network |
 | 3a | `gcp-ENV-INST-data` | Cloud SQL (IP privada), secretos de Secret Manager | network |
-| 3b | `gcp-ENV-INST-run` | Servicio Cloud Run, SA de runtime, NEG serverless, backend service | srvless, data |
+| 3b | `gcp-ENV-INST-run` | Servicio Cloud Run, SA de runtime, NEG serverless, backend service | run-subnet, srvless, data |
 | 4 | `gcp-ENV-edge` | URL map, HTTPS proxy, forwarding rule | *ver §7.5 — fan-in* |
+
+Los dos stacks del nivel 2 pertenecen al arquetipo `cloudrun`, con la misma forma que GKE (§5.1): el runtime crea la subred que reclama, y `network` no conoce ningún runtime.
 
 Nótese la inversión de orden en el paso 4: el stack de edge-routing se ejecuta **después** de cada instancia, porque agrega sus backends. Ese fan-in es la única forma que outputs sharing maneja mal, y §7.5 cubre el remedio.
 
-### 7.2 Stack 1 — network
+### 7.2 Stack 1 — network, y la subred de egress del runtime
 
-Cloud Run alcanza recursos privados de una de dos formas. Elige una vez, en globals, y genera en consecuencia.
+El stack de network es **el mismo que usa GKE** (§5.2): el contrato `contract_network_gcp.tm.hcl`, versión 3.0.0, sin outputs serverless. No existe `contract_network_gcp_serverless.tm.hcl`. Cloud NAT cubre `ALL_SUBNETWORKS_ALL_IP_RANGES`, así que una subred que un runtime crea después sale sin ningún cambio en `network`.
 
-| Mecanismo | Cuándo | Qué debe producir el stack de network |
+Cloud Run alcanza recursos privados de una de dos formas. Elige una vez, en globals; el primer stack del arquetipo `cloudrun`, `gcp-ENV-run-subnet`, crea la que se elija.
+
+| Mecanismo | Cuándo | Qué produce el stack `run-subnet` |
 |---|---|---|
 | **Direct VPC egress** | Preferido para builds nuevos — sin conector que dimensionar ni pagar | `direct_egress_subnet_id` (una subred reservada para Cloud Run) |
 | **Conector Serverless VPC Access** | Legacy, o cuando necesitas un CIDR de conector fijo para reglas de firewall | `vpc_connector_id` |
 
 ```hcl
-# imports/contracts/contract_network_gcp_serverless.tm.hcl
-output "network_self_link"        { backend = "tofu"  value = module.network.network_self_link }
-output "direct_egress_subnet_id"  { backend = "tofu"  value = module.network.serverless_subnet_id }
-output "vpc_connector_id"         { backend = "tofu"  value = try(module.network.connector_id, "") }
-output "psa_range_name"           { backend = "tofu"  value = module.network.psa_range_name }
-output "project_id"               { backend = "tofu"  value = var.project_id }
+# imports/contracts/contract_run_subnet_gcp.tm.hcl
+input "network_self_link" {
+  backend = "tofu"  from_stack_id = global.platform.network_stack_id
+  value = outputs.network_self_link.value
+  mock  = "projects/mock-project/global/networks/mock-vpc"
+}
+
+output "direct_egress_subnet_id"  { backend = "tofu"  value = try(google_compute_subnetwork.egress[0].id, "") }
+output "vpc_connector_id"         { backend = "tofu"  value = try(google_vpc_access_connector.this[0].id, "") }
+output "egress_cidr"              { backend = "tofu"  value = global.serverless.serverless_subnet }
 ```
+
+La subred es la reclamación del runtime (AM §9.5, `/24` mínimo), así que su propietario es también quien escribe sus reglas de firewall: las reglas de egress desde `egress_cidr` hacia el rango PSA y hacia los servicios privados del entorno viven en este stack, no en `network`. Reconstruir o eliminar la plataforma Cloud Run nunca toca la red. Los consumidores encuentran el stack mediante `global.platform.runtime_subnet_stack_id` (`gcp-demos-run-subnet`), la contrapartida serverless de `cluster_subnet_stack_id` (§5.3).
 
 ```hcl
 # stacks/platforms/gcp/demos/config.tm.hcl (adiciones serverless)
 globals "serverless" {
   egress_mode          = "direct"                # "direct" | "connector"
   egress_setting       = "PRIVATE_RANGES_ONLY"   # evita ALL_TRAFFIC a menos que el egress deba inspeccionarse
-  serverless_subnet    = "10.4.40.0/24"          # borde de zona; /24 mínimo para Direct VPC egress
+  serverless_subnet    = "10.4.40.0/24"          # borde de zona; /24 mínimo para Direct VPC egress — la reclamación del stack run-subnet
   ingress              = "INTERNAL_AND_CLOUD_LOAD_BALANCING"
 }
 ```
@@ -1424,7 +1436,7 @@ input "artifact_registry_repo" {
   mock  = "europe-west1-docker.pkg.dev/mock-project/mock-repo"
 }
 input "direct_egress_subnet_id" {
-  backend = "tofu"  from_stack_id = global.platform.network_stack_id
+  backend = "tofu"  from_stack_id = global.platform.runtime_subnet_stack_id   # gcp-ENV-run-subnet, §7.2
   value = outputs.direct_egress_subnet_id.value
   mock  = "projects/mock-project/regions/europe-west1/subnetworks/mock-serverless"
 }
@@ -1618,8 +1630,8 @@ El stack de instancia nombra su backend service de forma determinista (`bes-<ins
 |---|---|---|
 | Límite de aislamiento | Servicio + service account de runtime | Proyecto |
 | Aislamiento de cómputo | Sandbox por servicio (gVisor) — fuerte por defecto | Igual, más el límite de proyecto |
-| Aislamiento de datos | *Database* de Cloud SQL separada en una instancia compartida, secretos separados | Instancia de Cloud SQL separada |
-| Network | VPC compartida, subred de egress compartida | VPC dedicada |
+| Aislamiento de datos | Instancia de Cloud SQL propia por instancia de arquetipo, secretos separados — los datos nunca se comparten | Igual |
+| Network | VPC del entorno, una subred de egress creada por `run-subnet` y compartida por los servicios del entorno | VPC dedicada, subred de egress propia |
 | Coste en reposo | Casi cero — escala a cero | Cloud SQL y NAT siguen facturando |
 | Control de cuotas | `max_instance_count` por servicio | Igual, más cuotas de proyecto |
 | Radio de impacto de un cambio de plataforma | Todos los tenants | Un tenant |
@@ -1668,34 +1680,63 @@ ECS sobre Fargate es la contrapartida AWS de Cloud Run en esta arquitectura: sin
 
 ```mermaid
 graph LR
-    NET["<b>network</b><br/>aws-ENV-network"] --> ECS["<b>ecs-platform</b><br/>aws-ENV-ecs"]
+    NET["<b>network</b><br/>aws-ENV-network"] --> SUB["<b>ecs-subnets</b><br/>aws-ENV-ecs-subnets"] --> ECS["<b>ecs-platform</b><br/>aws-ENV-ecs"]
+    NET --> ECS
     NET --> DATA["<b>data</b><br/>aws-ENV-INST-data"]
     ECS --> APP["<b>app</b><br/>aws-ENV-INST-svc"]
+    SUB --> APP
     DATA --> APP
 ```
 
 | # | Stack | Produce | Consume |
 |---|---|---|---|
-| 1 | `aws-ENV-network` | VPC, subredes privadas/públicas, NAT, **endpoints de VPC**, SG del endpoint | — |
-| 2 | `aws-ENV-ecs` | Cluster ECS, ALB, WAF, repos ECR, namespace de Cloud Map, log groups, SG del ALB | network |
+| 1 | `aws-ENV-network` | VPC, subredes públicas, NAT gateways, una tabla de rutas privada por AZ, **endpoints de VPC** en sus propias subredes de endpoints `/28`, SG del endpoint | — |
+| 2a | `aws-ENV-ecs-subnets` | Subredes de tareas por AZ — la reclamación del runtime (AM §9.5), una ENI por tarea — asociadas a las tablas de rutas privadas | network |
+| 2b | `aws-ENV-ecs` | Cluster ECS, ALB, WAF, repos ECR, namespace de Cloud Map, log groups, SG del ALB | network, ecs-subnets |
 | 3a | `aws-ENV-INST-data` | RDS, secreto de Secrets Manager, security group de BD | network |
-| 3b | `aws-ENV-INST-svc` | Definición de tarea, **rol de tarea**, **rol de ejecución**, servicio, target group, listener rule, SG del servicio | ecs, data |
+| 3b | `aws-ENV-INST-svc` | Definición de tarea, **rol de tarea**, **rol de ejecución**, servicio, target group, listener rule, SG del servicio | ecs-subnets, ecs, data |
+
+Los dos stacks del nivel 2 pertenecen al arquetipo `fargate`, con la misma forma que EKS (§6.1): el runtime crea las subredes de tareas que reclama, y `network` no conoce ningún runtime.
 
 A diferencia de Cloud Run, no hay stack de fan-in: las listener rules del ALB son recursos separados que posee cada instancia, adjuntados al listener compartido por ARN. Añadir o eliminar un tenant solo toca el stack de ese tenant.
 
 ### 8.2 Stack 1 — network, con endpoints de VPC
 
-Las tareas Fargate en subredes privadas deben alcanzar ECR, CloudWatch Logs y Secrets Manager. Enrutar eso a través de un NAT gateway funciona pero cuesta dinero y envía tráfico de plano de control por internet. **Los endpoints de VPC son la línea base de mejores prácticas** y son un asunto del stack de network.
+Las tareas Fargate en subredes privadas deben alcanzar ECR, CloudWatch Logs y Secrets Manager. Enrutar eso a través de un NAT gateway funciona pero cuesta dinero y envía tráfico de plano de control por internet. **Los endpoints de VPC son la línea base de mejores prácticas** y son un asunto del stack de network: sirven a todos los runtimes del entorno, no solo a Fargate.
+
+El contrato de network es **el mismo que usa EKS** (§6.2), más el security group de los endpoints. No hay `private_subnet_ids`: las subredes de tareas son del arquetipo `fargate`, creadas en `aws-ENV-ecs-subnets` y asociadas a las tablas de rutas que publica la red.
 
 ```hcl
-# imports/contracts/contract_network_aws_fargate.tm.hcl
-output "vpc_id"              { backend = "tofu"  value = module.vpc.vpc_id }
-output "vpc_cidr"            { backend = "tofu"  value = module.vpc.vpc_cidr_block }
-output "private_subnet_ids"  { backend = "tofu"  value = module.vpc.private_subnets }
-output "public_subnet_ids"   { backend = "tofu"  value = module.vpc.public_subnets }
-output "endpoint_sg_id"      { backend = "tofu"  value = module.vpc.vpc_endpoint_security_group_id }
-output "azs"                 { backend = "tofu"  value = module.vpc.azs }
+# imports/contracts/contract_network_aws.tm.hcl
+output "vpc_id"                  { backend = "tofu"  value = module.vpc.vpc_id }
+output "vpc_cidr"                { backend = "tofu"  value = module.vpc.vpc_cidr_block }
+output "public_subnet_ids"       { backend = "tofu"  value = module.vpc.public_subnets }
+output "private_route_table_ids" { backend = "tofu"  value = module.vpc.private_route_table_ids }   # una por AZ, en orden de AZ
+output "endpoint_sg_id"          { backend = "tofu"  value = module.vpc.vpc_endpoint_security_group_id }
+output "azs"                     { backend = "tofu"  value = module.vpc.azs }
 ```
+
+Dónde viven los endpoints, y por qué esto no reintroduce un runtime en `network`:
+
+| Pieza | Propietario | Por qué |
+|---|---|---|
+| Endpoints de tipo interface | `network`, en sus propias subredes de endpoints `/28` por AZ (zona `infra`) | Infraestructura compartida por todos los runtimes, como la subred de private endpoints de AKS (§9.2) |
+| Endpoint gateway de S3 | `network`, asociado a las tablas de rutas privadas | Las tablas de rutas son de la red; cualquier subred asociada después lo hereda |
+| SG de los endpoints | `network` | Admite 443 desde `vpc_cidr`, así que no nombra ninguna subred de runtime y no necesita cambios cuando se crea una |
+| Subredes de tareas | `ecs-subnets` | La reclamación del runtime; propietario de la reclamación, creador y escritor del firewall son uno |
+
+```hcl
+# imports/contracts/contract_ecs_subnets.tm.hcl
+input "private_route_table_ids" {
+  backend = "tofu"  from_stack_id = global.platform.network_stack_id
+  value = outputs.private_route_table_ids.value
+  mock  = ["rtb-mock0000000000a", "rtb-mock0000000000b"]
+}
+
+output "task_subnet_ids" { backend = "tofu"  value = aws_subnet.task[*].id }   # en orden de AZ, una por AZ
+```
+
+Los consumidores — el stack `ecs` y cada stack `svc` — lo encuentran mediante `global.platform.runtime_subnet_stack_id` (`aws-demos-ecs-subnets`). Las subredes de tareas se dimensionan para el pico de tareas del entorno, porque cada tarea ocupa una dirección.
 
 Endpoints requeridos, generados a partir de globals:
 
@@ -1723,9 +1764,9 @@ input "vpc_id" {
   backend = "tofu"  from_stack_id = global.platform.network_stack_id
   value = outputs.vpc_id.value  mock = "vpc-mock00000000000"
 }
-input "private_subnet_ids" {
-  backend = "tofu"  from_stack_id = global.platform.network_stack_id
-  value = outputs.private_subnet_ids.value
+input "task_subnet_ids" {
+  backend = "tofu"  from_stack_id = global.platform.runtime_subnet_stack_id   # aws-ENV-ecs-subnets, §8.2
+  value = outputs.task_subnet_ids.value
   mock  = ["subnet-mock0000000000a", "subnet-mock0000000000b"]
 }
 input "public_subnet_ids" {
@@ -1972,7 +2013,7 @@ generate_hcl "_task_definition.tf" {
       enable_execute_command = global.app.ecs_exec_enabled   # false por defecto
 
       network_configuration {
-        subnets          = var.private_subnet_ids
+        subnets          = var.task_subnet_ids               # de ecs-subnets (§8.2), nunca de network
         security_groups  = [aws_security_group.service.id]
         assign_public_ip = false                             # siempre false en subredes privadas
       }
@@ -2037,7 +2078,7 @@ Barandillas complementarias por encima del pipeline (§11.7): SCPs denegando `ia
 |---|---|---|
 | Límite de aislamiento | Rol de tarea + rol de ejecución + security group | Cuenta |
 | Aislamiento de cómputo | **Aislamiento a nivel de VM por tarea** — más fuerte que los nodos EKS compartidos | Igual |
-| Network | VPC compartida, SG por servicio | VPC dedicada |
+| Network | VPC del entorno, subredes de tareas creadas por `ecs-subnets`, SG por servicio | VPC dedicada |
 | Ingress | ALB compartido, listener rule por tenant basada en host | ALB dedicado |
 | Secretos | Secreto por tenant + rol de ejecución por tenant | Por cuenta |
 | Control de escalada | Límite de permisos publicado por la plataforma | Límite + SCP |
@@ -2097,7 +2138,7 @@ Los perfiles EKS Fargate son una *opción de cómputo para la guía EKS*, no una
 - Ese rol de ejecución de pods reemplaza al rol de nodo para los namespaces seleccionados; concédele solo extracción de ECR y logs de CloudWatch.
 - Los perfiles de Fargate seleccionan por **namespace y labels**, lo que mapea directamente a `global.platform.namespace` — un perfil por namespace de tenant en un cluster compartido da aislamiento de cómputo por tenant sin un cluster separado.
 - IRSA no cambia: `oidc_provider_arn` y `oidc_provider_url` siguen viniendo del stack de cluster.
-- Advertencias: sin DaemonSets, sin contenedores privilegiados, sin host networking, y una demanda de IP a escala `/16` en las subredes de pods. Dimensiona las subredes en globals en consecuencia.
+- Advertencias: sin DaemonSets, sin contenedores privilegiados, sin host networking, y una demanda de IP a escala `/16` en las subredes de pods. Esas son del stack `eks-subnets` (§6.2), así que se dimensionan en las reclamaciones del arquetipo `eks`, no en `network`.
 
 ---
 
@@ -2844,16 +2885,19 @@ if terramate list --tags protected --tags instance:${INSTANCE} | grep -q .; then
 fi
 ```
 
-**Barandilla 3 — conteo de referencias antes de destruir la plataforma.** Una plataforma compartida no debe destruirse mientras haya instancias ligadas a ella. Como los bindings son solo globals, puedes contarlos:
+**Barandilla 3 — conteo de referencias antes de destruir la plataforma.** Una plataforma compartida no debe destruirse mientras haya stacks que la consuman. Se cuentan **aristas de la CMDB** (§12.7), no nombres de stack: un patrón de nombre como `^gcp-demos-.*-app$` no casa con nada en un entorno cuyos consumidores se llaman `gcp-qa-policy` o `gcp-qa-kafka-cluster`, el conteo sale 0 y el destroy pasa.
 
 ```bash
-# ¿Cuántas instancias están ligadas a esta plataforma?
-terramate list --json \
-  | jq -r '.stacks[].id' \
-  | grep -c '^gcp-demos-.*-app$'
+# Consumidores vivos de un stack: aristas entrantes cuyo origen no está en el propio set de destroy
+jq -r --arg p "$STACK" --argjson set "$DESTROY_SET" '
+  . as $idx
+  | [.edges[] | select(.producer == $p) | .consumer]
+  | map(select(. as $c | ($set | index($c)) == null))
+  | map(select($idx.stacks[.].observed.lastApply.outcome != "destroyed"))
+  | .[]' index.json
 ```
 
-Conéctalo a la CMDB (§12.7) para que el conteo sea autoritativo en lugar de inferido del repositorio.
+Cualquier nombre que salga para el destroy, con la lista. Destruir el productor **junto con** todos sus consumidores sí se permite: es destruir el entorno, y lo aprueba el grupo de aprobadores de destroy (§11.4). El conteo solo ve consumidores que son stacks; un servicio al que llegan por HTTP pipelines de fuera del repositorio tiene usuarios que la CMDB no conoce, y por eso se mantiene la aprobación humana. El conteo es tan bueno como las aristas: `archetypectl cmdb check` falla cuando un stack tiene bloques `input` y ningún `consumes` evaluado (R56).
 
 ### 12.5 Entornos compartidos efímeros
 
@@ -2901,6 +2945,8 @@ terramate run --changed -- tofu show -json              # inventario físico, po
 ```
 
 El modelo completo — disposición de ficheros, los tres niveles, los tipos de arista extraídos estáticamente de los bloques `input`, y el conteo de referencias que protege a una plataforma compartida del desmontaje de una instancia — está especificado en el documento complementario, `archetype-model.md` §11. No se repite aquí.
+
+En resumen: la mitad **declarada** (stacks, aristas, claims) se genera y se comprueba en la pull request, en `main`; la mitad **observada** (`lastApply`, `resourceCount`, salidas no sensibles, drift) se escribe tras cada apply en la rama `cmdb-observed` con el workflow reutilizable de §14.2; el modelo de lectura es un asset de release privado, `cmdb-latest`. El ejemplo desarrollado para un entorno es la propuesta `cmdb-qa`.
 
 ## 13. Validación de políticas y seguridad
 
@@ -2995,7 +3041,27 @@ deny contains msg if {
     every suffix in reference_suffixes { not endswith(o, suffix) }
     msg := sprintf("el stack %q exporta %q — comparte una referencia, no un valor", [s.id, o])
 }
+
+# Cada salida consumida existe en el produces de su productor: R6 detectado en la PR, nombrando al consumidor.
+deny contains msg if {
+    some s in input.stacks
+    some dep in s.consumes
+    some p in input.stacks
+    p.id == dep.from_stack_id
+    not dep.output in p.produces
+    msg := sprintf("el stack %q consume %q de %q, que no la produce", [s.id, dep.output, dep.from_stack_id])
+}
+
+# Un productor que no está en el inventario: una errata en from_stack_id, o un stack eliminado bajo sus consumidores.
+deny contains msg if {
+    some s in input.stacks
+    some dep in s.consumes
+    not dep.from_stack_id in {p.id | some p in input.stacks}
+    msg := sprintf("el stack %q consume de %q, que no está en el inventario", [s.id, dep.from_stack_id])
+}
 ```
+
+Las dos reglas de contrato se ejecutan sobre la mitad declarada de la CMDB de la pull request (`index.json`), así que el inventario es el mismo que lee la guarda de destroy. El colector que escribe la mitad observada solo publica salidas sin `sensitive = true`; la regla de nombres de secreto de arriba es la que impide que un valor secreto llegue a ser una salida.
 
 ```rego
 package archetype.composition
@@ -3264,9 +3330,71 @@ jobs:
       - name: Apply changed stacks
         run: terramate script run --changed tofu deploy   # mocks DESACTIVADOS
 
-      - name: Sync CMDB
-        run: ./scripts/sync-cmdb.sh
+      - name: Collect CMDB observations
+        if: ${{ !cancelled() }}                          # también tras un apply fallido: registra outcome failed
+        run: terramate run --changed -- archetypectl cmdb observe --out "$RUNNER_TEMP/observed"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with: { name: "cmdb-observed-${{ github.run_id }}", path: "${{ runner.temp }}/observed" }
+
+  cmdb:
+    needs: deploy
+    if: ${{ !cancelled() }}
+    permissions: { contents: write }
+    uses: ./.github/workflows/cmdb-sync.yml
+    with: { pattern: "cmdb-observed-${{ github.run_id }}" }
 ```
+
+Las observaciones llegan a la CMDB por un workflow reutilizable, el mismo para `deploy`, `drift` y `destroy`. Es el único punto del pipeline con `contents: write`, y nunca escribe en `main` (`archetype-model.md` §11.1):
+
+```yaml
+# .github/workflows/cmdb-sync.yml
+name: cmdb-sync
+on:
+  workflow_call:
+    inputs:
+      pattern: { type: string, required: true }   # patrón de nombre de los artifacts de este run
+
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    permissions: { contents: write }              # el ruleset de main no tiene bypass para github-actions
+    concurrency: { group: cmdb-write, cancel-in-progress: false }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: cmdb-observed, path: observed }
+      - uses: actions/checkout@v4
+        with: { path: main, sparse-checkout: schemas }
+      - uses: actions/download-artifact@v4
+        with: { pattern: "${{ inputs.pattern }}", merge-multiple: true, path: observed/cmdb-data/observed }
+      - name: Validate
+        run: check-jsonschema --schemafile main/schemas/cmdb-observed.schema.json observed/cmdb-data/observed/*.json
+      - name: Commit and push, with rebase and retry
+        working-directory: observed
+        run: |
+          git add cmdb-data/observed
+          git diff --cached --quiet && exit 0
+          git -c user.name=cmdb-bot -c user.email=cmdb-bot@users.noreply.github.com \
+            commit -m "observed: run ${{ github.run_id }}"
+          for i in 1 2 3; do git pull --rebase && git push && exit 0; sleep $((i*5)); done
+          exit 1
+
+  publish:
+    needs: aggregate
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: git fetch origin cmdb-observed
+      - name: Join both halves
+        run: archetypectl cmdb publish --observed origin/cmdb-observed --out dist/   # index.json, graph.jsonld
+      - name: Replace the release asset
+        run: gh release upload cmdb-latest dist/index.json dist/graph.jsonld --clobber
+        env: { GH_TOKEN: "${{ github.token }}" }
+```
+
+`publish` avisa de cualquier stack cuya última observación sea más antigua que el intervalo del drift: un agregador que dejó de fallar en voz alta es como una CMDB empieza a mentir con confianza.
 
 > **`terramate run --changed` respeta el orden de dependencia** derivado del anidamiento y de `after`. **No** deriva el orden de los bloques `input`. Si una PR cambia solo el stack de app pero los outputs de la plataforma también cambiaron en una fusión anterior, el stack de app leerá los outputs actuales (correctos) — pero si ambos cambian en la misma PR, el orden viene enteramente de tus declaraciones `after`. Esta es la razón por la que §4.5 insiste en el invariante input↔after.
 
@@ -3289,14 +3417,27 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: jdx/mise-action@v2
       # ... auth ...
-      - name: Detect drift
+      - name: Detect drift and record it
+        id: drift
         run: |
           terramate run --tags ${{ matrix.selector }} --enable-sharing -- \
-            tofu plan -detailed-exitcode -lock=false || \
-          if [ $? -eq 2 ]; then
+            archetypectl cmdb observe --drift --out "$RUNNER_TEMP/observed"
+          # por stack: tofu plan -detailed-exitcode -lock=false; salida 2 → outcome drifted, driftAt
+          if grep -rqs '"outcome": "drifted"' "$RUNNER_TEMP/observed"; then
             echo "::warning::Drift detectado en ${{ matrix.selector }}"
-            exit 1
+            echo "drifted=true" >> "$GITHUB_OUTPUT"
           fi
+      - uses: actions/upload-artifact@v4
+        with: { name: "cmdb-observed-${{ github.run_id }}-${{ matrix.selector }}", path: "${{ runner.temp }}/observed" }
+      - if: steps.drift.outputs.drifted == 'true'
+        run: exit 1
+
+  cmdb:
+    needs: drift
+    if: ${{ !cancelled() }}
+    permissions: { contents: write }
+    uses: ./.github/workflows/cmdb-sync.yml
+    with: { pattern: "cmdb-observed-${{ github.run_id }}-*" }
 ```
 
 ### 14.4 Puerta de políticas en el pipeline
@@ -3327,7 +3468,7 @@ El invariante de ordenamiento que antes dependía de un script de shell es ahora
 
 ## 15. Registro de riesgos
 
-El registro completo — 54 riesgos agrupados por dominio (53 activos; R28 retirado como duplicado de R26), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
+El registro completo — 57 riesgos agrupados por dominio (56 activos; R28 retirado como duplicado de R26), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
 
 Los cinco sobre los que actuar primero:
 

@@ -988,7 +988,7 @@ cmdb-data/
 ├── components/neo4j@1.2.0.json
 ├── environments/demos.json                  # binding + cidr + capacity + utilización
 ├── instances/demos-alpha.json               # versiones, claims, stacks, caducidad
-├── stacks/gcp-demos-alpha-app.json          # UN FICHERO POR STACK
+├── stacks/gcp-demos-alpha-app.json          # UN FICHERO POR STACK — mitad declarada
 ├── edges/
 │   ├── depends-on.json                      # a partir de input.from_stack_id — ESTÁTICO
 │   ├── provides.json                        # capability → stack proveedor
@@ -1000,13 +1000,20 @@ cmdb-data/
 └── index.json
 ```
 
-Un fichero por stack es lo que permite que trabajos paralelos de `terramate run` escriban sin colisionar. Aun así, el patrón robusto es que cada job suba un artefacto y un job final agregue en un único commit, con `concurrency: { group: cmdb-write, cancel-in-progress: false }`.
+**Dos mitades, separadas por quién las escribe.** Un sync que hace commit en `main` tras cada apply necesita un bypass de la protección de `main`, y su commit vuelve a disparar el workflow `deploy`. Por eso el nivel 0 se divide:
+
+| Mitad | Lleva | La escribe | Dónde |
+|---|---|---|---|
+| **Declarada** | Todo lo que se sabe sin la nube: identidad, `environment`, `project`, arquetipo, tags, `produces`, `consumes`, claims, recursos de tenant, caducidad; las aristas; las instancias; los manifiestos resueltos | `archetypectl cmdb generate`, **en la pull request**, y la comprueba `archetypectl cmdb check` igual que G0 comprueba el código generado | `cmdb-data/` en `main`, revisada con el cambio que la motiva |
+| **Observada** | Lo que solo sabe un apply: `lastApply` (`at`, `commit`, `runId`, `outcome`), `driftAt`, `resourceCount`, salidas no sensibles | El job `cmdb-aggregate`, tras `deploy`, `drift` y `destroy` | Rama **`cmdb-observed`**, `cmdb-data/observed/<id>.json`; solo empuja el bot, sin force-push ni borrado |
+
+`main` no tiene bypass, un push a `cmdb-observed` no dispara nada, y `git blame` funciona en las dos mitades. Un fichero por stack es lo que permite que trabajos paralelos de `terramate run` produzcan observaciones sin colisionar: cada job sube un artefacto y `cmdb-aggregate` los consolida en un commit, con `concurrency: { group: cmdb-write, cancel-in-progress: false }`. Los ledgers de `pools/` no son de ninguna de las dos mitades: los escribe la pull request que reclama (§9.8), y su conflicto de merge es el cerrojo.
 
 **Tres tipos de arista se extraen de forma estática**, antes del despliegue: aristas de dependencia a partir de `input.from_stack_id`, aristas de capability a partir de `provides`, y aristas de recurso de tenant a partir de `creates_tenant_resources`. Esa última es nueva y valiosa: responde "quién puede escribir en el namespace de Kafka" a partir de ficheros, en una pull request.
 
 ### 11.2 Nivel 1 — modelo de lectura publicado
 
-`index.json` más una proyección JSON-LD en GitHub Pages o como artefacto.
+`index.json` más una proyección JSON-LD, que une la mitad declarada de `main` y la observada de `cmdb-observed`. **Se publica como asset de release** (`cmdb-latest`, sustituido en cada publicación) salvo que el repositorio esté en Enterprise con Pages privadas: unas Pages públicas expondrían rangos internos, nombres de proyecto y de secretos, versiones y digests — el mapa del entorno. El historial es la rama `cmdb-observed`.
 
 | Camino de acceso | Auth | Límites | Uso |
 |---|---|---|---|
@@ -1452,7 +1459,8 @@ Un trabajo programado lista las instancias cuyo `expiresOn` ha pasado y abre una
 | `schemas/component.schema.json` | `component.yaml` en cada componente |
 | `schemas/environment-binding.schema.json` | `environments/<env>/binding.yaml` |
 | `schemas/pool-ledger.schema.json` | `cmdb-data/pools/*.json` |
-| `schemas/cmdb-stack.schema.json` | `cmdb-data/stacks/*.json` |
+| `schemas/cmdb-stack.schema.json` | `cmdb-data/stacks/*.json` (mitad declarada) |
+| `schemas/cmdb-observed.schema.json` | `cmdb-data/observed/*.json` (mitad observada, en la rama `cmdb-observed`; la valida `cmdb-aggregate` antes de empujar) |
 
 Validar en el workflow de preview, antes de la resolución:
 

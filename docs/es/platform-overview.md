@@ -6,7 +6,7 @@ Mapa visual de los dos documentos de referencia. Nada aquí es normativo; cada d
 |---|---|
 | `archetype-model.md` | *¿Qué se puede componer con qué?* Manifiestos, capabilities, traits, pools, CMDB, resolución |
 | `terramate-outputs-sharing-architecture.md` | *¿Cómo se genera y se aplica?* Generadores, outputs sharing, IAM, política, CI/CD, guías por nube |
-| `risk-register.md` | *¿Qué puede salir mal, y el control está realmente implementado?* 54 riesgos por dominio (53 activos), revisados en cada puerta de fase |
+| `risk-register.md` | *¿Qué puede salir mal, y el control está realmente implementado?* 57 riesgos por dominio (56 activos), revisados en cada puerta de fase |
 
 ---
 
@@ -273,7 +273,8 @@ flowchart TD
     subgraph NET["network produce"]
         G1["GKE: network_self_link<br/>(subred y rangos: los del propio arquetipo gke)"]
         A1["EKS: vpc_id, tablas de rutas privadas<br/>(subredes de nodos: las del propio arquetipo eks)"]
-        F1["Fargate: vpc_id, private_subnet_ids (lista)"]
+        F1["Fargate: vpc_id, tablas de rutas privadas<br/>(subredes de tareas: las del propio arquetipo fargate)"]
+        C1["Cloud Run: network_self_link<br/>(subred de egress: la del propio arquetipo cloudrun)"]
         Z1["AKS: vnet_id<br/>(subred de nodos: la del propio arquetipo aks)"]
     end
     subgraph CLU["runtime produce"]

@@ -23,7 +23,7 @@ Inside each language folder:
 | `archetype-model.md` | What may be composed with what — manifests, capabilities, traits, pools, CMDB, resolution |
 | `terramate-outputs-sharing-architecture.md` | How it is generated and applied — generators, outputs sharing, IAM, policy, CI/CD, five runtime guides |
 | `developer-guide.md` | For application developers — branching, versioning, build, rollback, and the three languages |
-| `risk-register.md` | 54 risks by domain (53 active), reviewed at each phase gate |
+| `risk-register.md` | 57 risks by domain (56 active), reviewed at each phase gate |
 | `glossary.md` | Every technical term in the documents above, with its definition |
 | `proposals/sonarqube-qa/` | Design proposal, in two stages: elements and dependencies, then the layer-5 `sonarqube` archetype and its implementation plan |
 | `proposals/sonarqube-qa-cloudsql/` | SonarQube's `qa` path with the default `database-platform` provider: its PostgreSQL on its own Cloud SQL instance, through the Auth Proxy sidecar |
@@ -39,6 +39,7 @@ Inside each language folder:
 | `proposals/gke-qa/` | The layer-2 `gke` archetype on `qa`: regional GKE Standard with private nodes, address claims, node pools declared by the environment and restricted to their owners, the storage class, Dataplane V2 and the `cluster` 2.5.0 contract |
 | `proposals/network-qa/` | The network part of the layer-1 `environment` archetype on `qa`: VPC, Cloud NAT with dynamic ports, Google APIs through private DNS zones and the private VIP, PSA, the `qa.internal` zone, and the `network` 3.0.0 contract |
 | `proposals/edge-qa/` | The edge of the layer-1 `environment` archetype on `qa`: public zone and wildcard, Certificate Manager, Cloud Armor with preview-then-deny and SAML exclusions, the managed Global external Application LB to Envoy's NEG, L4 exceptions, and the `env-edge` 1.0.0 contract |
+| `proposals/cmdb-qa/` | The `qa` CMDB, levels 0 and 1 of AM §11: the declared half generated and checked in the PR on `main`, the observed half on its own `cmdb-observed` branch, a private release asset as the read model, and the guards that use it — reference counting by edges before a destroy, broken contracts and blast radius in the PR |
 
 The two halves meet at `binding.tm.hcl`: the resolver writes globals, the generators
 consume them.

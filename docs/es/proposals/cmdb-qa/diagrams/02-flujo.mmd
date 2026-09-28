@@ -1,0 +1,25 @@
+sequenceDiagram
+    autonumber
+    participant PR as Pull request
+    participant M as main
+    participant D as deploy (tf-apply-qa@)
+    participant A as cmdb-aggregate
+    participant O as cmdb-observed
+    participant P as cmdb-publish
+    participant R as release cmdb-latest
+    PR->>PR: cmdb generate + check (sin nube)
+    PR->>PR: G1: contrato · salidas sensibles<br/>comentario: radio de impacto
+    PR->>M: merge con la mitad declarada
+    M->>D: push a main
+    loop cada stack cambiado
+        D->>D: tofu apply
+        D->>D: tofu show -json · tofu output -json<br/>descarta sensitive · > 1 KiB → sha256
+        D-->>A: artifact observed/<id>.json
+    end
+    Note over A: concurrency: cmdb-write
+    A->>O: commit con el runId · push (rebase y reintento)
+    Note over O: push a esta rama no dispara deploy
+    A->>P: needs
+    P->>M: lee la mitad declarada
+    P->>O: lee la mitad observada
+    P->>R: index.json · graph.jsonld

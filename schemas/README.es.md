@@ -11,6 +11,7 @@ JSON Schema (draft 2020-12) para los archivos que lee el resolver.
 | `environment-binding.schema.json` | `environments/*/binding.yaml` |
 | `pool-ledger.schema.json` | `cmdb-data/pools/*.json` |
 | `cmdb-stack.schema.json` | `cmdb-data/stacks/*.json` |
+| `cmdb-observed.schema.json` | `cmdb-data/observed/*.json`, en la rama `cmdb-observed` |
 
 La estructura está escrita a mano. Los bloques `enum` marcados *"Generated from registry/…"* **no lo están**: vienen de `../registry/`. Editar uno de esos a mano es un bug (riesgo R34).
 
