@@ -1,0 +1,62 @@
+# Destino: disasterproject/ci-workflows/.github/actions/defectdojo-upload/action.yml
+name: defectdojo-upload
+description: Sube un informe a DefectDojo con reimport-scan; solo desde main o ejecuciones programadas
+inputs:
+  url:
+    description: URL pública de DefectDojo (variable de organización DEFECTDOJO_URL)
+    required: true
+  token:
+    description: Token de la cuenta importer-<equipo> (secreto DEFECTDOJO_TOKEN)
+    required: true
+  file:
+    description: Ruta del informe
+    required: true
+  scan-type:
+    description: Nombre del parser de DefectDojo ("Trivy Scan", "Checkov Scan", "ZAP Scan", "Nuclei Scan", "Generic Findings Import")
+    required: true
+  product-type:
+    description: Equipo (teams.yaml)
+    required: true
+  product:
+    description: Aplicación o repositorio
+    required: true
+  engagement:
+    description: Engagement continuo del producto
+    required: false
+    default: ci-main
+  test-title:
+    description: Título estable del test; reimport-scan lo usa para cerrar lo que ya no aparece
+    required: true
+  environment:
+    description: Entorno de DefectDojo (Development, QA, Production)
+    required: false
+    default: Development
+runs:
+  using: composite
+  steps:
+    - name: reimport-scan
+      shell: bash
+      env:
+        DD_URL: ${{ inputs.url }}
+        DD_TOKEN: ${{ inputs.token }}
+        FILE: ${{ inputs.file }}
+        SCAN_TYPE: ${{ inputs.scan-type }}
+        PRODUCT_TYPE: ${{ inputs.product-type }}
+        PRODUCT: ${{ inputs.product }}
+        ENGAGEMENT: ${{ inputs.engagement }}
+        TEST_TITLE: ${{ inputs.test-title }}
+        DD_ENV: ${{ inputs.environment }}
+      run: |
+        case "$GITHUB_EVENT_NAME:$GITHUB_REF" in
+          push:refs/heads/main|schedule:*|workflow_dispatch:refs/heads/main) ;;
+          *) echo "::notice::sin subida a DefectDojo fuera de main (appsec-qa DA6)"; exit 0 ;;
+        esac
+        curl --fail-with-body -sS -X POST "$DD_URL/api/v2/reimport-scan/" \
+          -H "Authorization: Token $DD_TOKEN" \
+          -F "scan_type=$SCAN_TYPE" -F "file=@$FILE" \
+          -F "product_type_name=$PRODUCT_TYPE" -F "product_name=$PRODUCT" \
+          -F "engagement_name=$ENGAGEMENT" -F "test_title=$TEST_TITLE" \
+          -F "environment=$DD_ENV" -F "auto_create_context=true" \
+          -F "close_old_findings=true" -F "minimum_severity=Low" \
+          -F "build_id=$GITHUB_RUN_ID" -F "commit_hash=$GITHUB_SHA" -F "branch_tag=$GITHUB_REF_NAME" \
+          -F "source_code_management_uri=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"

@@ -1,0 +1,41 @@
+flowchart LR
+    subgraph GH["GitHub Actions"]
+        APPS["application repos<br/>appsec.yml: Trivy fs · Checkov · Trivy image"]
+        INFRA["infra<br/>appsec-infra · appsec-deployed · dast-active"]
+    end
+    subgraph EDGE["qa edge"]
+        CA["Cloud Armor<br/>priority 800: allow the NAT IPs"]
+        GLB["GLB · cert wildcard"]
+    end
+    subgraph VPC["qa VPC"]
+        subgraph GKE["qa cluster"]
+            subgraph SYS["pool system"]
+                ENV["Envoy Gateway"]
+            end
+            subgraph APPSPOOL["pool apps"]
+                DD["defectdojo<br/>uwsgi · celery · valkey"]
+                DAST["dast<br/>CronJobs ZAP · Nuclei"]
+                SONAR["sonarqube"]
+            end
+        end
+        NAT["Cloud NAT · MANUAL_ONLY<br/>2 reserved IPs"]
+        VM["aig VM · COS · no public IP<br/>server + agent with SYS_ADMIN"]
+    end
+    SQL[("Cloud SQL<br/>qa-defectdojo")]
+    GCS[("GCS · media")]
+    IAP["IAP · appsec-redteam@"]
+    APPS -- "reimport-scan · team token" --> CA
+    INFRA -- "reimport-scan" --> CA
+    CA --> GLB --> ENV
+    ENV --> DD
+    ENV --> SONAR
+    DAST -- "scan through the edge" --> NAT
+    VM -- "scan and results" --> NAT
+    NAT --> CA
+    DAST -- "report · internal Service" --> DD
+    IAP -- "TCP tunnel 8088" --> VM
+    DD --- SQL
+    DD --- GCS
+
+    style VM fill:#fff5e6
+    style DD fill:#eef4ff

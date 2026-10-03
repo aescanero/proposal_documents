@@ -1,0 +1,118 @@
+# Destino: disasterproject/ci-workflows/.github/workflows/appsec.yml
+# Workflow reutilizable para los repositorios de aplicación: SCA y secretos (Trivy),
+# IaC del repositorio (Checkov) e imagen (Trivy). SonarQube sigue en su propio workflow
+# (sonarqube-qa §4.11). En PR: puertas. En main: además, subida a DefectDojo.
+name: appsec
+on:
+  workflow_call:
+    inputs:
+      product-type:
+        description: Equipo dueño (teams.yaml)
+        type: string
+        required: true
+      product:
+        description: Aplicación; por defecto, el nombre del repositorio
+        type: string
+        default: ${{ github.event.repository.name }}
+      image:
+        description: Imagen construida en este run, por digest (registry/path@sha256:…); vacío si no hay
+        type: string
+        default: ""
+    secrets:
+      DEFECTDOJO_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  dependencies:                                # SCA y secretos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2               # trivy y checkov fijados en .mise.toml
+      - name: Trivy fs — dependencias y secretos
+        env:
+          TRIVY_DB_REPOSITORY: ${{ vars.TRIVY_DB_REPOSITORY }}             # copia en Artifact Registry
+          TRIVY_JAVA_DB_REPOSITORY: ${{ vars.TRIVY_JAVA_DB_REPOSITORY }}
+        run: |
+          trivy fs --scanners vuln,secret --format json --output trivy-fs.json .
+          # puerta: CRITICAL con versión corregida (jq sobre el informe, sin segundo escaneo)
+          n="$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" and (.FixedVersion // "") != "")] | length' trivy-fs.json)"
+          [ "$n" -eq 0 ] || { echo "::error::$n vulnerabilidades CRITICAL con corrección disponible"; exit 1; }
+          # puerta: secretos, siempre
+          if jq -e '[.Results[]?.Secrets[]?] | length > 0' trivy-fs.json >/dev/null; then
+            echo "::error::secretos en el repositorio"; exit 1
+          fi
+      - uses: disasterproject/ci-workflows/.github/actions/defectdojo-upload@v1
+        if: ${{ !cancelled() }}
+        with:
+          url: ${{ vars.DEFECTDOJO_URL }}
+          token: ${{ secrets.DEFECTDOJO_TOKEN }}
+          file: trivy-fs.json
+          scan-type: Trivy Scan
+          product-type: ${{ inputs.product-type }}
+          product: ${{ inputs.product }}
+          test-title: trivy-fs
+
+  iac:                                         # Dockerfile, overlays de Helm, workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - name: Checkov
+        env:
+          BLOCKING: ${{ vars.CHECKOV_BLOCKING_CHECKS }}
+        run: |
+          checkov -d . --framework dockerfile,helm,kubernetes,github_actions \
+            --output json --output-file-path . --soft-fail
+          mv results_json.json checkov.json
+          # puerta: solo los checks que la plataforma declara bloqueantes (variable de organización)
+          if [ -n "$BLOCKING" ]; then
+            checkov -d . --framework dockerfile,helm,kubernetes,github_actions \
+              --check "$BLOCKING" --compact --quiet
+          fi
+      - uses: disasterproject/ci-workflows/.github/actions/defectdojo-upload@v1
+        if: ${{ !cancelled() }}
+        with:
+          url: ${{ vars.DEFECTDOJO_URL }}
+          token: ${{ secrets.DEFECTDOJO_TOKEN }}
+          file: checkov.json
+          scan-type: Checkov Scan
+          product-type: ${{ inputs.product-type }}
+          product: ${{ inputs.product }}
+          test-title: checkov
+
+  image:                                       # contenedor construido en este run
+    if: inputs.image != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write                          # lectura de Artifact Registry por federación
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.IMAGE_SCAN_SA }}                       # image-scan@: solo lectura
+      - name: Trivy image
+        env:
+          TRIVY_DB_REPOSITORY: ${{ vars.TRIVY_DB_REPOSITORY }}
+          TRIVY_JAVA_DB_REPOSITORY: ${{ vars.TRIVY_JAVA_DB_REPOSITORY }}
+          IMAGE: ${{ inputs.image }}
+        run: |
+          trivy image --format json --output trivy-image.json "$IMAGE"
+          # puerta: CRITICAL con versión corregida (jq sobre el informe, sin segundo escaneo)
+          n="$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" and (.FixedVersion // "") != "")] | length' trivy-image.json)"
+          [ "$n" -eq 0 ] || { echo "::error::$n vulnerabilidades CRITICAL con corrección disponible"; exit 1; }
+      - uses: disasterproject/ci-workflows/.github/actions/defectdojo-upload@v1
+        if: ${{ !cancelled() }}
+        with:
+          url: ${{ vars.DEFECTDOJO_URL }}
+          token: ${{ secrets.DEFECTDOJO_TOKEN }}
+          file: trivy-image.json
+          scan-type: Trivy Scan
+          product-type: ${{ inputs.product-type }}
+          product: ${{ inputs.product }}
+          test-title: trivy-image
