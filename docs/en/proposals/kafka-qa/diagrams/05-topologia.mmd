@@ -1,18 +1,18 @@
 flowchart TB
     subgraph Z1["europe-west1-b"]
-        N1["kafka node<br/>n2-standard-4"]
+        N1["apps node<br/>n2-standard-16"]
         K1["kafka-0<br/>controller + broker<br/>heap 4 GiB · limit 12 GiB"]
         D1[("PVC 200 GiB")]
         N1 --- K1 --- D1
     end
     subgraph Z2["europe-west1-c"]
-        N2["kafka node<br/>n2-standard-4"]
+        N2["apps node<br/>n2-standard-16"]
         K2["kafka-1<br/>controller + broker"]
         D2[("PVC 200 GiB")]
         N2 --- K2 --- D2
     end
     subgraph Z3["europe-west1-d"]
-        N3["kafka node<br/>n2-standard-4"]
+        N3["apps node<br/>n2-standard-16"]
         K3["kafka-2<br/>controller + broker"]
         D3[("PVC 200 GiB")]
         N3 --- K3 --- D3

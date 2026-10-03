@@ -62,7 +62,7 @@ Fuente: [`diagrams/05-topologia.mmd`](diagrams/05-topologia.mmd)
 | Modo | **KRaft**, sin ZooKeeper | Trait `kraft`; ZooKeeper ya no existe en Kafka 4 |
 | `KafkaNodePool` | Uno, `dual`, **3 nodos con los roles `controller` y `broker`** | En `qa` basta: quórum de 3 y 3 réplicas. En `prod` y `demos`, pools separados de controladores y brokers (§11) |
 | Zonas | Un nodo por zona de `europe-west1`; `rack.topologyKey: topology.kubernetes.io/zone` | Kafka reparte las réplicas de cada partición en zonas distintas: perder una zona no pierde datos |
-| Node pool de GKE | **`kafka`**: 3 × `n2-standard-4` (4 vCPU, 16 GB), uno por zona, taint `dedicated=kafka:NoSchedule` | Kafka vive de la caché de páginas del sistema: compartir nodo con otras cargas la vacía. Requisito nuevo a E1 §4.1 (§12) |
+| Node pool de GKE | **`apps`**, compartido con el resto de capas 4 y 5 (propuesta de GKE §5, DN11). Un nodo Kafka por zona con `topologySpreadConstraints` por `topology.kubernetes.io/zone` y antiafinidad entre nodos Kafka por `kubernetes.io/hostname` | La revisión anterior pedía un pool `kafka` con taint para no compartir la caché de páginas. Con dos pools la comparte: la `request` de memoria (8 GiB, por encima del heap de 4) reserva su parte, y si `prod` mide latencias de cola por la caché, un pool propio se justifica con esos datos (GKE DN11) |
 | Recursos por nodo Kafka | Petición 2 CPU / 8 GiB; límite de memoria 12 GiB; heap `-Xms4g -Xmx4g` | Heap fijo y pequeño; el resto de la memoria es caché de páginas. Nunca `-Xmx` igual al límite (DG §8.3) |
 
 ### 2.2 Almacenamiento
@@ -245,7 +245,7 @@ Fuente: [`diagrams/07-acceso-vpc.mmd`](diagrams/07-acceso-vpc.mmd)
 
 | Pieza | Valor | Motivo |
 |---|---|---|
-| Balanceador | Balanceador de red passthrough **interno** regional (la variante interna del patrón B, Envoy Gateway §4.4), en el stack `vpc-access` del propio arquetipo, sobre los grupos de instancias del node pool `kafka` | Un balanceador interno solo tiene una IP privada de la VPC |
+| Balanceador | Balanceador de red passthrough **interno** regional (la variante interna del patrón B, Envoy Gateway §4.4), en el stack `vpc-access` del propio arquetipo, sobre los grupos de instancias del node pool `apps` | Un balanceador interno solo tiene una IP privada de la VPC |
 | IP | Reservada en la subred de nodos (zona `infra`, propósito `endpoints`) | Estable ante cambios del Service |
 | Puertos | Los `nodePort` fijos, sin traducción: 32100 para el bootstrap y 32101–32103 para cada broker | Un passthrough entrega el paquete con su puerto de destino original: el puerto anunciado **es** el `nodePort` |
 | `externalTrafficPolicy` | `Local` | Sin salto extra entre nodos y con la IP de origen intacta. El health check TCP sobre el `nodePort` solo da por sano el nodo que tiene el broker |
@@ -503,7 +503,7 @@ Nombres de métricas según la configuración del exportador JMX de Strimzi **(v
 | Nodos | 3 duales | 3 controladores + 3 brokers | 3 controladores + ≥ 3 brokers |
 | Budgets | Calculados, no aplicados | **Aplicados** en la PR (AM §8) | Aplicados |
 | Cuotas | Por defecto de §4.2 | Más bajas: muchos tenants pequeños | Por aplicación |
-| GKE | Standard con node pool `kafka` | Autopilot: sin node pool dedicado; clase de cómputo con disco y memoria suficientes **(verificar Strimzi en Autopilot, VB11)** | Standard |
+| GKE | Standard; brokers en el pool `apps` | Autopilot: sin node pool dedicado; clase de cómputo con disco y memoria suficientes **(verificar Strimzi en Autopilot, VB11)** | Standard |
 | Techo de particiones | Mide VB7 | El número de VB7 sustituye al 4000 provisional | Idem |
 | Acceso | Cluster y VPC, nunca fuera | Igual | Igual |
 
@@ -514,7 +514,7 @@ Nombres de métricas según la configuración del exportador JMX de Strimzi **(v
 | Documento | Cambio | Estado |
 |---|---|---|
 | Binding de `qa` (E1 §7) | `event-bus: { archetype: kafka, version: 2.1.0, stack_id: gcp-qa-kafka }`; budgets de §5 | **Aplicado** |
-| E1 §4.1 y §4.12 | Node pool `kafka`: 3 × `n2-standard-4`, uno por zona, taint `dedicated=kafka:NoSchedule` | **Aplicado** |
+| E1 §4.1 y §4.12 | Node pool `kafka`: 3 × `n2-standard-4`, uno por zona, taint `dedicated=kafka:NoSchedule` | **Aplicado**; sustituido por el pool `apps` (GKE DN11) |
 | `gen_tenant_namespace` (E2 §5.1) | Etiqueta `kafka.disasterproject.com/client: "true"` si el manifiesto requiere `event-bus` | **Aplicado** |
 | AM §10.1 y `registry/zones.yaml` | Sin el claim `kafka-storage-subnet` (y sin ese propósito en la zona `data`); sin `schema-registry` ni `tls-mtls` en los traits del ejemplo; párrafo sobre la autenticación SCRAM y el contrato 2.1.0 | **Aplicado** |
 | cert-manager §3 | Política `private-names`: approver-policy admite `*.<namespace>.qa.internal` al namespace que los pide; nombres de la zona privada, nunca públicos (DT10) | **Aplicado** |
@@ -529,7 +529,7 @@ Nombres de métricas según la configuración del exportador JMX de Strimzi **(v
 | # | Decisión | Estado | Recomendación | Alternativa |
 |---|---|---|---|---|
 | DB1 | Operador | Consecuencia de AM §10 | Strimzi, limitado al namespace `kafka` | Kafka gestionado (otro proveedor) |
-| DB2 | Topología en `qa` | Propuesta | KRaft, 3 nodos duales, uno por zona, node pool `kafka` | Controladores y brokers separados (en `demos` y `prod`) |
+| DB2 | Topología en `qa` | Propuesta | KRaft, 3 nodos duales, uno por zona, en el pool `apps` | Controladores y brokers separados (en `demos` y `prod`) |
 | DB3 | Autenticación | **Decidida** | SCRAM-SHA-512 sobre TLS para todos los clientes; contraseña del consumidor en Secret Manager (§3.1) | mTLS `tls-external` con `internal-ca` (descartado: dependía de una CA de clientes sin clave) |
 | DB4 | CAs | Propuesta | `internal-ca` para el TLS de los listeners; CA de Strimzi solo entre brokers y controladores | CA de Strimzi repartida a los clientes |
 | DB5 | Nombre del usuario | Propuesta | `<instancia>-<propósito>`, con `-b` durante una rotación | Nombre libre con prefijo |
@@ -590,7 +590,7 @@ Nombres de métricas según la configuración del exportador JMX de Strimzi **(v
 
 | Fase | Contenido | Criterio de salida | Estimación |
 |---|---|---|---|
-| **0 · Prerrequisitos** | Node pool `kafka`; binding de `qa`; VB10, VB12 | Versiones fijadas | 1 día |
+| **0 · Prerrequisitos** | Pool `apps` con un nodo por zona; binding de `qa`; VB10, VB12 | Versiones fijadas | 1 día |
 | **1 · Esqueleto** | Manifiesto, charts, asserts, reglas G1 y constraints, `gen_messaging` | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 y preview con mocks en verde | 2 días |
 | **2 · Operador y cluster** | `iam`, `operator`, `cluster`, `policy` | Cluster `Ready`; **VB1**, **VB2**, **VB3**, **VB4**, **VB9** | 2 días |
 | **3 · Pruebas de carga** | Aplicación de prueba con dos instancias | **VB5**, **VB6**, **VB7** | 2 días |

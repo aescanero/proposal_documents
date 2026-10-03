@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 6 |
+| **Status** | Proposal · revision 7 · two node pools, `system` and `apps` (DN11) |
 | **Scope** | The `qa` cluster as an archetype: addresses and subnet, control plane and access, node security, node pools and how consumers are assigned to them, storage, cluster networking, upgrades, the `cluster` contract, stacks, policies, execution and plan |
 | **Why now** | Everything deployed in the earlier proposals runs on it, and each of them left it a requirement (§0.1). It is everyone's dependency: the last link before the network and the edge |
 | **Base** | S1 §4.1 (runtime), §4.13 (pipeline access), §4.14 (KMS), §4.15 (separate VPC); architecture §5.2–§5.7 (GKE guide and security baseline); AM §9 (pools and ranges). This document **does not repeat** what is there: it makes it concrete and closes the gaps |
@@ -35,14 +35,14 @@ Source: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 
 | Origin | Requirement | Where it is met |
 |---|---|---|
-| S1 §4.1 | Private nodes, Workload Identity, `deletion_protection`, sysctl `vm.max_map_count` on `sonar` | §2, §3, §5 |
+| S1 §4.1 | Private nodes, Workload Identity, `deletion_protection`, sysctl `vm.max_map_count` on SonarQube's pool (`apps` since DN11) | §2, §3, §5 |
 | S1 §4.13, landing zone DZ4 | Pipeline access to the control plane through the **DNS endpoint**, IAM only; no authorised networks and no intermediary service | §2.2 |
 | S1 §4.14 | etcd secrets encryption with the landing zone's `gke-secrets` key | §3 |
 | Monitoring §1 | `SYSTEM_COMPONENTS` in logs and metrics; `managed_prometheus.enabled = false` | §4 |
 | Envoy Gateway §3 | `gateway_api_config { channel = "CHANNEL_DISABLED" }` | §4 |
 | Envoy Gateway §5.1 | Standalone NEG for the edge | §4: it **requires** the `HttpLoadBalancing` addon (RN2) |
-| Kafka §2.1 | `kafka` node pool, one per zone, with a taint | §5 |
-| SonarQube S2 §9 | `sonar` node pool; `workload_identity_pool` output | §5, §7.1 |
+| Kafka §2.1 | One broker per zone (revision 6: a `kafka` pool with a taint; with DN11, on `apps`) | §5 |
+| SonarQube S2 §9 | `vm.max_map_count` on its node (revision 6: `sonar` pool; with DN11, `apps`); `workload_identity_pool` output | §5, §7.1 |
 | Gatekeeper, ESO, monitoring, CNPG | Webhooks on **10250**: the control plane only reaches private nodes on 443 and 10250 | §2.3 (VN2) |
 | Keycloak VK6 | `FQDNNetworkPolicy` towards Entra ID | §4: Dataplane V2 (VN3) |
 
@@ -143,77 +143,95 @@ GKE creates the rule that lets the control plane reach the nodes on **443 and 10
 
 ## 5. Node pools
 
-### 5.1 The three `qa` pools
+### 5.1 Two pools: `system` and `apps` (DN11)
+
+Every platform cluster has **two** node pools, with the same criterion in every environment: **`system`** for what governs and serves the cluster (layers 2b and 3, and GKE's components), and **`apps`** for what is deployed on top (layers 4 and 5). Revision 6 had three pools on `qa` (`general`, `sonar`, `kafka`): each archetype with node requirements asked for its own pool, and each new pool added a taint, owners, an upgrade window and a minimum of nodes to pay for even when empty.
 
 ![Node pools](diagrams/03-node-pools.svg)
 
 Source: [`diagrams/03-node-pools.mmd`](diagrams/03-node-pools.mmd)
 
-| Pool | Machine | Zones | Nodes | Taint | Specific | Upgrade |
-|---|---|---|---|---|---|---|
-| `general` | **n2-standard-8** (8 vCPU, 32 GB) | `b`, `c`, `d` | **1–3 per zone**, autoscaled | — | — | Surge `max_surge = 1`, `max_unavailable = 0` |
-| `sonar` | n2-standard-8 | `b` | 1 | `dedicated=sonar:NoSchedule` | `linux_node_config.sysctls = { "vm.max_map_count" = "524288" }` | Surge 1/0: the new node comes up in the same zone and the zonal PVC is remounted |
-| `kafka` | n2-standard-4 (4 vCPU, 16 GB) | `b`, `c`, `d` | 1 per zone | `dedicated=kafka:NoSchedule` | — | Surge 1/0; Strimzi's PDB (`maxUnavailable: 1`) serialises the brokers |
+| Pool | For | Machine | Zones | Nodes | Taint | Specific | Upgrade |
+|---|---|---|---|---|---|---|---|
+| `system` | Layers 2b and 3: Gatekeeper, cert-manager, ESO, monitoring, Envoy Gateway; GKE managed components | **n2-standard-8** (8 vCPU, 32 GB) | `b`, `c`, `d` | **1–2 per zone**, autoscaled | `components.gke.io/gke-managed-components=true:NoSchedule` | — | Surge `max_surge = 1`, `max_unavailable = 0` |
+| `apps` | Layers 4 and 5: Keycloak, Kafka, CloudNativePG, SonarQube, DefectDojo (`appsec-qa`)… | **n2-standard-16** (16 vCPU, 64 GB) | `b`, `c`, `d` | **1–3 per zone**, autoscaled | — | `linux_node_config.sysctls = { "vm.max_map_count" = "524288" }` | Surge 1/0; Strimzi's PDB (`maxUnavailable: 1`) serialises the brokers |
 
-All of them: 64 pods per node, `COS_CONTAINERD`, Shielded, `GKE_METADATA`, SA `gke-nodes-qa@`, auto-upgrade and auto-repair on. GKE honours PDBs for one hour and then forces the drain: a PDB that is never satisfied does not block an upgrade, it only delays it.
+All: 64 pods per node, `COS_CONTAINERD`, Shielded, `GKE_METADATA`, SA `gke-nodes-qa@`, auto-upgrade and auto-repair on. GKE honours PDBs for one hour and then forces the drain: a PDB that is never satisfied does not block an upgrade, it only delays it.
 
-### 5.2 Sizing `general`
+**Why GKE's taint on `system`.** `components.gke.io/gke-managed-components` is the key GKE's managed components (kube-dns, metrics-server, konnectivity) already tolerate, so they can keep scheduling on `system` without the platform touching their manifests **(verify, VN8)**. A taint of our own (`dedicated=system`) would push them to `apps`. `apps` has no taint: it is the default destination, and whatever does not ask for `system` ends up there.
 
-Sum of the `capacity` of the manifests already proposed, minus what goes to dedicated pools:
+**`vm.max_map_count` on all of `apps`.** Elasticsearch, inside SonarQube, requires it; with a `sonar` pool only its node had it. On `apps` every node carries it: raising the limit on mapped memory areas does not change the behaviour of a process that does not use them, and SonarQube can schedule on any node of the pool in its zone.
 
-| Archetype | CPU (m) | Memory (MiB) | Note |
+**What is lost compared with dedicated pools**, and why it is accepted on `qa`:
+
+| Pool that goes away | It gave | With two pools | Mitigation |
 |---|---|---|---|
-| `policy-gatekeeper` | 1600 | 2560 | |
-| `cert-manager` | 400 | 768 | |
-| `secrets-eso-gsm` | 200 | 768 | |
-| `monitoring-oss` | 3000 | 8192 | |
-| `gateway-envoy-gke` | 3200 | 3584 | |
-| `keycloak` | 2300 | 4864 | |
-| `kafka` without brokers | 1200 | 3072 | 7200/27648 minus 3 brokers of 2000/8192, which go to `kafka` |
-| `sonarqube` without the main pod | ≈ 0 | ≈ 128 | The pod goes to `sonar`; the database is Cloud SQL; the proxy sidecar remains |
-| GKE system | ≈ 1000 | ≈ 2048 | kube-dns, metrics-server, konnectivity, CSI, `anetd` |
-| **Total** | **≈ 12 900** | **≈ 25 900** | |
+| `sonar` | A node for SonarQube alone; a noisy neighbour does not slow the CE | SonarQube shares a node with other layer 4–5 workloads | Real `requests` (4 vCPU, 12 GiB, S1 §4.12): the scheduler does not place it where it does not fit; with no CPU limit, it uses what is spare |
+| `kafka` | The system page cache for the brokers alone, without competition | The brokers share the node's page cache | One broker per zone with `topologySpreadConstraints` and anti-affinity between brokers; memory `requests` that reserve the cache headroom (Kafka §2.1). If `prod` measures queue latency caused by the cache, a third pool is an exception justified by data, not the starting point (DN11) |
 
-An n2-standard-8 leaves ≈ 7.9 vCPU and ≈ 28 GiB allocatable. With one node per zone, 3 nodes give ≈ 23.7 vCPU and ≈ 85 GiB: 54 % of CPU and 30 % of memory requested. **With a zone lost**, 2 nodes remain with ≈ 15.8 vCPU, still covering the requests; the autoscaler adds nodes in the surviving zones up to 3 per zone. DaemonSets (node-exporter, Fluent Bit) add per node, not per archetype, and fit in that headroom.
+### 5.2 Size of each pool
 
-**Why n2-standard-8 and not twice as many n2-standard-4.** The same capacity, but the default of 64 pods per node assumes 32 GB nodes (`CLAUDE.md`), and each node repeats the DaemonSets' cost (DN4).
+Sum of the `capacity` of the manifests already proposed, per pool:
 
-### 5.3 How a consumer reaches its pool
+| Archetype | Layer | Pool | CPU (m) | Memory (MiB) |
+|---|---|---|---|---|
+| `policy-gatekeeper` | 2b | `system` | 1600 | 2560 |
+| `cert-manager` | 3 | `system` | 400 | 768 |
+| `secrets-eso-gsm` | 3 | `system` | 200 | 768 |
+| `monitoring-oss` | 3 | `system` | 3000 | 8192 |
+| `gateway-envoy-gke` | 3 | `system` | 3200 | 3584 |
+| GKE system | — | `system` | ≈ 1000 | ≈ 2048 |
+| **`system` total** | | | **≈ 9400** | **≈ 17,900** |
+| `keycloak` | 4 | `apps` | 2300 | 4864 |
+| `kafka` | 4 | `apps` | 7200 | 27,648 |
+| `sonarqube` | 5 | `apps` | 8000 | 28,672 |
+| `defectdojo` (`appsec-qa`) | 4 | `apps` | 3000 | 6144 |
+| `dast` (`appsec-qa`), nightly jobs | 5 | `apps` | 2000 | 4096 |
+| **`apps` total** | | | **≈ 22,500** | **≈ 71,400** |
+
+| Pool | Allocatable per node | Minimum (1 per zone) | Requested occupancy | One zone lost |
+|---|---|---|---|---|
+| `system` | ≈ 7.9 vCPU, ≈ 28 GiB | 3 nodes: ≈ 23.7 vCPU, ≈ 85 GiB | 40 % CPU, 21 % memory | 2 nodes: 59 % CPU; the autoscaler adds the second per zone |
+| `apps` | ≈ 15.8 vCPU, ≈ 57 GiB | 3 nodes: ≈ 47 vCPU, ≈ 172 GiB | 48 % CPU, 41 % memory | 2 nodes: 71 % CPU, 61 % memory; still fits |
+
+DaemonSets (node-exporter, Fluent Bit) add per node in both pools and fit in that margin.
+
+**Why n2-standard-16 for `apps`.** The largest pod sets the minimum size of a shared pool: SonarQube requests 4 vCPU and 12 GiB, and a Kafka broker 2 vCPU and 8 GiB. They fit on n2-standard-8, but with three of them spread across zones the pool would need two nodes per zone from the start; with n2-standard-16, one per zone is enough and each node repeats the DaemonSet cost once (DN4). **Cost:** the minimum goes from 44 vCPU (revision 6: 3 × 8 + 1 × 8 + 3 × 4) to 72 vCPU (3 × 8 + 3 × 16). Half of the difference is the capacity of `appsec-qa`, which was not there before; the rest is the price of not having tailor-made pools.
+
+### 5.3 How each workload reaches its pool
 
 | Piece | Design |
 |---|---|
-| Declaration | Pools belong to the **environment**: they go in the binding (`cluster.node_pools`), not in the `gke` manifest nor the consumer's. So `prod` can size differently without touching any archetype |
-| Selection | The consumer sets `nodeSelector: { cloud.google.com/gke-nodepool: sonar }` and the toleration for the taint. GKE sets the label; no label of our own is needed |
-| Who may tolerate | **New Gatekeeper rule (proposed):** only the namespaces of the pool's owning archetype may tolerate `dedicated=<pool>`. Without it, any tenant adds the toleration and lands on SonarQube's node (RN5). The owners come from the binding, along the same registry → chart path as the other parameters (Gatekeeper §7.1) |
-| Pool traits | `sysctl-max-map-count`, `gpu`, `spot` and `arm64` are not properties of the cluster but of **one** pool. Today the `gke` manifest always declares `sysctl-max-map-count` and `gpu`, and a consumer requiring them resolves even if the binding has no such pool: it fails at start-up, exactly what traits exist to prevent (RN7). **Proposal:** the resolver treats those traits as present only if a pool in the binding declares them (AM §4.2) |
+| Declaration | Pools belong to the **environment**: they live in the binding (`cluster.node_pools`), not in the `gke` manifest or the consumer's. That way `prod` can size differently without touching any archetype |
+| Platform (layers 2b and 3) | The generator adds `nodeSelector: { cloud.google.com/gke-nodepool: system }` and the toleration for `system`'s taint to the values of every layer 2b or 3 chart, from the `node_pools` global. No archetype writes it by hand: **one writer, one validator** (`CLAUDE.md`, "No Gatekeeper mutation") |
+| Applications (layers 4 and 5) | **Nothing.** With no selector and no toleration, `system`'s taint leaves them on `apps`. A consumer setting `nodeSelector: … apps` would gain nothing and tie the chart to the pool's name |
+| DaemonSets | The platform's (node-exporter, Fluent Bit) tolerate `system`'s taint to cover both pools |
+| Who may tolerate | Gatekeeper rule P11: only the namespaces of a pool's owners may tolerate its taint. `system`'s owners are the binding's layer 2b and 3 archetypes, plus `kube-system`. Without it, a tenant adds the toleration and lands next to Gatekeeper or Prometheus (RN5) |
+| Pool traits | `sysctl-max-map-count`, `gpu`, `spot` and `arm64` are properties of **one** pool, not of the cluster. The resolver treats those traits as present only if a pool in the binding declares them (AM §4.2, DN5). With two pools, `apps` declares `sysctl-max-map-count`; a trait only a new pool could provide (`gpu`) is exactly the case in which a third pool is justified |
 
 ```yaml
-# environments/qa/binding.yaml — cluster block (DN5; applied in S1 §7)
+# environments/qa/binding.yaml — cluster block (DN5, DN11)
 cluster:
   max_nodes: 32
   max_pods_per_node: 64
   node_pools:
-    - name: general
+    - name: system
       machine_type: n2-standard-8
+      zones: [europe-west1-b, europe-west1-c, europe-west1-d]
+      autoscaling: { min_per_zone: 1, max_per_zone: 2 }
+      taint: components.gke.io/gke-managed-components=true:NoSchedule
+      owners: [policy-gatekeeper, cert-manager, secrets-eso-gsm, monitoring-oss, gateway-envoy-gke]
+    - name: apps
+      machine_type: n2-standard-16
       zones: [europe-west1-b, europe-west1-c, europe-west1-d]
       autoscaling: { min_per_zone: 1, max_per_zone: 3 }
-    - name: sonar
-      machine_type: n2-standard-8
-      zones: [europe-west1-b]
-      autoscaling: { min_per_zone: 1, max_per_zone: 1 }
-      taint: dedicated=sonar:NoSchedule
       sysctls: { vm.max_map_count: "524288" }
       traits: [sysctl-max-map-count]
-      owners: [sonarqube]
-    - name: kafka
-      machine_type: n2-standard-4
-      zones: [europe-west1-b, europe-west1-c, europe-west1-d]
-      autoscaling: { min_per_zone: 1, max_per_zone: 1 }
-      taint: dedicated=kafka:NoSchedule
-      owners: [kafka]
 ```
 
-`max_nodes: 32` is the cluster's ceiling, not its size: 9 + 1 + 3 = 13 nodes at most, plus one surge node per pool during an upgrade. With 32 there is room for a fourth pool without changing the subnet.
+`system`'s `owners` is not written freely: an `assert` (§9.1) requires it to be exactly the set of layer 2b and 3 archetypes the binding binds, which the resolver publishes in `binding.tm.hcl` as `global.platform.layer_2b_3_archetypes`. A new platform archetype enters the list in the same pull request that binds it, or `generate` fails.
+
+`max_nodes: 32` is the cluster's ceiling, not its size: 6 + 9 = 15 nodes at most, plus one surge node per pool during an upgrade.
 
 ---
 
@@ -326,7 +344,7 @@ stacks:
 |---|---|
 | First deployment | Phase A of S1 §6, after `gcp-qa-network`: `subnet` → `cluster` → `nodepools` → `baseline`. Gatekeeper comes next |
 | Control plane upgrade | Automatic via the channel, in the window (§2.1). `qa` one week before `prod` |
-| Pool upgrade | Automatic after the control plane; surge 1/0 per pool. The `sonar` pool **takes SonarQube down** during the node swap: accepted on `qa` (R53); the window keeps it out of working hours |
+| Pool upgrade | Automatic after the control plane; surge 1/0 per pool. Upgrading `apps` **takes SonarQube down** when its node's turn comes (one replica, zonal PVC): accepted on `qa` (R53); the window keeps it out of working hours |
 | Resizing a pool | PR to the binding → `nodepools` |
 | Changing a range, the datapath or pods per node | **Rebuilding the cluster** (immutable). An `assert` fails at `generate` if the binding tries to change `max_pods_per_node` on an existing cluster |
 | Destruction | `deletion_protection` and the `protected` tag; only with the destroy identity (§11.4) |
@@ -354,6 +372,14 @@ assert {
   assertion = alltrue([for p in global.cluster.node_pools : p.taint == null || length(p.owners) > 0])
   message   = "cluster: a tainted pool needs owners — otherwise nobody can use it, or everybody can (RN5)"
 }
+assert {
+  assertion = tm_length(global.cluster.node_pools) == 2 && tm_toset([for p in global.cluster.node_pools : p.name]) == tm_toset(["system", "apps"])
+  message   = "cluster: two pools, system and apps (DN11); a third one is an exception approved by changing this assert"
+}
+assert {
+  assertion = tm_toset([for p in global.cluster.node_pools : p.owners if p.name == "system"][0]) == tm_toset(global.platform.layer_2b_3_archetypes)
+  message   = "cluster: system's owners are exactly the binding's layer 2b and 3 archetypes (§5.3)"
+}
 ```
 
 ### 9.2 Candidate risks
@@ -364,9 +390,10 @@ assert {
 | RN2 | **`HttpLoadBalancing` addon disabled**: the standalone NEG is not created | Medium | High — the edge has no backends | `assert`; VN5 |
 | RN3 | **Cluster without Dataplane V2**: `NetworkPolicy` objects are admitted and not enforced | Low with the `assert` | Critical — no network isolation, no error; fixing it is a rebuild | `assert` |
 | RN4 | *Retired*: with no authorised networks there is nothing an `apply` can revert (landing zone DZ4) | — | — | — |
-| RN5 | **A tenant lands on a dedicated pool** by adding the toleration | Medium without the rule | Medium — it evicts or slows SonarQube or Kafka | §5.3 Gatekeeper rule |
-| RN6 | **Automatic upgrade of `sonar` during working hours** | Medium | Low on `qa` | Maintenance window; exclusions around delivery dates |
+| RN5 | **A tenant lands on `system`** by adding the toleration | Medium without the rule | High — it competes with Gatekeeper, Envoy or Prometheus, and a platform outage affects everyone | Gatekeeper rule P11 (§5.3) |
+| RN6 | **Automatic upgrade of `apps` during working hours** (takes SonarQube down and moves brokers) | Medium | Low on `qa` | Maintenance window; exclusions around delivery dates |
 | RN7 | **Pool trait resolved without the pool** | High without the proposal | Medium — the consumer fails at start-up | §5.3: the resolver checks the pool |
+| RN8 | **Noisy neighbour on `apps`**: a large SonarQube CE analysis or a Kafka page storm slows the other layer 4–5 workloads | Medium | Medium on `qa` | Real `requests` in every manifest; per-node saturation alerts (monitoring); a third pool only with data (DN11) |
 
 ### 9.3 Verifications
 
@@ -377,8 +404,9 @@ assert {
 | VN3 | `FQDNNetworkPolicy` on GKE Standard with Dataplane V2 | = Keycloak's VK6 |
 | VN4 | Google Groups for RBAC with `gke-security-groups@<domain>` | A member of `gke-qa-admins@` is `cluster-admin`; any other user gets nothing |
 | VN5 | Standalone NEG with `HttpLoadBalancing` enabled and `CHANNEL_DISABLED` | Envoy's NEG exists and the edge backend service sees it healthy |
-| VN6 | `vm.max_map_count` via `linux_node_config` on `sonar` | = S1's V1 |
-| VN7 | `sonar` pool upgrade with surge 1/0 | The PVC is remounted on the new node; the outage is measured |
+| VN6 | `vm.max_map_count` via `linux_node_config` on `apps` | = S1's V1 |
+| VN7 | `apps` pool upgrade with surge 1/0 | SonarQube's PVC is remounted on a new node in its zone; the outage is measured |
+| VN8 | Taint `components.gke.io/gke-managed-components` on `system` | kube-dns, metrics-server and konnectivity schedule on `system`; no layer 4–5 pod does |
 
 ---
 
@@ -387,7 +415,7 @@ assert {
 | Setting | `qa` | `prod` | `demos` |
 |---|---|---|---|
 | Environment | `/17` | `/16`: pods `/17`, 256 nodes | `/17` |
-| Pools | `general`, `sonar`, `kafka` | The same, with `sonar` in two zones if the regional disk is adopted | Autopilot (`gke-autopilot`), no pools |
+| Pools | `system` and `apps` | `system` and `apps`, with more nodes; a third only with data that justify it (DN11) | Autopilot (`gke-autopilot`), no pools |
 | Window | Monday to Thursday | One week after `qa` | Any |
 | Binary Authorization | Attestation in *dry-run* | **Enforce** | *Dry-run* |
 
@@ -402,7 +430,8 @@ assert {
 | Architecture §3.1, §4.3, §4.4, §5.1–§5.3 and §6.8; `platform-overview` | The subnet and secondary ranges are created by `gke` in its `gke-subnet` stack, not `network`; the `network` contract loses `subnet_self_link` and the range names and gains `private_service_range` | **Applied** (DN2) |
 | `schemas/environment-binding.schema.json` and the `qa` bindings (S1 §7, Cloud SQL variant) | `cluster.node_pools` block (§5.3), with `owners` required when there is a taint; `gke` 2.5.0 in the binding | **Applied** (DN5) |
 | AM §4.2 and `registry/traits.yaml` | Pool traits: present only if a pool in the binding declares them; marked in the registry | **Applied** (DN5) |
-| Gatekeeper §4.1 and §7.1 | Rule P11: tolerate `dedicated=<pool>` only from its owners' namespaces; its parameters come from the binding | **Applied** (DN5) |
+| Gatekeeper §4.1 and §7.1 | Rule P11: tolerate a pool's taint only from its owners' namespaces; its parameters come from the binding | **Applied** (DN5); with DN11, the only tainted pool is `system` |
+| S1 §4.1, §4.12; S2 §6.1; Kafka §2.1; Cloud SQL variant; Envoy Gateway; diagrams | `sonar` and `kafka` pools replaced by `apps`; no `nodeSelector` or tolerations in the consumers | **Applied** (DN11) |
 | Consumers of `workload_identity_pool` | Read it as a global; the output remains until 3.0.0 | **Proposed** (DN7) |
 | Landing zone §3.2, §6.3 and §8; S1 §4.13 | DNS endpoint instead of authorised networks and the `access` stack (DZ4); node SA created by the landing zone (DZ5); Binary Authorization written only by the landing zone (DZ6) | **Applied** |
 
@@ -415,13 +444,14 @@ assert {
 | DN1 | Mode and access | Consequence of S1 §4.1; access revised by landing zone DZ4 | Regional Standard, private nodes, public IP endpoint disabled, DNS endpoint with IAM only | Autopilot; public endpoint with authorised networks opened per job (the original S1 §4.13) |
 | DN2 | Who creates the node subnet | **Approved** | `gke`, which claims it | `network`, as in architecture §5.2 |
 | DN3 | Disk | **Approved**; VN1 confirms it | `pd-balanced` (`standard-rwo`) on n2; `storage_class` as a global | Hyperdisk Balanced with n4 or c3 |
-| DN4 | `general` pool | Proposed | n2-standard-8, 1–3 per zone | n2-standard-4, 2–6 per zone |
+| DN4 | Pool machines | Proposed | `system`: n2-standard-8, 1–2 per zone; `apps`: n2-standard-16, 1–3 per zone | n2-standard-8 for both, `apps` with 2–6 per zone |
 | DN5 | Pools | **Approved** | Declared in the binding; pool traits checked by the resolver; tolerations restricted by Gatekeeper | Pools fixed in the `gke` manifest |
 | DN6 | Service range | Proposed | /22 | /24 |
 | DN7 | `workload_identity_pool` | Proposed | Global | Outputs sharing |
 | DN8 | Upgrades | Proposed | `STABLE` in both environments, `qa`'s window one week before `prod`'s | `REGULAR` on `qa`, `STABLE` on `prod` |
 | DN9 | Cluster DNS | Proposed | kube-dns without NodeLocal DNSCache | With the cache, reviewing every DNS rule |
 | DN10 | Binary Authorization | Proposed | Registry allow-list enforced; attestation in *dry-run* on `qa` | No Binary Authorization, only Gatekeeper rule P2 |
+| DN11 | Number of pools | **Requested** | Two in every cluster: `system` (layers 2b–3 and GKE, tainted) and `apps` (layers 4–5, untainted); a third only as an exception backed by data | One pool per archetype with node requirements (revision 6: `general`, `sonar`, `kafka`) |
 
 ---
 
@@ -430,8 +460,8 @@ assert {
 | Phase | Contents | Exit criterion | Estimate |
 |---|---|---|---|
 | **0 · Verifications** | VN1 and VN2 in an ephemeral with a minimal cluster | Disk decided; webhook on 10250 reachable | 1 day |
-| **1 · Cluster** | `subnet`, `cluster`, `nodepools`; §9.1 `assert`s | Three healthy pools; `kubectl` from a runner with its IP opened | 1 day |
+| **1 · Cluster** | `subnet`, `cluster`, `nodepools`; §9.1 `assert`s | Both pools healthy; `kubectl` from a runner through the DNS endpoint | 1 day |
 | **2 · Access** | DNS endpoint; per-resource `container.clusters.connect`; alert on access outside the list (monitoring §10.3); **VZ5** | `helm`, `kubernetes` and `kubectl` against the cluster from a hosted runner, with no authorised networks | 0.5 days |
-| **3 · Baseline** | `baseline`; VN4, VN5, VN6, VN7 | Gatekeeper installable (phase B of S1 §6) | 1 day |
+| **3 · Baseline** | `baseline`; VN4, VN5, VN6, VN7, VN8 | Gatekeeper installable (phase B of S1 §6) | 1 day |
 
 Four and a half days for one person. What it unblocks is everything else.

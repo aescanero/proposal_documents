@@ -9,7 +9,7 @@
 <text x="64" y="230" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start" font-style="italic">one capability, one provider</text>
 <rect x="60" y="252" width="290" height="90" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="78" y="290" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">cluster</text>
-<text x="78" y="318" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">GKE · kafka node pool</text>
+<text x="78" y="318" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">GKE · apps node pool</text>
 <rect x="60" y="362" width="290" height="90" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="78" y="400" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="18" font-weight="700" fill="#374151" text-anchor="start">policy</text>
 <text x="78" y="428" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" font-weight="400" fill="#4b5563" text-anchor="start">Gatekeeper</text>
@@ -76,7 +76,7 @@
 <circle cx="472" cy="765" r="3" fill="#2563eb"/>
 <text x="482" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">heap 4 GiB · limit 12 GiB</text>
 <circle cx="472" cy="789" r="3" fill="#2563eb"/>
-<text x="482" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">kafka node pool</text>
+<text x="482" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">apps node pool, one node per zone</text>
 <rect x="720" y="274" width="245" height="170" rx="12" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>
 <rect x="720" y="274" width="245" height="46" rx="12" fill="#fff5e6"/>
 <rect x="720" y="308" width="245" height="12" fill="#fff5e6"/>

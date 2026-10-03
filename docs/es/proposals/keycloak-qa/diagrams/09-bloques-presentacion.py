@@ -108,7 +108,7 @@ rect(ax+16,yy,aw-32,52,'#ffffff',fg,rx=8,sw=1.2,dash="4 4")
 text(ax+30,yy+22,"sesiones persistentes",14,600,TXT); text(ax+30,yy+42,"en BD · caché jdbc-ping",13,400,SUB)
 yy+=64
 rect(ax+16,yy,aw-32,74,'#f9fafb','#9ca3af',rx=8,sw=1.2)
-text(ax+30,yy+24,"node pool general",14,700,TXT,font=MONO); text(ax+30,yy+45,"reparto por zona",13,400,SUB); text(ax+30,yy+64,"PDB minAvailable 1",13,400,SUB)
+text(ax+30,yy+24,"node pool apps",14,700,TXT,font=MONO); text(ax+30,yy+45,"reparto por zona",13,400,SUB); text(ax+30,yy+64,"PDB minAvailable 1",13,400,SUB)
 
 # columna 4
 stack(xs[3],by,colw,bh,'ops',7,"realm","Realm qa como código",["IdP entra · private_key_jwt","roles → entra_roles","reconciliador cada 5 min"])

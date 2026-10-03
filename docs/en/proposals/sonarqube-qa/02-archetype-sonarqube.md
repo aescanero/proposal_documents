@@ -625,8 +625,7 @@ sonarqube:
     repository: europe-docker.pkg.dev/disasterproject-lz/platform/sonarqube
     tag: "@sha256:<digest>"                     # by digest
   replicaCount: 1
-  nodeSelector: { cloud.google.com/gke-nodepool: sonar }
-  tolerations: [{ key: dedicated, value: sonar, effect: NoSchedule }]
+  # no nodeSelector or tolerations: system's taint leaves it on apps (GKE proposal §5.3)
 
   initSysctl: { enabled: false }                # node sysctl (S1 §4.1) — assert §7.1
   initFs: { enabled: false }
@@ -812,7 +811,7 @@ What this archetype needs from others, and is not yet specified:
 
 | Archetype / stack | Requirement | Affects |
 |---|---|---|
-| `gcp-qa-gke` | Node pool `sonar` with sysctl and taint (S1 §4.1); output `workload_identity_pool` | `app`, `secrets`, `data-tenant` |
+| `gcp-qa-gke` | Node pool `apps` with the sysctl (S1 §4.1, GKE DN11); output `workload_identity_pool` | `app`, `secrets`, `data-tenant` |
 | `keycloak` | `ConfigMap` client reconciler; outputs `saml_sso_url` and `saml_idp_certificate`; `oidc-idp` 4.2.0 | `sso`, `app` |
 | `postgres-operator` | **Resolved** in the `postgres-operator-qa` proposal: `Cluster`, `ObjectStore`, `ScheduledBackup`, `Backup` and `Pooler` as tenant resources in the consumer's namespace (§1); barman-cloud plugin (§5); `operator_version` as a global (§7.1); `ClusterImageCatalog` (§2) | `data-tenant` |
 | `gateway-envoy-gke` | **Resolved** in the Envoy Gateway proposal (`../envoy-gateway-qa/`): no body limit (§2.3); per-route timeout with `timeouts.request` up to 120 s and 60 s by default on the Gateway (§2.2); tenant `BackendTrafficPolicy` allowed within limits and `SecurityPolicy` only in labelled namespaces (§9.2) | `frontdoor` |

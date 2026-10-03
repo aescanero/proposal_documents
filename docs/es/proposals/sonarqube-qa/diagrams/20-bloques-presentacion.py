@@ -49,7 +49,7 @@ LX,LY,LW,LH=40,160,330,670
 rect(LX,LY,LW,LH,pal['plat'][0],'#d1d5db',rx=18,sw=1.5)
 text(LX+24,LY+44,"Consume de la plataforma",22,700)
 text(LX+24,LY+70,"una capability, un proveedor",15,400,SUB,italic=True)
-caps=[("cluster","GKE Standard · node pool sonar"),("policy","Gatekeeper · PSS restricted"),("ingress","Envoy Gateway · Gateway API"),
+caps=[("cluster","GKE Standard · node pool apps"),("policy","Gatekeeper · PSS restricted"),("ingress","Envoy Gateway · Gateway API"),
       ("secrets","ESO + Secret Manager"),("oidc-idp","Keycloak → Entra ID"),("database-platform","CloudNativePG"),("monitoring","Prometheus · Grafana · Loki")]
 y=LY+92
 for c,d in caps:
@@ -103,7 +103,7 @@ rect(ax+16,yy,aw-32,52,'#ffffff',fg,rx=8,sw=1.2,dash="4 4")
 text(ax+30,yy+22,"PVC 50 GiB · índices ES",14,600,TXT); text(ax+30,yy+42,"reconstruibles desde la BD",13,400,SUB)
 yy+=64
 rect(ax+16,yy,aw-32,74,'#f9fafb','#9ca3af',rx=8,sw=1.2)
-text(ax+30,yy+24,"node pool sonar",14,700,TXT,font=MONO); text(ax+30,yy+45,"n2-standard-8 · taint",13,400,SUB); text(ax+30,yy+64,"vm.max_map_count en nodo",13,400,SUB)
+text(ax+30,yy+24,"node pool apps",14,700,TXT,font=MONO); text(ax+30,yy+45,"compartido · sin taint",13,400,SUB); text(ax+30,yy+64,"vm.max_map_count en nodo",13,400,SUB)
 # col4
 stack(xs[3],by,colw,bh,'ops',7,"frontdoor","Publicación",["HTTPRoute sonar.tqbvzkr.…","timeout 120 s","cert. wildcard en el borde"])
 stack(xs[3],by+bh+bg,colw,bh,'ops',8,"config","Configuración como código",["grupos y permisos: teams.yaml","quality gate por defecto","Job idempotente por hash"])

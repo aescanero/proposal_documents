@@ -11,7 +11,7 @@ flowchart LR
         direction TB
         SUB["subnet<br/>nodos /24 · pods /18 · servicios /22"]
         CL["cluster<br/>Standard regional · nodos privados<br/>Dataplane V2 · Workload Identity"]
-        NP["nodepools<br/>general · sonar · kafka"]
+        NP["nodepools<br/>system · apps"]
         ACC["endpoint DNS del plano de control<br/>solo IAM · sin redes autorizadas"]
         BL["baseline<br/>PriorityClass platform-critical"]
     end

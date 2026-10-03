@@ -4,7 +4,7 @@ flowchart LR
         VM["VM o Cloud Run<br/>con salida directa a la VPC<br/>zone:infra · purpose:serverless-egress"]
         DNS["Zona privada qa.internal<br/>broker-n.kafka.qa.internal"]
         ILB["NLB passthrough interno<br/>IP de la subred de nodos<br/>sin acceso global"]
-        subgraph GKE["cluster · node pool kafka"]
+        subgraph GKE["cluster · node pool apps"]
             NP["nodePort 32100–32103<br/>externalTrafficPolicy Local"]
             BR["brokers · listener vpc<br/>certificado internal-ca<br/>SCRAM-SHA-512"]
         end
