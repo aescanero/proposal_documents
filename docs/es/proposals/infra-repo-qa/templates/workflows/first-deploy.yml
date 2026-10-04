@@ -34,8 +34,8 @@ jobs:
 
       - uses: ./.github/actions/setup
         with:
-          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service-account: ${{ vars.GCP_APPLY_SA }}
+          identity: tf-apply
+          env: ${{ inputs.env }}
 
       - name: El código generado está al día
         run: terramate generate --detailed-exit-code

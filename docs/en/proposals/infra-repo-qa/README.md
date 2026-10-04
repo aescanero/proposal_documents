@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 3 · placeholders vs. gates (§1.5); revision 2: G1 with `--all-namespaces` and the registry bundle; inventory over `debug show metadata`; `scripts` experiment; `ci/fetch-observed.sh`; deploy marker tied to the apply step (`poc/RESULTS.md` A8) |
+| **Status** | Proposal · revision 4 · committed federation coordinates and derived identities (§4.3, §5.3, `landing-zone-qa` DZ12); revision 3: placeholders vs. gates (§1.5); revision 2: G1 with `--all-namespaces` and the registry bundle; inventory over `debug show metadata`; `scripts` experiment; `ci/fetch-observed.sh`; deploy marker tied to the apply step (`poc/RESULTS.md` A8) |
 | **Scope** | How the repository the platform is deployed from is organised: which repositories exist and what goes in each, the directory layout, the branch model (and why there is no `qa` branch), the GitHub configuration (rulesets, Environments, variables, CODEOWNERS), the workflows and an environment's life cycle. Includes validated workflow **templates** in [`templates/`](templates/) |
 | **Why now** | This repository (`proposal_documents`) is documentation and proposals only. The `qa` proposals describe stacks, identities and guards, but none says where they live or which workflow applies them; and the architecture's deploy workflow could not apply `qa` at all (§5.1) |
 | **Basis** | Architecture §4.11 (first deployment), §11.2–§11.4 (pipeline identities), §12.4 (destroy), §14 (CI/CD); `landing-zone-qa` §1, §5, §10; `cmdb-qa` §2–§6; `developer-guide.md` §1, §3; `poc/RESULTS.md`. What is already there is not repeated |
@@ -127,7 +127,7 @@ disasterproject/infra/
 ├── charts/policy-gatekeeper/        ConstraintTemplates and values generated from the registry
 ├── cmdb-data/                       declared half of the CMDB (cmdb-qa §3); the observed half, on its branch
 ├── images/third-party.yaml          third-party images to mirror (landing-zone-qa §6.2)
-├── ci/                              g1.sh, changed-envs.sh, stacks-json.sh, fetch-observed.sh, spec-sync.sh
+├── ci/                              g1.sh, changed-envs.sh, stacks-json.sh, fetch-observed.sh, spec-sync.sh, federation.env, check-federation.sh
 ├── .gitattributes                   _*.tf linguist-generated: the diff collapses, so a hand edit stands out
 ├── docs/runbooks/                   lz-bootstrap.md, env-onboarding.md, break-glass.md
 └── .github/
@@ -203,19 +203,19 @@ What a `qa` branch was meant to give — that a change passes through `qa` befor
 
 ### 4.3 GitHub Environments (DR5)
 
-| Environment | Used by | Reviewers | Branches | Variables | Identity it enables |
-|---|---|---|---|---|---|
-| `landing-zone` | `deploy`, `first-deploy` | Platform **and** security | `main` | `GCP_APPLY_SA` | `tf-apply-lz@` |
-| `landing-zone-destroy` | None planned | A different group | `main` | `GCP_DESTROY_SA` | `tf-destroy-lz@` |
-| `qa` | `deploy`, `first-deploy` | None (automatic) or platform | `main` | `GCP_APPLY_SA` | `tf-apply-qa@` |
-| `qa-destroy` | `destroy` | Platform | `main` | `GCP_DESTROY_SA` | `tf-destroy-qa@` |
-| `prod` | `deploy`, `first-deploy` | `prod-approvers`; 5-minute wait | `main` | `GCP_APPLY_SA` | `tf-apply-prod@` |
-| `prod-destroy` | `destroy` | `prod-approvers` and security | `main` | `GCP_DESTROY_SA` | `tf-destroy-prod@` |
-| `prod-plan` | `prod` preview (DR7) | `prod-approvers` | All | — | `tf-plan-prod@` |
-| `prod-drift` | `prod` drift (DR7) | None | `main` only | — | `tf-plan-prod@` |
-| `image-mirror` | `image-mirror` | None | `main` | — | `image-mirror@` |
+| Environment | Used by | Reviewers | Branches | Identity it enables |
+|---|---|---|---|---|
+| `landing-zone` | `deploy`, `first-deploy` | Platform **and** security | `main` | `tf-apply-lz@` |
+| `landing-zone-destroy` | None planned | A different group | `main` | `tf-destroy-lz@` |
+| `qa` | `deploy`, `first-deploy` | None (automatic) or platform | `main` | `tf-apply-qa@` |
+| `qa-destroy` | `destroy` | Platform | `main` | `tf-destroy-qa@` |
+| `prod` | `deploy`, `first-deploy` | `prod-approvers`; 5-minute wait | `main` | `tf-apply-prod@` |
+| `prod-destroy` | `destroy` | `prod-approvers` and security | `main` | `tf-destroy-prod@` |
+| `prod-plan` | `prod` preview (DR7) | `prod-approvers` | All | `tf-plan-prod@` |
+| `prod-drift` | `prod` drift (DR7) | None | `main` only | `tf-plan-prod@` |
+| `image-mirror` | `image-mirror` | None | `main` | `image-mirror@` |
 
-**No secrets.** All GCP access is federated; the variables are not sensitive. The repository variables are `GCP_WIF_PROVIDER`, `GCP_LZ_PROJECT` and `DRIFT_ENVS` (`["landing-zone","qa"]`; `prod` has its own job).
+**No secrets, and no identity variables.** All GCP access is federated. The federation's coordinates are committed in `ci/federation.env` (security as CODEOWNER) and `.github/actions/setup` derives `tf-<role>-<env>@` from the job's environment, which must be a directory of `environments/` (`landing-zone-qa` DZ12); `ci/check-federation.sh` in G1 fails if a workflow reads `vars.GCP_*`. The only repository variables left are operational switches, not identity: `DRIFT_ENVS` (`["landing-zone","qa"]`) and `PROD_ENABLED`.
 
 The Environments are created by hand when each environment is onboarded (§6.1); they are the one piece of configuration not in the repository. A weekly job compares them with this table (RR3).
 
@@ -258,7 +258,7 @@ Deploy order: the landing zone first and alone; then the non-production environm
 
 ### 5.3 Before the bootstrap
 
-While `GCP_WIF_PROVIDER` does not exist, the plan jobs are skipped (`if: vars.GCP_WIF_PROVIDER != ''`) and the preview runs only G0 and G1. That is what lets the bootstrap pull request merge before there is any federation (`landing-zone-qa` §1.2).
+While `ci/federation.env` still holds the placeholder project number, the plan jobs are skipped and the preview runs only G0 and G1: that is what lets the bootstrap pull request merge before there is any federation (`landing-zone-qa` §1.2). The condition is a committed, reviewed state, not a missing variable: once a pull request writes the real number, every plan job must authenticate, and one that cannot fails the check instead of being skipped.
 
 ### 5.4 Templates and how they were validated
 
@@ -286,8 +286,8 @@ It is step 0 of architecture §4.11, in order:
 | # | What | Where | Who |
 |---|---|---|---|
 | 1 | Only the first time in the organisation: landing zone bootstrap | `landing-zone-qa` §1 (`docs/runbooks/lz-bootstrap.md`) | *Break-glass* account |
-| 2 | Onboarding pull request: the environment in `global.lz.environments`, `environments/<env>/binding.yaml`, the environment in `DRIFT_ENVS` and in the `first-deploy` and `destroy` options | `infra` | Platform; `deploy` applies it with `tf-apply-lz@` |
-| 3 | GitHub Environments `<env>` and `<env>-destroy`, with reviewers and `GCP_APPLY_SA` / `GCP_DESTROY_SA` | Repository settings | Repository administrator |
+| 2 | Onboarding pull request: `environments/<env>/binding.yaml` (the landing zone discovers it into `global.lz.environments`; platform and security review it as CODEOWNERS), the environment in `DRIFT_ENVS` and in the `first-deploy` and `destroy` options | `infra` | Platform; `deploy` applies it with `tf-apply-lz@` |
+| 3 | GitHub Environments `<env>` and `<env>-destroy`, with reviewers and branch policy; no variables (DZ12) | Repository settings | Repository administrator |
 | 4 | Pull request with the environment's stacks (`stacks/platforms/gcp/<env>/…`) | `infra` | Platform; its preview plans with `tf-plan-<env>@`; `deploy` ignores it (no marker) |
 | 5 | `first-deploy` with `env=<env>`: layered apply and first marker | Actions, manual | The Environment's reviewers |
 | 6 | From here on, every change is a pull request and `deploy` applies it | — | — |
@@ -348,7 +348,7 @@ With A, the promotion DG §3 and §5 describe does not change — `prod` deploys
 |---|---|---|---|---|
 | RR1 | **Plan identities are reachable by anyone with write access**: a `pull_request` workflow runs the pull request's code, which can request a `tf-plan-<env>@` token and read that environment's state | Medium | Medium in non-production; high in `prod` | Read-only identities; never secrets in state (references only, `CLAUDE.md`); `prod` only with approval (`prod-plan`, DR7) |
 | RR2 | **Deploy marker lost or rewritten** | Low | High — `deploy` would see no changes, or all of them | `cmdb-observed` ruleset with no force-push or deletion; `changed-envs.sh` fails if the marker is not on `main`; an environment with no marker is not deployed |
-| RR3 | **Hand-configured Environments drift** from this table (reviewers removed, wrong variable) | Medium | High — an apply without approval, or with another environment's identity | The identity depends on the claim, not the variable: a wrong `GCP_APPLY_SA` fails at federation. A weekly job compares the API's Environments with §4.3 |
+| RR3 | **Hand-configured Environments drift** from this table (reviewers removed, branch policy loosened) | Medium | High — an apply without approval | The identity depends on the claim, and its name is derived from the committed coordinates and the environment directory, so no hand-set value can point a job at another environment's identity. A weekly job compares the API's Environments with §4.3 |
 | RR4 | **Environment list repeated** in `DRIFT_ENVS` and in the `first-deploy` and `destroy` options | Medium | Low — an environment with no drift or no destroy | A G1 rule compares those lists with `environments/*` |
 | RR5 | **Compromised third-party action** with `id-token: write` | Low | Critical | Allow list and pinned SHA (DR8); `id-token: write` only in the jobs that use it |
 

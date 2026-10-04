@@ -6,14 +6,14 @@ sequenceDiagram
     participant G as GCS · KMS · IAM
     participant CI as GitHub Actions
     participant L as gcp-lz-* stacks
-    R->>R: bootstrap PR merged · gcs backend + encryption with fallback
+    R->>R: bootstrap PR merged · gcs backend + encryption, no fallback in the code
     Note over R,CI: the preview only passes G0 and G1 · no federation yet
     P->>B: temporary local backend · tofu apply
     B->>G: lz project · bucket · key ring lz · gh-disasterproject-infra · tf-plan/apply/destroy-lz@
-    P->>G: backend restored · tofu init -migrate-state → encrypted state
+    P->>G: backend restored · TF_ENCRYPTION fallback · tofu init -migrate-state → encrypted state
     P->>P: shred the local state · tofu plan with no changes
-    R->>R: PR removes the fallback · enforced = true
-    P->>CI: GCP_WIF_PROVIDER and GCP_LZ_PROJECT variables · landing-zone Environments
+    R->>R: PR adds enforced = true (the fallback was never in the code)
+    P->>CI: federation coordinates in ci/federation.env · landing-zone Environments
     P->>P: removes projectCreator and owner · account sealed
     CI->>L: PR · landing-zone Environment · tf-apply-lz@
     L->>G: org policies · projects · APIs · identities · KMS · registry · DNS

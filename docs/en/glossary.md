@@ -552,7 +552,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 
 ---
 
-## 26. Risk register (`risk-register.md`) — 62 risks by domain (59 active)
+## 26. Risk register (`risk-register.md`) — 64 risks by domain (61 active)
 
 Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mitigation tied to a document section.
 
@@ -608,6 +608,7 @@ Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mi
 | **R55–R57** | CMDB: the sync writing to `main`; edges silently empty so the destroy guard counts 0; a secret value reaching the CMDB. See `risk-register.md` §7. |
 | **R58–R60** | Landing zone: an unrepeatable bootstrap; a project-singleton policy (Binary Authorization) written by an environment; a project-level grant where a resource-level one would do. See `risk-register.md`. |
 | **R61–R62** | Landing zone in an adopted project: state readable through project-level grants; a name already taken in a shared project. See `risk-register.md`. |
+| **R63–R64** | An IAM-administration bound out of step with its role list; orphan authorised networks in the `/32`-per-job control-plane variant. See `risk-register.md`. |
 
 **Top five risks** (ranked by likelihood × impact, mitigation not yet in place): 1) R2 (missing `after`), 2) R12 (wildcard OIDC `sub`), 3) R26 (pod range sized for too few nodes), 4) R34 (registry drift), 5) R5 (shared platform destroyed by instance teardown).
 

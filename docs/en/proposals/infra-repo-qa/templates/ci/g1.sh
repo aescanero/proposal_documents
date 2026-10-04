@@ -7,6 +7,7 @@ archetypectl resolve --dry-run > resolution.json
 ./ci/stacks-json.sh > stacks.json             # id, path, tags, after (architecture §14.4)
 archetypectl enrich stacks.json               # adds consumes[] and after_ids[]
 archetypectl cmdb check                       # the CMDB's declared half is current (cmdb-qa DI2)
+./ci/check-federation.sh                      # federation coordinates in one reviewed file (landing-zone-qa DZ12)
 
 conftest verify --policy policy/              # the policies' own tests
 

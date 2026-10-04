@@ -1,21 +1,47 @@
-# Destination: .github/actions/setup/action.yml
+# Destination: .github/actions/setup/action.yml — landing-zone-qa DZ12
 name: setup
-description: Tools pinned by mise and, if asked, a GCP identity for one environment
+description: Tools pinned by mise and, if asked, the GCP identity of one environment, derived from ci/federation.env
 inputs:
-  service-account:
-    description: Service account to impersonate. Empty = no cloud credentials
+  identity:
+    description: tf-plan, tf-apply, tf-destroy, or an identity of no environment (image-mirror). Empty = no cloud credentials
     required: false
     default: ""
-  workload-identity-provider:
-    description: Federation provider (repository variable GCP_WIF_PROVIDER)
+  env:
+    description: The environment the identity belongs to (landing-zone → lz); empty for an identity of no environment. Must be a directory of environments/
     required: false
     default: ""
+outputs:
+  project:
+    description: The landing zone project, from ci/federation.env
+    value: ${{ steps.fed.outputs.project }}
 runs:
   using: composite
   steps:
     - uses: jdx/mise-action@v2                 # pins terramate, tofu, checkov, conftest, archetypectl
-    - if: inputs.service-account != ''
+    - id: fed
+      if: inputs.identity != ''
+      shell: bash
+      env:                                     # inputs reach the script as environment variables, never interpolated into it
+        IDENTITY: ${{ inputs.identity }}
+        ENV_NAME: ${{ inputs.env }}
+      run: |
+        set -euo pipefail
+        source ci/federation.env
+        [[ "$IDENTITY" =~ ^[a-z][a-z0-9-]{2,29}$ ]] || { echo "::error::bad identity '$IDENTITY'"; exit 1; }
+        case "$ENV_NAME" in
+          "")           sa="$IDENTITY" ;;
+          landing-zone) sa="$IDENTITY-lz" ;;
+          *)            # an env that is not an environment never becomes an identity name
+                        [ -d "environments/$ENV_NAME" ] || { echo "::error::'$ENV_NAME' is not an environment"; exit 1; }
+                        sa="$IDENTITY-$ENV_NAME" ;;
+        esac
+        {
+          echo "provider=projects/$GCP_LZ_PROJECT_NUMBER/locations/global/workloadIdentityPools/$GCP_WIF_POOL/providers/$GCP_WIF_PROVIDER_ID"
+          echo "sa=$sa@$GCP_LZ_PROJECT.iam.gserviceaccount.com"
+          echo "project=$GCP_LZ_PROJECT"
+        } >> "$GITHUB_OUTPUT"
+    - if: inputs.identity != ''
       uses: google-github-actions/auth@v2
       with:
-        workload_identity_provider: ${{ inputs.workload-identity-provider }}
-        service_account: ${{ inputs.service-account }}
+        workload_identity_provider: ${{ steps.fed.outputs.provider }}
+        service_account: ${{ steps.fed.outputs.sa }}

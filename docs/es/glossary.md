@@ -552,7 +552,7 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 
 ---
 
-## 26. Registro de riesgos (`risk-register.md`) — 62 riesgos por dominio (59 activos)
+## 26. Registro de riesgos (`risk-register.md`) — 64 riesgos por dominio (61 activos)
 
 Cada riesgo tiene un número R estable y nunca reutilizado, una probabilidad, un impacto y una mitigación ligada a una sección del documento.
 
@@ -608,6 +608,7 @@ Cada riesgo tiene un número R estable y nunca reutilizado, una probabilidad, un
 | **R55–R57** | CMDB: el sync que escribe en `main`; aristas vacías en silencio, con lo que la guarda de destroy cuenta 0; un valor secreto que llega a la CMDB. Ver `risk-register.md` §7. |
 | **R58–R60** | Landing zone: arranque irrepetible; una política singleton del proyecto (Binary Authorization) escrita por un entorno; un grant de proyecto donde bastaba uno de recurso. Ver `risk-register.md`. |
 | **R61–R62** | Landing zone en un proyecto adoptado: estado legible por concesiones a nivel de proyecto; un nombre ya ocupado en un proyecto compartido. Ver `risk-register.md`. |
+| **R63–R64** | Una cota de administración de IAM desacompasada de su lista de roles; redes autorizadas huérfanas en la variante de acceso al plano de control con un `/32` por job. Ver `risk-register.md`. |
 
 **Los cinco principales riesgos** (ordenados por probabilidad × impacto, mitigación aún no implantada): 1) R2 (falta `after`), 2) R12 (`sub` comodín OIDC), 3) R26 (rango de pods dimensionado para pocos nodos), 4) R34 (divergencia del registro), 5) R5 (plataforma compartida destruida al desmontar una instancia).
 

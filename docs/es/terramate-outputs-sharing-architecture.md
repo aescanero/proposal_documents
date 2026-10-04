@@ -683,7 +683,7 @@ output se mantengan.
 | | Qué | Quién lo aplica | Dónde se especifica |
 |---|---|---|---|
 | **0a** | **La landing zone existe.** El stack `gcp-lz-bootstrap` (bucket de estado, key ring `lz` con `tofu-state`, el pool de federación, `tf-plan-lz@`, `tf-apply-lz@`, `tf-destroy-lz@`) lo aplica **una vez por organización** una persona, con estado local, y su estado se migra al bucket; después el resto de la landing zone lo aplica el pipeline | Una persona con `organizationAdmin` y `billing.admin`, una vez; después el job `landing-zone` | `landing-zone-qa` §1 |
-| **0b** | **El entorno se da de alta en la landing zone.** Una pull request añade el entorno a `global.lz.environments`: key ring de KMS y clave `tofu-state`, el prefijo de estado, `tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@` con sus vínculos de federación, la zona delegada y el `public_id`, el bloque de direcciones del pool global, la regla de Binary Authorization y la SA de nodos del runtime. La misma pull request añade `environments/<env>/binding.yaml`. Fuera del repositorio, un administrador crea los GitHub Environments `<env>` y `<env>-destroy` con sus revisores y las variables `GCP_APPLY_SA` / `GCP_DESTROY_SA` | El job `landing-zone` (`tf-apply-lz@`); los GitHub Environments, un administrador del repositorio | `landing-zone-qa` §10; `infra-repo-qa` |
+| **0b** | **El entorno se da de alta en la landing zone.** Una pull request añade `environments/<env>/binding.yaml`, del que la landing zone descubre el entorno (sin una segunda lista que mantener al paso): key ring de KMS y clave `tofu-state`, el prefijo de estado, `tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@` con sus vínculos de federación, la zona delegada y el `public_id`, el bloque de direcciones del pool global, la regla de Binary Authorization y la SA de nodos del runtime. La misma pull request añade `environments/<env>/binding.yaml`. Fuera del repositorio, un administrador crea los GitHub Environments `<env>` y `<env>-destroy` con sus revisores y su política de ramas — sin variables: la identidad se deriva del entorno (`landing-zone-qa` DZ12) | El job `landing-zone` (`tf-apply-lz@`); los GitHub Environments, un administrador del repositorio | `landing-zone-qa` §10; `infra-repo-qa` |
 
 La identidad propia del entorno no puede hacer ninguna de las dos: no existe antes de 0b, y después no tiene ningún rol sobre la landing zone. Solo cuando ambas están hechas se ejecuta la secuencia de abajo — desde `first-deploy`, un workflow manual ligado al Environment `<env>`, que escribe el primer marcador de deploy del entorno (§14.2).
 
@@ -2446,13 +2446,18 @@ resource "google_service_account_iam_member" "apply" {
 
 **En el proyecto non-prod compartido**, `tf-apply-qa@` y `tf-apply-dev@` son identidades distintas, pero un rol concedido a nivel de proyecto alcanza a todos los entornos del proyecto. Concede a nivel de recurso donde el servicio lo admita (secretos, buckets, claves, cuentas de servicio, instancias de Cloud SQL con condiciones IAM sobre el prefijo del nombre); donde solo existe un rol de proyecto (`roles/container.admin`, `roles/compute.networkAdmin`), acepta que una identidad de apply no productiva puede tocar otro entorno no productivo, y apóyate en los prefijos de estado por entorno, CODEOWNERS y la puerta de entorno. Esa exposición nunca llega a `prod`, que es otro proyecto.
 
-**Dónde viven las identidades.** Las cuentas de servicio del pipeline (`tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@`) se crean en el proyecto de la landing zone, no en el del entorno: así una identidad de entorno no puede editar su propia política IAM ni la de otra. El acceso al estado es por prefijo, con una condición IAM sobre el bucket (`resource.name.startsWith("projects/_/buckets/<bucket-de-estado>/objects/<env>/")`), de modo que `tf-plan-qa@` lee el estado de los productores de `qa` y no el de `dev`. Las cuentas de servicio que reciben grants entre proyectos —la SA de nodos de un runtime, por ejemplo— también las crea la landing zone, para que la capa 0 nunca espere a la capa 2 (`landing-zone-qa` §5, §6.3).
+**Dónde viven las identidades.** Las cuentas de servicio del pipeline (`tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@`) se crean en el proyecto de la landing zone, no en el del entorno: así una identidad de entorno no puede editar su propia política IAM ni la de otra. El acceso al estado es por prefijo, con una condición IAM sobre el bucket (`resource.name.startsWith("projects/_/buckets/<bucket-de-estado>/objects/<env>/") || api.getAttribute("storage.googleapis.com/objectListPrefix", "").startsWith("<env>/")` — la segunda mitad porque el listado se evalúa contra el bucket, no contra un objeto, y lo mantiene dentro del prefijo), de modo que `tf-plan-qa@` lee el estado de los productores de `qa` y no el de `dev`. Las cuentas de servicio que reciben grants entre proyectos —la SA de nodos de un runtime, por ejemplo— también las crea la landing zone, para que la capa 0 nunca espere a la capa 2 (`landing-zone-qa` §5, §6.3).
+
+
+**Quién puede conceder roles.** Solo la identidad de apply de la landing zone administra IAM en los proyectos de entorno, y solo **acotada por rol**: `resourcemanager.projectIamAdmin` con `api.getAttribute('iam.googleapis.com/modifiedGrantsByRole', []).hasOnly([...])`, ≤10 roles por binding, generado de la misma lista `global.identities` de la que concede `gcp-lz-identities`. Puede conceder exactamente los roles de la plataforma — nunca `owner`, `editor` ni la propia administración de IAM (`landing-zone-qa` DZ13). Un `folderAdmin` o `projectIamAdmin` sin cota es un camino de escalada.
+
+**Las coordenadas de la federación se commitean** (`ci/federation.env`), no son variables de repositorio: son identificadores, no secretos, y un fichero revisado no puede desviarse como lo hace una variable editada por un administrador (`landing-zone-qa` DZ12).
 
 El claim `attribute.environment` solo está presente cuando el job del workflow declara `environment:`. Ligar la SA de apply a ese atributo significa que **el rol de apply es inalcanzable desde un job sin la puerta de entorno**, lo que hace que el control de required-reviewers de GitHub sea un límite de seguridad real en lugar de una conveniencia de UI.
 
 | Identidad | Roles | Alcance |
 |---|---|---|
-| `tf-plan-<env>@` | `roles/viewer`, `roles/storage.objectViewer` sobre el prefijo del bucket de estado | Solo lectura; puede leer el estado del productor para outputs sharing |
+| `tf-plan-<env>@` | Una lista de lectura enumerada (`compute.viewer`, `compute.networkViewer`, `container.viewer`, `dns.reader`, `iam.serviceAccountViewer`, `iam.roleViewer`, `certificatemanager.viewer`, `cloudkms.viewer`, `secretmanager.viewer`, `cloudsql.viewer`, `monitoring.viewer`, `serviceusage.serviceUsageViewer`), `roles/storage.objectViewer` sobre el prefijo del bucket de estado — **nunca `roles/viewer`**: esta identidad es alcanzable desde cualquier PR, y `roles/viewer` lee la configuración de todos los servicios | Solo lectura; puede leer el estado del productor para outputs sharing; nunca el contenido de un secreto, nunca un descifrador más allá de su propia clave de estado |
 | `tf-apply-<env>@` | Conjunto de mínimo privilegio por entorno (`roles/container.admin`, `roles/run.admin`, `roles/compute.networkAdmin`, …) más `roles/storage.objectAdmin` sobre el prefijo de estado | Nunca `roles/owner`, nunca `roles/editor` |
 | `tf-apply-<env>@` extras | `roles/iam.serviceAccountUser` sobre cada SA de runtime que deba `actAs` | Restringido por SA, no a nivel de proyecto |
 | SAs de runtime (`run-*`, SA de nodo GKE) | Específicas del workload, mínimas | Creadas por el pipeline, nunca asumibles por él más allá de `actAs` |
@@ -3452,12 +3457,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: jdx/mise-action@v2
-
-      - uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: tf-plan-${{ matrix.env == 'landing-zone' && 'lz' || matrix.env }}@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
+      - uses: ./.github/actions/setup              # mise + identidad derivada de ci/federation.env (landing-zone-qa DZ12)
+        with: { identity: tf-plan, env: "${{ matrix.env }}" }
 
       # --- plan con sharing + mocks, solo los stacks de este entorno ---
       - name: Plan
@@ -3573,10 +3574,8 @@ jobs:
       - name: Verify generated code
         run: terramate generate --detailed-exit-code
 
-      - uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_APPLY_SA }}      # variable del Environment: tf-apply-<env>@…
+      - uses: ./.github/actions/setup              # mise + identidad derivada de ci/federation.env (landing-zone-qa DZ12)
+        with: { identity: tf-apply, env: "${{ inputs.env }}" }
 
       - name: Apply changed stacks
         id: apply
@@ -3600,7 +3599,7 @@ jobs:
 
 Puntos clave:
 
-- **Un entorno, una identidad, una puerta por job.** `environment: ${{ inputs.env }}` pone `environment=<env>` en el token OIDC, que es el único principal autorizado a suplantar a `tf-apply-<env>@` (§11.2). `GCP_APPLY_SA` es una variable del *Environment*, así que el mismo texto de workflow se resuelve a `tf-apply-qa@` en `qa` y a `tf-apply-prod@` en `prod`. El job único `environment: production` de borradores anteriores no podía funcionar: su token llevaba un entorno e intentaba aplicarlos todos.
+- **Un entorno, una identidad, una puerta por job.** `environment: ${{ inputs.env }}` pone `environment=<env>` en el token OIDC, que es el único principal autorizado a suplantar a `tf-apply-<env>@` (§11.2). `.github/actions/setup` deriva la identidad del entorno del job y de las coordenadas commiteadas en `ci/federation.env` (`landing-zone-qa` DZ12), así que el mismo texto de workflow se resuelve a `tf-apply-qa@` en `qa` y a `tf-apply-prod@` en `prod`, y ninguna variable puesta a mano puede apuntar un job a la identidad de otro entorno. El job único `environment: production` de borradores anteriores no podía funcionar: su token llevaba un entorno e intentaba aplicarlos todos.
 - **La base de cambios es el último deploy con éxito del entorno, no `HEAD^`.** Con `HEAD^`, una ejecución fallida o cancelada deja sus stacks sin aplicar y el siguiente merge ya no los ve; además GitHub mantiene solo una ejecución pendiente por grupo de concurrencia y cancela las demás, así que con una ráfaga de merges algunos commits nunca se despliegan por sí mismos. El marcador `deployed/<env>.json` en la rama `cmdb-observed` solo se escribe cuando el apply de un entorno tuvo éxito completo, y `cmdb-sync` solo lo mueve hacia delante (`run` mayor). La siguiente ejecución compara desde ahí y recoge todo lo posterior.
 - **El marcador sigue al paso de apply, no al job.** `steps.apply.outcome == 'success'` lo escribe aunque falle el paso de observación que va después: un observador que no puede ejecutarse (una herramienta ausente, un rechazo del esquema) pone el job en rojo y se informa, pero no retiene el marcador. Atado a `success()`, un observador roto deja a todos los entornos sin marcador para siempre, y cada ejecución vuelve a aplicar todo desde el primer despliegue.
 - **Un repositorio nuevo no tiene rama `cmdb-observed`.** `ci/fetch-observed.sh` distingue "la rama aún no existe" (`git ls-remote --exit-code` devuelve 2: ningún entorno tiene marcador) de un remoto que falló (cualquier otro código: error), y `cmdb-sync` crea la rama vacía en su primera ejecución. Un `git fetch origin cmdb-observed` sin protección hace fallar el primer `deploy`.
@@ -3708,11 +3707,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: jdx/mise-action@v2
-      - uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: tf-plan-${{ matrix.env == 'landing-zone' && 'lz' || matrix.env }}@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
+      - uses: ./.github/actions/setup              # mise + identidad derivada de ci/federation.env (landing-zone-qa DZ12)
+        with: { identity: tf-plan, env: "${{ matrix.env }}" }
       - name: Detect drift and record it
         id: drift
         run: |
@@ -3794,7 +3790,7 @@ terramate debug show metadata | jq -Rn '
 
 ## 15. Registro de riesgos
 
-El registro completo — 62 riesgos agrupados por dominio (59 activos; R28 retirado como duplicado de R26, R38 y R39 retirados con el endpoint DNS del plano de control), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
+El registro completo — 64 riesgos agrupados por dominio (61 activos; R28 retirado como duplicado de R26, R38 y R39 retirados con el endpoint DNS del plano de control), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
 
 Los cinco sobre los que actuar primero:
 

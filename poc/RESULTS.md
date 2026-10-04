@@ -12,6 +12,7 @@ not a reconstruction.
 | **OpenTofu** | `v1.10.6` |
 | **Date** | 2026-09-16 (re-run 2026-09-28, same toolchain, same results) |
 | **conftest** | `0.70.1` (OPA `1.20.2`), A8 only |
+| **Encryption probe** | `./gates/run-encryption.sh`, 2026-10-04, OpenTofu `1.10.6` |
 | **Gate probes** | `./gates/run-gates.sh`, 2026-10-04, Terramate `0.17.3` |
 | **Harness** | `./run-poc.sh` (see [Why a harness](#why-a-harness-and-not-just-terramate-generate)) |
 
@@ -34,6 +35,7 @@ not a reconstruction.
 | A8c | `terramate debug show metadata` carries `after` | ☑ **Confirmed** — the stack inventory is built from it |
 | A8d | A global in `output.value` is resolved at generate time | ☒ **Refuted** — copied verbatim: `value = global.project_id` lands in the `.tf`, where it is invalid |
 | A8e–h | The G1 and G3 conftest commands evaluate the policies | ☒ **Refuted** — zero rules without `--all-namespaces` or with an inexact `--namespace`; `data.registry` empty with `--data registry/` |
+| A9 | The bootstrap's plaintext state migrates into an encrypted backend with the fallback **only** in `TF_ENCRYPTION`, and `enforced = true` committed from the start (OpenTofu 1.10.6) | ◐ **Half** — the env-only fallback works; `enforced = true` forbids even an env fallback and cannot be relaxed from the env, so it is committed after the migration |
 
 **Net effect on the architecture: the late-binding model works.** A1 and A2 are
 the two that the whole `imports/contracts/` design rests on, and both hold. A3
@@ -466,6 +468,63 @@ FAIL - plan.json - terraform.public_names - environment name in a public name
 | A8f–g | `--data registry/registry.json`, a bundle with the top-level key `registry`; `--data registry/` puts each file at the root of `data` and an unknown trait passes | Same; `registry/README.md` |
 | A8h | G3 names each package exactly: `--namespace terraform` matches no `terraform.public_names` | Architecture §13.4 |
 | all | Every conftest gate fails when it evaluated zero rules (`ct` in `ci/g1.sh`) | Architecture §14.4 |
+
+---
+
+## A9 — migrating the bootstrap's state into an encrypted backend ◐
+
+The landing zone's bootstrap applies once with a local, plaintext state and then
+moves it into the bucket it created, encrypted. The question: can the committed
+configuration be the final one from the first commit — no plaintext fallback in
+the code, and `enforced = true` — with the fallback living only in the
+migration process's environment? Probed by `./gates/run-encryption.sh`, with a
+`pbkdf2` key provider standing in for KMS and a second local backend for the
+bucket.
+
+```
+========== versions ==========
+OpenTofu v1.10.6
+
+========== A9a — migrate a plaintext state with no fallback anywhere ==========
+Error: Error loading default state from the "local" backend:
+[exit 1]
+bucket.tfstate: not written
+
+========== A9b — fallback only in TF_ENCRYPTION, committed configuration without enforced ==========
+Warning: Unencrypted method configured
+[exit 0]
+bucket.tfstate: encrypted
+--- plan with the committed configuration alone (0 = no changes)
+[exit 0]
+
+========== A9c — fallback only in TF_ENCRYPTION, committed configuration with enforced = true ==========
+Error: Unencrypted method is forbidden
+Warning: Unencrypted method configured
+[exit 1]
+bucket.tfstate: not written
+
+========== A9d — the same, and TF_ENCRYPTION also sets enforced = false for this one process ==========
+Error: Unencrypted method is forbidden
+Warning: Unencrypted method configured
+[exit 1]
+bucket.tfstate: not written
+
+========== A9e — after a migration, the committed enforced = true configuration ==========
+--- plan (0 = no changes)
+[exit 0]
+--- an unencrypted method injected through TF_ENCRYPTION
+Error: Unencrypted method is forbidden
+Warning: Unencrypted method configured
+[exit 1]
+bucket.tfstate: encrypted
+```
+
+| Probe | Consequence | Applied in |
+|---|---|---|
+| A9a | A plaintext state cannot be migrated into an encrypted backend without a fallback: `init -migrate-state` stops before writing anything | `landing-zone-qa` §1.3 |
+| A9b | The fallback works when it lives **only** in `TF_ENCRYPTION` (an `unencrypted` method plus a `state` block with `method` and `fallback`; a `state` block without `method` is rejected). The committed code never contains a plaintext path, and the plan with the committed configuration alone shows no changes | `landing-zone-qa` §1.2–§1.3: step 1 commits the final configuration; step 3 injects the fallback |
+| A9c–d | `enforced = true` forbids the unencrypted method even in the fallback, and `TF_ENCRYPTION` cannot relax it | `enforced = true` cannot ship in step 1 |
+| A9e | Once migrated, `enforced = true` reads the state with no changes and refuses any unencrypted method injected later through the environment | Step 4 is a one-line pull request: add `enforced = true` |
 
 ---
 

@@ -21,8 +21,8 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: ./.github/actions/setup
         with:
-          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service-account: tf-plan-${{ matrix.env == 'landing-zone' && 'lz' || matrix.env }}@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
+          identity: tf-plan
+          env: ${{ matrix.env }}
 
       - name: Detect drift and record it
         id: drift
@@ -53,8 +53,8 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: ./.github/actions/setup
         with:
-          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service-account: tf-plan-prod@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
+          identity: tf-plan
+          env: prod
 
       - name: Detect drift and record it
         id: drift

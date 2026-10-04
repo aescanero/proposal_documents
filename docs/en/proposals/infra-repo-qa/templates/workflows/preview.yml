@@ -18,10 +18,17 @@ jobs:
     outputs:
       envs: ${{ steps.envs.outputs.envs }}     # non-production and landing-zone
       prod: ${{ steps.envs.outputs.prod }}     # "true" if the PR touches prod
+      federation: ${{ steps.fed.outputs.live }}   # "false" only while ci/federation.env holds the placeholder (bootstrap PR)
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }               # change detection needs history
       - uses: ./.github/actions/setup
+
+      - name: Is the federation live? (a committed, reviewed state, never a missing variable)
+        id: fed
+        run: |
+          source ci/federation.env
+          if [[ "$GCP_LZ_PROJECT_NUMBER" =~ ^0+$ ]]; then echo live=false; else echo live=true; fi >> "$GITHUB_OUTPUT"
 
       - name: G0 — generated code is current
         run: |
@@ -58,8 +65,7 @@ jobs:
 
   plan:                                        # one job per touched environment, with its read-only identity
     needs: gates
-    # before the bootstrap there is no federation: only G0 and G1 run (landing-zone-qa §1.2)
-    if: needs.gates.outputs.envs != '[]' && vars.GCP_WIF_PROVIDER != ''
+    if: needs.gates.outputs.envs != '[]' && needs.gates.outputs.federation == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -70,8 +76,8 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: ./.github/actions/setup
         with:
-          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service-account: tf-plan-${{ matrix.env == 'landing-zone' && 'lz' || matrix.env }}@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
+          identity: tf-plan
+          env: ${{ matrix.env }}
 
       - name: Plan with sharing and mocks, this environment's stacks only
         run: terramate script run --changed --tags ${{ matrix.env }} tofu preview
@@ -94,7 +100,7 @@ jobs:
 
   plan-prod:                                   # prod: the same plan, with approval (DR7)
     needs: gates
-    if: needs.gates.outputs.prod == 'true' && vars.GCP_WIF_PROVIDER != ''
+    if: needs.gates.outputs.prod == 'true' && needs.gates.outputs.federation == 'true'
     runs-on: ubuntu-latest
     environment: prod-plan                     # tf-plan-prod@ can only be impersonated from here
     steps:
@@ -102,8 +108,8 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: ./.github/actions/setup
         with:
-          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service-account: tf-plan-prod@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
+          identity: tf-plan
+          env: prod
 
       - name: Plan with sharing and mocks, this environment's stacks only
         run: terramate script run --changed --tags prod tofu preview

@@ -380,7 +380,7 @@ Pregunta abierta **QA1**: usuarios de prueba de Entra para el DAST autenticado (
 | `edge-qa` §3 | Regla de prioridad 800: `allow` desde las IPs del NAT del entorno hacia sus hostnames; exclusiones del campo `file` en las rutas de importación de DefectDojo | Propuesto (DA7) |
 | `gke-qa` §4 | Addon `GcsFuseCsiDriver` | Propuesto (DA5) |
 | `infra-repo-qa` §5 | Workflows `appsec-infra.yml`, `appsec-deployed.yml` y `dast-active.yml`; Environment `qa-dast`; `image-mirror` copia también `trivy-db` y `trivy-java-db` | Propuesto |
-| `landing-zone-qa` §6.2 | Imágenes de DefectDojo, ZAP, Nuclei y A.I.G en `images/third-party.yaml`; identidad `image-scan@` de solo lectura | Propuesto |
+| `landing-zone-qa` §5.1, §6.2 | Imágenes de DefectDojo, ZAP, Nuclei y A.I.G en `images/third-party.yaml`; identidad de solo lectura `image-scan@`, a la que llegan los repositorios de aplicación por el proveedor `github-apps` — `github-oidc` solo admite `infra` | Propuesto |
 
 ---
 
