@@ -215,11 +215,11 @@ The third is what turns R34 into a CI failure. If the generator stops emitting a
 | Data | Source | Reaches Gatekeeper as |
 |---|---|---|
 | Mandatory labels | `registry/labels.yaml` | P1 parameters |
-| Allowed registries | Landing zone globals (Artifact Registry project and region) | P2 parameters |
+| Allowed registries | Landing zone globals: the Artifact Registry project and the repositories **of the environment's region** (`multi-environment` DX6) | P2 parameters |
 | Namespaces with special PSS | `policy-gatekeeper` values (§5.2) | P7 parameters |
 | Exceptions | `resolution.json` | Parameters written by the `exemptions` stack |
 | Owners of tainted pools | Environment binding (`cluster.node_pools[].owners`), via `resolution.json` | P11 parameters, written by the `exemptions` stack |
-| Prefixes of the project's other environments | The bindings of the environments sharing the project, via `resolution.json` | P12 parameters |
+| Prefixes of the project's other environments | The bindings of the environments sharing the project, via `resolution.json`. Names are prefix-free (G1 `environment.names`), so no prefix in the list matches this environment's own KSAs (`multi-environment` DX3) | P12 parameters |
 
 `registry-generate` generates the first three into the chart's `values.yaml` (architecture §13.8). The test of §6.2 runs on that same `values.yaml`.
 

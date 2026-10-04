@@ -683,7 +683,7 @@ output se mantengan.
 | | Qué | Quién lo aplica | Dónde se especifica |
 |---|---|---|---|
 | **0a** | **La landing zone existe.** El stack `gcp-lz-bootstrap` (bucket de estado, key ring `lz` con `tofu-state`, el pool de federación, `tf-plan-lz@`, `tf-apply-lz@`, `tf-destroy-lz@`) lo aplica **una vez por organización** una persona, con estado local, y su estado se migra al bucket; después el resto de la landing zone lo aplica el pipeline | Una persona con `organizationAdmin` y `billing.admin`, una vez; después el job `landing-zone` | `landing-zone-qa` §1 |
-| **0b** | **El entorno se da de alta en la landing zone.** Una pull request añade `environments/<env>/binding.yaml`, del que la landing zone descubre el entorno (sin una segunda lista que mantener al paso): key ring de KMS y clave `tofu-state`, el prefijo de estado, `tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@` con sus vínculos de federación, la zona delegada y el `public_id`, el bloque de direcciones del pool global, la regla de Binary Authorization y la SA de nodos del runtime. La misma pull request añade `environments/<env>/binding.yaml`. Fuera del repositorio, un administrador crea los GitHub Environments `<env>` y `<env>-destroy` con sus revisores y su política de ramas — sin variables: la identidad se deriva del entorno (`landing-zone-qa` DZ12) | El job `landing-zone` (`tf-apply-lz@`); los GitHub Environments, un administrador del repositorio | `landing-zone-qa` §10; `infra-repo-qa` |
+| **0b** | **El entorno se da de alta en la landing zone.** Una pull request añade `environments/<env>/binding.yaml`, del que la landing zone descubre el entorno (sin una segunda lista que mantener al paso): key ring de KMS y clave `tofu-state`, el prefijo de estado, `tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@` con sus vínculos de federación, la zona delegada y el `public_id`, el bloque de direcciones del pool global, la regla de Binary Authorization y la SA de nodos del runtime. De `metadata.jurisdiction` y `metadata.region` del binding deriva la carpeta y el proyecto, el bucket de estado y la ubicación del key ring (`multi-environment` DX6). La misma pull request añade `environments/<env>/binding.yaml`. Fuera del repositorio, un administrador crea los GitHub Environments `<env>` y `<env>-destroy` con sus revisores y su política de ramas — sin variables: la identidad se deriva del entorno (`landing-zone-qa` DZ12) | El job `landing-zone` (`tf-apply-lz@`); los GitHub Environments, un administrador del repositorio | `landing-zone-qa` §10; `infra-repo-qa` |
 
 La identidad propia del entorno no puede hacer ninguna de las dos: no existe antes de 0b, y después no tiene ningún rol sobre la landing zone. Solo cuando ambas están hechas se ejecuta la secuencia de abajo — desde `first-deploy`, un workflow manual ligado al Environment `<env>`, que escribe el primer marcador de deploy del entorno (§14.2).
 
@@ -2931,23 +2931,26 @@ Cualquier nombre que salga para el destroy, con la lista. Destruir el productor 
 Las demos son el caso arquetípico de los entornos compartidos, y deberían expirar.
 
 ```
-stacks/platforms/gcp/
-├── demos/          # de larga duración, siempre encendido
-└── ephemeral/
-    ├── conf-2026-q3/     # creado para un evento, destruido después
-    └── poc-disasterproject/
+environments/
+├── demos/binding.yaml                     # de larga duración, siempre encendido
+├── ephemeral-conf-2026-q3/binding.yaml    # creado para un evento, destruido después
+└── ephemeral-poc-disasterproject/binding.yaml
 ```
 
-Una plataforma efímera se crea copiando `demos/` y cambiando tres globals (`env`, `project_id`, `vpc_cidr`). Un workflow programado lista los stacks cuyo tag `ExpiresOn` está en el pasado y abre una PR de destroy — nunca destruyendo automáticamente, siempre con un humano aprobando.
+Una plataforma efímera es un binding, como cualquier entorno (§12.8): puede partir del binding de `demos`, pero no se copia nada de sus stacks. Su nombre es libre de prefijo frente a todos los demás, su rango sale del ledger, su proyecto de su jurisdicción, y todos los demás nombres se derivan; lleva `metadata.expiresOn`. Un workflow programado lee los bindings, no los stacks, y abre una PR de destroy por cada uno cuya fecha haya pasado — nunca destruyendo automáticamente, siempre con un humano aprobando.
 
 ```bash
-terramate list --tags ephemeral --json \
-  | jq -r '.stacks[] | select(.tags[] | startswith("expires:")) | .id'
+today=$(date -u +%F)
+for b in environments/ephemeral-*/binding.yaml; do
+  [ -e "$b" ] || continue                       # ningún entorno efímero: nada que caducar, dicho explícitamente
+  exp=$(yq '.metadata.expiresOn' "$b")
+  if [[ "$exp" < "$today" ]]; then echo "$(yq '.metadata.name' "$b") expired $exp"; fi
+done
 ```
 
 ### 12.6 Promoción entre entornos
 
-La promoción es un **diff de globals**, no un diff de código. Los mismos generadores y contratos aplican en todas partes; solo difiere `config.tm.hcl`.
+La promoción es un **diff de binding**, no un diff de código. Los mismos generadores y contratos aplican en todas partes; solo difiere el binding, y lo que se deriva de él (§12.8). Los entornos pueden diferir además en composición y región: la tabla compara lo que comparten.
 
 | Global | demos | dev | qa | prod |
 |---|---|---|---|---|
@@ -2974,6 +2977,19 @@ terramate run --changed -- tofu show -json              # inventario físico, po
 El modelo completo — disposición de ficheros, los tres niveles, los tipos de arista extraídos estáticamente de los bloques `input`, y el conteo de referencias que protege a una plataforma compartida del desmontaje de una instancia — está especificado en el documento complementario, `archetype-model.md` §11. No se repite aquí.
 
 En resumen: la mitad **declarada** (stacks, aristas, claims) se genera y se comprueba en la pull request, en `main`; la mitad **observada** (`lastApply`, `resourceCount`, salidas no sensibles, drift) se escribe tras cada apply en la rama `cmdb-observed` con el workflow reutilizable de §14.2; el modelo de lectura es un asset de release privado, `cmdb-latest`. El ejemplo desarrollado para un entorno es la propuesta `cmdb-qa`.
+
+### 12.8 Muchos entornos, muchas regiones
+
+Los entornos no son copias unos de otros: difieren en composición, proveedor por capacidad, versión, tamaño, región y jurisdicción, y comparten generadores, contratos, convenciones y reglas (propuesta `multi-environment`).
+
+| Regla | Qué significa |
+|---|---|
+| Un entorno es su binding | `environments/<env>/binding.yaml` es el único fichero escrito a mano. Los nombres que no son claims se derivan de `global.env` y `global.region` en `imports/platform/environment.tm.hcl`; los rangos salen del ledger; un entorno solo tiene los stacks de lo que enlaza, y un módulo de plataforma nunca nombra a un consumidor |
+| Jurisdicción, después región | `metadata.jurisdiction` elige la carpeta (con su `gcp.resourceLocations`), el proyecto no productivo y el bucket de estado; `metadata.region`, una de las regiones de la jurisdicción, sitúa los recursos del entorno y su key ring. La landing zone enumera las jurisdicciones una vez, en `global.lz.jurisdictions` |
+| Compartido, por región | Un registro de imágenes regional por región distinta de los bindings, en el proyecto de la landing zone; promover entre regiones es una copia por digest |
+| Nombres | Los nombres de entorno son libres de prefijo; el entorno nunca se extrae del id de un stack; toda comparación de prefijo lleva su separador (`europe-west1` es prefijo de `europe-west10`) |
+| Valores por defecto | Ningún default de chart o módulo es el valor de un entorno real: un override que falta debe fallar en el primer entorno, no crear en el segundo los nombres del primero |
+| Comprobaciones | G1 `environment.names` y `environment.placement`; G3 `terraform.own_location` y `terraform.own_network` (§13.3, §13.4) |
 
 ## 13. Validación de políticas y seguridad
 
@@ -3062,20 +3078,58 @@ package terramate.order
 
 import rego.v1
 
-env_of(id) := split(id, "-")[1]
-
 # La arista ascendente (AM §3): <cloud>-<env>-edge lee el NEG por su nombre determinista, un global,
 # así que ningún `input` respalda su `after` y la regla de R2 de arriba no lo ve.
+# El entorno nunca se extrae del id (los nombres pueden llevar "-"): el borde y los proxies
+# de un mismo entorno comparten todo lo que precede a su sufijo.
 deny contains msg if {
     some edge in input.stacks
     endswith(edge.id, "-edge")
     some proxy in input.stacks
     endswith(proxy.id, "-gateway-proxy")
-    env_of(proxy.id) == env_of(edge.id)
+    trim_suffix(proxy.id, "-gateway-proxy") == trim_suffix(edge.id, "-edge")
     not proxy.id in edge.after_ids
     msg := sprintf("%q referencia el NEG de %q pero no se ejecuta después (arista ascendente, AM §3)", [edge.id, proxy.id])
 }
 ```
+
+Los fixtures emparejan dos entornos en los que un nombre es prefijo del otro, que la forma anterior de la regla (`split(id, "-")[1]`) resolvía mal en los dos sentidos:
+
+```rego
+package terramate.order_test
+
+import rego.v1
+import data.terramate.order
+
+stack(id, after) := {"id": id, "after_ids": after}
+
+# Dos entornos, uno con "-" en el nombre y el otro prefijo de él.
+wired := [
+    stack("gcp-sandbox-gateway-proxy", []),
+    stack("gcp-sandbox-edge", ["gcp-sandbox-gateway-proxy"]),
+    stack("gcp-sandbox-eu-gateway-proxy", []),
+    stack("gcp-sandbox-eu-edge", ["gcp-sandbox-eu-gateway-proxy"]),
+]
+
+test_two_environments_pass if count(order.deny) == 0 with input as {"stacks": wired}
+
+test_missing_after_fails if {
+    count(order.deny) == 1 with input as {"stacks": [
+        stack("gcp-sandbox-eu-gateway-proxy", []),
+        stack("gcp-sandbox-eu-edge", []),
+    ]}
+}
+
+test_cross_environment_after_fails if {
+    count(order.deny) == 1 with input as {"stacks": [
+        stack("gcp-qa-gateway-proxy", []),
+        stack("gcp-x-gateway-proxy", []),
+        stack("gcp-x-edge", ["gcp-qa-gateway-proxy"]),
+    ]}
+}
+```
+
+Tres reglas más de G1 vienen de llevar muchos entornos (`multi-environment` DX3, DX5): `environment.names` (ningún `<nombre>-` de un entorno es prefijo del de otro), `environment.placement` (la jurisdicción existe, la región es una de las suyas, el proyecto es el de la jurisdicción) y una guarda que falla con un `from_stack_id = "<cloud>-` literal en cualquier parte de `imports/`.
 
 ```rego
 package terramate.contracts
@@ -3246,7 +3300,7 @@ terramate run --changed -- \
 
 conftest test --policy policy/ --data registry/registry.json --data env.json \
   --namespace terraform.public_names --namespace terraform.own_network \
-  plan.json                                          # un --namespace por paquete de G3
+  --namespace terraform.own_location plan.json       # un --namespace por paquete de G3
 ```
 
 `--namespace` coincide con un paquete **exactamente**: `--namespace terraform` no coincide con ningún `package terraform.public_names` y el paso pasa con `0 tests` (medido, conftest 0.70.1). G3 nombra cada uno de sus paquetes, en lugar de `--all-namespaces`, para que las reglas de G1 no se ejecuten sobre un plan; y lleva la misma salvaguarda de cero reglas que G1 (§14.4).
@@ -3292,7 +3346,7 @@ deny contains msg if {
 }
 ```
 
-`terraform.own_network` mantiene los recursos de red y DNS de un entorno en su propia VPC. En el proyecto non-prod compartido, `compute.networkAdmin` alcanza todas las VPC del proyecto, y nada en IAM impide hacer visible una zona privada a la VPC de otro entorno (`network-qa` DW8). Corre sobre los stacks de entorno; los planes de la landing zone tienen sus propias reglas (`landing-zone-qa` §11.1). `env.json` se escribe por stack desde los globals (`{"env": {"name": "qa", "network": "projects/<proyecto>/global/networks/qa"}}`):
+`terraform.own_network` mantiene los recursos de red y DNS de un entorno en su propia VPC. En el proyecto non-prod compartido, `compute.networkAdmin` alcanza todas las VPC del proyecto, y nada en IAM impide hacer visible una zona privada a la VPC de otro entorno (`network-qa` DW8). Corre sobre los stacks de entorno; los planes de la landing zone tienen sus propias reglas (`landing-zone-qa` §11.1). `env.json` se escribe por stack desde los globals (`{"env": {"name": "qa", "region": "europe-west1", "network": "projects/<proyecto>/global/networks/qa"}}`):
 
 ```rego
 package terraform.own_network
@@ -3336,6 +3390,36 @@ deny contains msg if {
     zone := object.get(r.values, "managed_zone", r.values.name)
     not startswith(zone, prefix)
     msg := sprintf("%s: zone %q does not carry the prefix %q (network-qa DW8)", [r.address, zone, prefix])
+}
+```
+
+`terraform.own_location` mantiene los recursos regionales de un entorno en su región (`multi-environment` DX5). `gcp.resourceLocations` impide que un recurso salga de la jurisdicción; dentro de ella, solo esta regla distingue una región de otra. La comparación lleva el separador, porque `europe-west1` es prefijo de `europe-west10`:
+
+```rego
+package terraform.own_location
+
+import data.terraform.public_names.resources
+
+region := data.env.region
+
+# Dónde dice vivir un recurso: region, location o zone, en minúsculas (los buckets responden "EUROPE-WEST1").
+located contains [r.address, lower(v)] if {
+    some r in resources
+    some k in ["region", "location", "zone"]
+    v := r.values[k]
+    is_string(v)
+}
+
+# La propia región o una de sus zonas; europe-west10 no está en europe-west1.
+in_region(loc) if loc == region
+in_region(loc) if startswith(loc, sprintf("%s-", [region]))
+
+# Los recursos globales (el balanceador, Cloud Armor, DNS) no tienen región que equivocar.
+deny contains msg if {
+    some [addr, loc] in located
+    loc != "global"
+    not in_region(loc)
+    msg := sprintf("%s: located in %q, outside the environment's region %q (multi-environment DX5)", [addr, loc, region])
 }
 ```
 
@@ -3838,7 +3922,7 @@ terramate debug show metadata | jq -Rn '
 
 ## 15. Registro de riesgos
 
-El registro completo — 66 riesgos agrupados por dominio (63 activos; R28 retirado como duplicado de R26, R38 y R39 retirados con el endpoint DNS del plano de control), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
+El registro completo — 69 riesgos agrupados por dominio (66 activos; R28 retirado como duplicado de R26, R38 y R39 retirados con el endpoint DNS del plano de control), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
 
 Los cinco sobre los que actuar primero:
 

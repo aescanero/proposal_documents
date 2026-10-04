@@ -1,0 +1,31 @@
+flowchart TB
+    subgraph ORG["Organización"]
+        direction TB
+        subgraph PLAT["carpeta platform · disasterproject-lz · resourceLocations = unión"]
+            direction LR
+            LZ["global.lz.region<br/>ring lz · estado de la landing zone<br/>federación · identidades del pipeline"]
+            REG["Registro regional por región de entorno<br/>europe-west1-docker.pkg.dev<br/>us-central1-docker.pkg.dev"]
+            RINGS["Key ring por entorno<br/>en la región del entorno<br/>qa → europe-west1 · lab → us-central1"]
+        end
+        subgraph EU["carpeta eu · resourceLocations = regiones de eu"]
+            direction LR
+            EUS[("estado eu<br/>disasterproject-tfstate-gcp")]
+            subgraph EUNP["nonprod · disasterproject-nonprod"]
+                QA["qa · europe-west1"]
+                DEV["dev · europe-west1"]
+            end
+            EUP["prod · su proyecto"]
+        end
+        subgraph US["carpeta us · resourceLocations = regiones de us"]
+            direction LR
+            USS[("estado us<br/>disasterproject-tfstate-gcp-us")]
+            subgraph USNP["nonprod · disasterproject-nonprod-us"]
+                LAB["lab · us-central1"]
+            end
+        end
+    end
+    B["environments/*/binding.yaml<br/>jurisdiction · region · composición"] -->|descubre| PLAT
+    QA -. estado .-> EUS
+    LAB -. estado .-> USS
+    QA -. pull misma región .-> REG
+    LAB -. pull misma región .-> REG

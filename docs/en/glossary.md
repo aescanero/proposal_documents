@@ -362,8 +362,11 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 | **Tag-scoped destroy** | The mandated shared-environment teardown (`terramate run --tags instance/<name> --reverse ...`) — never a path/`--changed`-based selector, which could sweep in platform stacks. |
 | **`protected` tag** | Marks platform stacks so CI refuses to destroy them outside a break-glass workflow. |
 | **Reference counting (platform destroy)** | Counting instances still bound to a shared platform before allowing the platform itself to be destroyed. |
-| **Ephemeral environment** (`ephemeral-*`) | A short-lived platform (e.g. `ephemeral/conf-2026-q3`) created by copying `demos/` and changing three globals (`env`, `project_id`, `vpc_cidr`); expiry handled via a human-approved destroy PR, never automatic. |
-| **Environment promotion (globals diff)** | Moving config from `demos` → `dev` → `qa` → `prod` is purely a change in `config.tm.hcl` globals values (node counts, release channel, deletion protection, backup retention) — identical generators and contracts everywhere. |
+| **Ephemeral environment** (`ephemeral-*`) | A short-lived platform (e.g. `ephemeral-conf-2026-q3`): a binding like any other, with `metadata.expiresOn`, never a copy of `demos/`'s stacks; expiry handled via a human-approved destroy PR, never automatic. |
+| **Environment promotion (globals diff)** | Moving config from `demos` → `dev` → `qa` → `prod` is purely a change in binding values (node counts, release channel, deletion protection, backup retention) — identical generators and contracts everywhere. |
+| **Jurisdiction** (`metadata.jurisdiction`) | The territory an environment's data does not leave (`eu`, `us`). It selects the folder with its `gcp.resourceLocations`, the non-production project and the state bucket; the region is one of its regions. Listed once, in the landing zone's `global.lz.jurisdictions` (`multi-environment` DX4). |
+| **Prefix-free environment names** | No environment's `<name>-` is a prefix of another's: `sandbox` and `sandbox-eu` cannot coexist, because `<env>-` is the boundary for KSAs, DNS zones and resources in a shared project. Checked by G1 `environment.names` (`multi-environment` DX3). |
+| **An environment is its binding** | The only file written by hand per environment; names that are not claims are derived from `global.env` and `global.region`, ranges come from the ledger, and the stack tree holds only what the binding binds (`multi-environment` DX1). |
 | **CMDB integration (Terramate)** | `ci/stacks-json.sh` (logical, pre-apply inventory; Terramate 0.17 has no `list --json`) and `terramate run --changed -- tofu show -json` (physical, post-apply inventory) as CMDB data sources — better than parsing state files directly. |
 
 ---
@@ -378,7 +381,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 | **G0 — generation integrity** | `terramate generate && git diff --exit-code` on every PR; always blocking. Prevents a hand-edit to `_main.tf` being silently reverted. |
 | **G1 — structure and composition** | `conftest test --all-namespaces --policy policy/ --data registry/registry.json ...` on every PR; always blocking, and failing when it evaluated zero rules. Enforces the `input`↔`after` ordering invariant (R2), the upward edge, stack-naming conventions, instance tagging, the no-secret-output rule, consumed outputs that exist (R6) and mock shapes. |
 | **G2 — static security scan** | `checkov -d . --framework terraform` on every PR; blocking on HIGH/CRITICAL. Sees the module *call*. |
-| **G3 — plan scan** | `checkov -f plan.json --framework terraform_plan` + `conftest --namespace terraform.<package>` (exact package names: `public_names`, `own_network`), run before apply; blocking on HIGH/CRITICAL. Sees the module *result*, catching misconfigurations reachable only with a particular globals combination. |
+| **G3 — plan scan** | `checkov -f plan.json --framework terraform_plan` + `conftest --namespace terraform.<package>` (exact package names: `public_names`, `own_network`, `own_location`), run before apply; blocking on HIGH/CRITICAL. Sees the module *result*, catching misconfigurations reachable only with a particular globals combination. |
 | **Checkov** | Static/plan IaC security scanner; the "standard library" of known cloud misconfiguration checks, complementary to OPA/Rego (which encodes platform-specific rules Checkov cannot express). Config in `.checkov/gcp.yaml`, `.checkov/aws.yaml`. |
 | **conftest** | Stateless CLI policy tool consuming `registry/registry.json` as `--data`, always with `--all-namespaces`; chosen for CI policy checks instead of running an OPA server. |
 | **check-jsonschema** | CLI tool validating manifests, component files, environment bindings and pool ledgers against JSON Schemas before resolution runs. |
@@ -552,7 +555,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 
 ---
 
-## 26. Risk register (`risk-register.md`) — 66 risks by domain (63 active)
+## 26. Risk register (`risk-register.md`) — 69 risks by domain (66 active)
 
 Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mitigation tied to a document section.
 
@@ -610,6 +613,7 @@ Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mi
 | **R61–R62** | Landing zone in an adopted project: state readable through project-level grants; a name already taken in a shared project. See `risk-register.md`. |
 | **R63–R64** | An IAM-administration bound out of step with its role list; orphan authorised networks in the `/32`-per-job control-plane variant. See `risk-register.md`. |
 | **R65–R66** | In the shared non-prod project, one environment's network or DNS resource bound to another's; VPC egress denied by default blocking a legitimate flow, the environment's own range above all. See `risk-register.md`. |
+| **R67–R69** | Many environments: names that are a prefix of others, or an environment parsed out of a stack id; a resource outside its environment's region or jurisdiction; a default equal to a real environment's value. See `risk-register.md`. |
 
 **Top five risks** (ranked by likelihood × impact, mitigation not yet in place): 1) R2 (missing `after`), 2) R12 (wildcard OIDC `sub`), 3) R26 (pod range sized for too few nodes), 4) R34 (registry drift), 5) R5 (shared platform destroyed by instance teardown).
 

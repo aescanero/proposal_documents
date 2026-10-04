@@ -152,7 +152,7 @@ Herramientas de plataforma sin cambios: Terramate, OpenTofu, conftest, Checkov.
 | `runAsNonRoot`, `seccompProfile: RuntimeDefault`, `drop: [ALL]`, `allowPrivilegeEscalation: false` | `securityContext` y `containerSecurityContext` explícitos |
 | Etiquetas obligatorias (`registry/labels.yaml`) | Emitidas por el generador en namespace y workload |
 | `readOnlyRootFilesystem` (si hay constraint) | `emptyDir` en `temp` y `logs`; verificar qué más escribe (V2) |
-| Imágenes solo de registros permitidos | `europe-docker.pkg.dev/<proyecto>/…` por digest |
+| Imágenes solo de registros permitidos | `europe-west1-docker.pkg.dev/<proyecto>/…` por digest |
 
 Si SonarQube no puede correr con raíz de solo lectura, la salida es una excepción por nombre a la regla P3 para el `StatefulSet` `sonarqube`, declarada en `admission_exceptions` del manifiesto con su justificación y fecha de revisión, y generada por el stack `exemptions` (propuesta de Gatekeeper §5.1) — nunca relajar la regla para todo `qa`.
 

@@ -132,7 +132,7 @@ The proxy runs as a **native sidecar** (`initContainers` with `restartPolicy: Al
 sonarqube:
   initContainers:                      # or extraInitContainers, depending on the chart version
     - name: cloud-sql-proxy
-      image: europe-docker.pkg.dev/disasterproject-lz/platform/cloud-sql-proxy@sha256:<digest>
+      image: europe-west1-docker.pkg.dev/disasterproject-lz/third-party/cloud-sql-proxy@sha256:<digest>
       restartPolicy: Always            # native sidecar
       args:
         - --private-ip

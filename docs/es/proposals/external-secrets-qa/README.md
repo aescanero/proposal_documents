@@ -124,7 +124,7 @@ processClusterStore: false                 # §3.3
 processClusterExternalSecret: false
 processPushSecret: false
 image:
-  repository: europe-docker.pkg.dev/disasterproject-lz/platform/external-secrets
+  repository: europe-west1-docker.pkg.dev/disasterproject-lz/third-party/external-secrets
   tag: "@sha256:<digest>"
 resources:
   requests: { cpu: 50m, memory: 128Mi }

@@ -131,7 +131,7 @@ The exhausted-ports alert (`nat/dropped_sent_packets_count` with reason `OUT_OF_
 | Private zone | Records |
 |---|---|
 | `googleapis.com.` | `private.googleapis.com.` A `199.36.153.8`–`.11`; `*.googleapis.com.` CNAME `private.googleapis.com.` |
-| `pkg.dev.` | Apex `A` to the four VIPs; `*.pkg.dev.` CNAME `pkg.dev.` — Artifact Registry (`europe-docker.pkg.dev`) for node pulls |
+| `pkg.dev.` | Apex `A` to the four VIPs; `*.pkg.dev.` CNAME `pkg.dev.` — Artifact Registry (`europe-west1-docker.pkg.dev`) for node pulls |
 | `gcr.io.` | Apex `A` to the four VIPs; `*.gcr.io.` CNAME `gcr.io.` — GKE system images still served from there **(verify, VW1)** |
 
 A `CNAME` cannot sit at a zone's apex, and `gcr.io` itself is a registry host (`gcr.io/<project>/<image>`), so the apex carries the `A` records and the wildcard points at the apex of its own zone. Every name in the three zones resolves to the four VIPs, and each zone resolves without depending on another.
@@ -307,7 +307,7 @@ assert {
 
 | # | Verification | Result that closes it |
 |---|---|---|
-| VW1 | Private zones `googleapis.com`, `pkg.dev`, `gcr.io` | From a pod: `secretmanager.googleapis.com` resolves to `199.36.153.8/30` and ESO syncs with the `NetworkPolicy` applied; nodes pull images from `europe-docker.pkg.dev` and GKE's system images |
+| VW1 | Private zones `googleapis.com`, `pkg.dev`, `gcr.io` | From a pod: `secretmanager.googleapis.com` resolves to `199.36.153.8/30` and ESO syncs with the `NetworkPolicy` applied; nodes pull images from `europe-west1-docker.pkg.dev` and GKE's system images |
 | VW2 | NAT with dynamic allocation under load | A burst of 1000 outbound connections from one node with no packets dropped for `OUT_OF_RESOURCES` |
 | VW3 | PSA reachable from the pod range | The Cloud SQL proxy connects from a pod (= VC1 and VC9 of the Cloud SQL variant) |
 | VW4 | `qa.internal` | Resolves from a pod and from a VM in the VPC; not from outside |

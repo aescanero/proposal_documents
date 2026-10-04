@@ -307,7 +307,7 @@ docker buildx imagetools create -t registry/orders-worker:2.5.0 registry/orders-
 | Property | Value |
 |---|---|
 | Time | 200–500 ms per service — a manifest copy inside the registry |
-| Bytes transferred | zero. No layer is pulled or pushed |
+| Bytes transferred | zero. No layer is pulled or pushed. Between environments in **different regions** each region has its own registry, and promotion is a copy by digest (`crane copy`): the digest and the signatures are kept, the bytes travel (`multi-environment` DX6) |
 | Digest | **unchanged**, so the cosign signature, the SBOM and the provenance attestation still verify |
 | Alternative (rebuild) | 2–6 min per service, **and a different digest** — which silently breaks the promise that prod runs what qa ran |
 

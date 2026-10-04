@@ -77,7 +77,7 @@ El procedimiento de los pasos 2 y 3 se guarda en el repositorio de despliegue co
 |---|---|---|
 | Proyecto | `disasterproject-lz` | Directamente bajo la organización, no en una carpeta: así ningún stack posterior lo mueve y cambia su herencia de org policies. Cuenta de facturación de la organización |
 | APIs | `storage`, `cloudkms`, `iam`, `iamcredentials`, `sts`, `cloudresourcemanager`, `serviceusage`, `cloudbilling`, `orgpolicy` | Las que usan los propios pasos 2–6. Las de los proyectos de entorno las habilita `gcp-lz-projects` (§2.1) |
-| Bucket de estado | `disasterproject-tfstate-gcp` | `europe-west1`; acceso uniforme; *public access prevention* forzada; versionado, versiones anteriores 30 días; `prevent_destroy` |
+| Bucket de estado | `disasterproject-tfstate-gcp` | `europe-west1`; acceso uniforme; *public access prevention* forzada; versionado, versiones anteriores 30 días; `prevent_destroy`. Es el bucket de la jurisdicción `eu`: cada jurisdicción tiene el suyo, en una de sus regiones (`multi-environment` DX4) |
 | Auditoría de lecturas del estado | `google_project_iam_audit_config` en `disasterproject-lz`, servicio `storage.googleapis.com`, `DATA_READ` y `DATA_WRITE` | Responde *quién leyó el estado*: Cloud Audit Logs, que ningún ajuste del bucket puede desactivar. **No** el access logging de GCS: exige conceder el bucket a `group:cloud-storage-analytics@google.com`, que `iam.allowedPolicyMemberDomains` (§3.1) prohíbe; sin esa concesión un bloque `logging` queda configurado e inerte — nunca se escribe un log y el código parece correcto |
 | Key ring y clave | `lz` / `tofu-state` | `europe-west1`; rotación 90 días; `prevent_destroy`. Los key rings de entorno los crea `gcp-lz-kms` (§4) |
 | Pool y proveedor de federación | `gh-disasterproject-infra` / `github-oidc` | `attribute_condition` sobre el repositorio **y** el `repository_owner_id` numérico (arquitectura §11.2); mapeo de `repository`, `environment` y `ref` |
@@ -253,6 +253,8 @@ Cada fila es una consecuencia declarada de antemano en lugar de descubierta en e
 
 Las org policies se aplican por carpeta (§3), así que `nonprod` y `prod` pueden diferir sin repetir la lista.
 
+**Jurisdicciones.** Las carpetas `nonprod` y `prod` de arriba son las de la jurisdicción `eu`, bajo una carpeta `eu` que lleva su `gcp.resourceLocations`. Otra jurisdicción es otra carpeta con sus propias `nonprod` y `prod`, su proyecto no productivo y su bucket de estado, todo leído de `global.lz.jurisdictions`, la única lista de ellas (`multi-environment` DX4). `disasterproject-lz` sigue en `platform` y aloja lo que comparten todas las jurisdicciones: rings, registros regionales, federación.
+
 **Cuando el proyecto non-prod llegue a un límite** (cuotas de CPU, de IPs, de SAs por proyecto), se añade `disasterproject-nonprod-2` en la misma carpeta y los entornos nuevos van allí; ninguno se reparte entre dos proyectos (`CLAUDE.md`). El binding del entorno ya lleva `platform.project_id`, así que moverlo es cambiar ese valor y reconstruir, no rediseñar.
 
 ### 2.1 APIs del proyecto non-prod
@@ -280,7 +282,7 @@ Las que lista `network-qa` §1.1, habilitadas por el stack `gcp-lz-projects` con
 | `sql.restrictPublicIp` | Enforce | `nonprod`, `prod` | Cloud SQL solo por PSA |
 | `storage.publicAccessPrevention` | Enforce | Todas | Ningún bucket público, tampoco el de estado |
 | `storage.uniformBucketLevelAccess` | Enforce | Todas | IAM de bucket con condiciones por prefijo (§5.1) |
-| `gcp.resourceLocations` | `in:europe-west1-locations` (y `global` para lo que no es regional) | Todas | Residencia; además KMS y buckets deben coincidir con el cluster (E1 §4.14) |
+| `gcp.resourceLocations` | Las regiones de la jurisdicción — `in:europe-west1-locations` para `eu` — y `global` para lo que no es regional | La carpeta de cada jurisdicción; `platform`, con la unión de todas | Residencia; además KMS y buckets deben coincidir con el cluster (E1 §4.14; `multi-environment` DX4) |
 | `cloudkms.minimumDestroyScheduledDuration` | 30 días | `platform` | Ventana de rescate de una versión de clave (E1 §4.14) |
 | `run.allowedIngress` | `internal-and-cloud-load-balancing` | `nonprod`, `prod` | R14; ver §3.2 |
 
@@ -306,7 +308,7 @@ El diseño de E1 §4.14 se aplica tal cual; aquí queda dónde y quién.
 | Pieza | Valor |
 |---|---|
 | Proyecto | `disasterproject-lz` |
-| Key ring | Uno por entorno: `qa`, en `europe-west1` (la clave de etcd debe estar en la ubicación del cluster). Más `lz`, del bootstrap |
+| Key ring | Uno por entorno, **en la región de ese entorno** (la clave de etcd debe estar en la ubicación del cluster, y un ring tiene una sola ubicación): `qa` en `europe-west1`. Más `lz`, del bootstrap, en `global.lz.region` |
 | Claves de `qa` | `tofu-state`, `gke-secrets`, `cosign` (E1 §4.14). Las opcionales `gcs-cmek` y `secrets-cmek` no se crean en `qa` |
 | Grants | Sobre **cada clave**, nunca sobre el key ring ni el proyecto: `tofu-state` → `tf-plan-qa@`, `tf-apply-qa@`, `tf-destroy-qa@`; `gke-secrets` → agente de GKE de `disasterproject-nonprod`; `cosign` → identidad del build |
 | Protección | `prevent_destroy`; ninguna identidad de entorno tiene `cloudkms.admin`; destrucción de versiones con 30 días mínimos (§3.1) |
@@ -364,7 +366,7 @@ Una cuenta de persona con `organizationAdmin`, sin uso diario, con alerta en cad
 | `third-party` | Copias por digest de imágenes de terceros: SonarQube, Keycloak, CNPG y su catálogo, Cloud SQL Auth Proxy, Envoy, Gatekeeper… | `image-mirror@` | SA de nodos de cada entorno |
 | `charts` | Charts OCI propios de los arquetipos | `image-build@` | `tf-apply-<env>@` |
 
-En `europe-docker.pkg.dev`, dentro del perímetro de la zona privada `pkg.dev` de cada VPC (`network-qa` §4). Gatekeeper P2 solo admite imágenes de estos repositorios y por digest.
+Un juego por región distinta de los bindings, en `<region>-docker.pkg.dev/disasterproject-lz/` (`europe-west1-docker.pkg.dev` para `qa`) — nunca una ubicación multirregión como `europe-docker.pkg.dev`, que `gcp.resourceLocations` prohíbe. La SA de nodos de cada entorno lee los repositorios de su región; la réplica copia el mismo digest a cada región (`multi-environment` DX6). Dentro del perímetro de la zona privada `pkg.dev` de cada VPC (`network-qa` §4). Gatekeeper P2 solo admite imágenes de estos repositorios y por digest.
 
 ### 6.2 Copia de imágenes de terceros
 
@@ -453,8 +455,8 @@ assert {
   message   = "landing-zone: solo prod vive en disasterproject-prod (CLAUDE.md)"
 }
 assert {
-  assertion = tm_alltrue([for k in global.lz.kms_keys : k.location == "europe-west1"])
-  message   = "landing-zone: claves en europe-west1 — la de etcd debe estar en la ubicación del cluster (E1 §4.14)"
+  assertion = tm_alltrue([for k in global.lz.kms_keys : k.location == (k.ring == "lz" ? global.lz.region : global.lz.env_regions[k.ring])])
+  message   = "landing-zone: cada key ring en la región de su dueño — la clave de etcd de un entorno debe estar en la ubicación de su cluster (E1 §4.14)"
 }
 ```
 

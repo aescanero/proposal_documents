@@ -131,7 +131,7 @@ La alerta de puertos agotados (`nat/dropped_sent_packets_count` con motivo `OUT_
 | Zona privada | Registros |
 |---|---|
 | `googleapis.com.` | `private.googleapis.com.` A `199.36.153.8`–`.11`; `*.googleapis.com.` CNAME `private.googleapis.com.` |
-| `pkg.dev.` | `A` en el apex a los cuatro VIP; `*.pkg.dev.` CNAME `pkg.dev.` — Artifact Registry (`europe-docker.pkg.dev`) para los pulls de los nodos |
+| `pkg.dev.` | `A` en el apex a los cuatro VIP; `*.pkg.dev.` CNAME `pkg.dev.` — Artifact Registry (`europe-west1-docker.pkg.dev`) para los pulls de los nodos |
 | `gcr.io.` | `A` en el apex a los cuatro VIP; `*.gcr.io.` CNAME `gcr.io.` — imágenes de sistema de GKE que aún se sirven desde ahí **(verificar, VW1)** |
 
 Un `CNAME` no puede estar en el apex de una zona, y `gcr.io` es en sí un host de registro (`gcr.io/<proyecto>/<imagen>`), así que el apex lleva los registros `A` y el comodín apunta al apex de su propia zona. Todo nombre de las tres zonas resuelve a los cuatro VIP, y cada zona resuelve sin depender de otra.
@@ -307,7 +307,7 @@ assert {
 
 | # | Verificación | Resultado que la cierra |
 |---|---|---|
-| VW1 | Zonas privadas `googleapis.com`, `pkg.dev`, `gcr.io` | Desde un pod: `secretmanager.googleapis.com` resuelve a `199.36.153.8/30` y ESO sincroniza con la `NetworkPolicy` aplicada; los nodos descargan imágenes de `europe-docker.pkg.dev` y de las imágenes de sistema de GKE |
+| VW1 | Zonas privadas `googleapis.com`, `pkg.dev`, `gcr.io` | Desde un pod: `secretmanager.googleapis.com` resuelve a `199.36.153.8/30` y ESO sincroniza con la `NetworkPolicy` aplicada; los nodos descargan imágenes de `europe-west1-docker.pkg.dev` y de las imágenes de sistema de GKE |
 | VW2 | NAT con asignación dinámica bajo carga | Ráfaga de 1000 conexiones salientes desde un nodo sin paquetes descartados por `OUT_OF_RESOURCES` |
 | VW3 | PSA alcanzable desde el rango de pods | El proxy de Cloud SQL conecta desde un pod (= VC1 y VC9 de la variante Cloud SQL) |
 | VW4 | `qa.internal` | Resuelve desde un pod y desde una VM de la VPC; no desde fuera |

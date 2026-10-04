@@ -431,7 +431,7 @@ capacity:
 | Stack | Contenido | Entradas por sharing |
 |---|---|---|
 | `controller` | Namespace `envoy-gateway-system` (PSS `restricted`); `helm_release` de los CRDs (canal estándar, `keep`) y del controlador de Envoy Gateway (§5.3); `Certificate` xDS; `NetworkPolicy` (§9.3); los `ConstraintTemplate` de los kinds de Gateway API y de Envoy Gateway | `cluster_endpoint`, `cluster_ca` |
-| `proxy` | Chart propio con `GatewayClass` `envoy-qa`, `EnvoyProxy` `edge-proxy`, `Gateway` `qa`, `ClientTrafficPolicy`, `BackendTrafficPolicy` por defecto, HPA, PDB y los `Constraint` de §9.2; `prevent_destroy` sobre el `helm_release` | `cluster_*` |
+| `proxy` | Chart propio con `GatewayClass` `envoy-<env>` (`envoy-qa` aquí, pasada por el generador; los defaults del chart son neutros, `multi-environment` DX2), `EnvoyProxy` `edge-proxy`, `Gateway` `qa`, `ClientTrafficPolicy`, `BackendTrafficPolicy` por defecto, HPA, PDB y los `Constraint` de §9.2; `prevent_destroy` sobre el `helm_release` | `cluster_*` |
 
 **Por qué dos stacks.** Un upgrade de Envoy Gateway es rutinario. Borrar el Gateway, no: borra el Service, el controlador de NEG borra `eg-qa-neg` y el GLB se queda sin backends, con el entorno entero fuera de servicio. Con los stacks separados, un PR de versión nunca planifica un cambio sobre el Gateway, y destruirlo exige un PR explícito que quite `prevent_destroy`. Es el mismo razonamiento que la CA de cert-manager §8.2.
 
