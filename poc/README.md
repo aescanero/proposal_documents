@@ -37,6 +37,7 @@ See RESULTS.md → "Why a harness".
 | `stacks/consumer-inherited/` | A1 — `from_stack_id = global.producer_id`, ordered by literal path |
 | `stacks/consumer-interpolated/` | A2 — `from_stack_id = "${global.env}-producer"`, ordered by `tag:producer` |
 | `cases/` | Fixtures probed one at a time by the harness, see below |
+| `gates/run-gates.sh` | A8 — the tooling behind the gates: the `scripts` experiment, the stack inventory, conftest's namespaces and data. Builds its own fixtures; needs `terramate`, `conftest` and `jq` |
 
 ## Why `cases/` is not `stacks/`
 

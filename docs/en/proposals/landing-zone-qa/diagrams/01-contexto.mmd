@@ -6,7 +6,7 @@ flowchart LR
             ST["bucket disasterproject-tfstate-gcp<br/>prefix per environment"]
             KMS["key ring qa<br/>tofu-state · gke-secrets · cosign"]
             AR["Artifact Registry<br/>apps · third-party · charts"]
-            WIF["github-pool<br/>tf-plan/apply/destroy-qa@"]
+            WIF["gh-disasterproject-infra<br/>tf-plan/apply/destroy-qa@"]
             DZ["parent zone<br/>disasterproject.com"]
         end
         subgraph NP["folder nonprod · disasterproject-nonprod"]

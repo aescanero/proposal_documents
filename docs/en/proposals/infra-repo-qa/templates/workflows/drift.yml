@@ -45,6 +45,7 @@ jobs:
         run: exit 1
 
   drift-prod:                                  # prod: no approval, but from main only (DR7)
+    if: vars.PROD_ENABLED == 'true'               # prod's identities exist only once prod is onboarded
     runs-on: ubuntu-latest
     environment: prod-drift                    # branch policy: main only
     steps:

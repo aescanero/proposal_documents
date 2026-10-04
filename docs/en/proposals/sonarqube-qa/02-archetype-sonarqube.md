@@ -603,7 +603,7 @@ Onboarding a team = an Entra ID app role (identity team) + an entry in `teams.ya
 | Stack | `input` | Producer | Mock |
 |---|---|---|---|
 | every stack using Kubernetes | `cluster_endpoint` | `gcp-qa-gke` | `mock-endpoint.example.invalid` (no scheme: GKE) |
-| every stack using Kubernetes | `cluster_ca` (sensitive) | `gcp-qa-gke` | `bW9jaw==` |
+| every stack using Kubernetes | `cluster_ca` (sensitive) | `gcp-qa-gke` | `bW9jay1jYQ==` |
 | `secrets`, `data-tenant` | `workload_identity_pool` | `gcp-qa-gke` | `mock-project.svc.id.goog` |
 | `app` | `saml_sso_url` | `gcp-qa-keycloak` | `https://mock-idp.example.invalid/realms/mock/protocol/saml` |
 | `app` | `saml_idp_certificate` | `gcp-qa-keycloak` | a valid test PEM certificate, CN `mock-idp` |

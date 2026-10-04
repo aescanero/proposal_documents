@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 3 · DZ4, DZ5 and DZ6 approved and applied (§13); §1 expanded into the bootstrap runbook, new DZ8 |
+| **Status** | Proposal · revision 4 · DZ4, DZ5 and DZ6 approved and applied (§13); §1 expanded into the bootstrap runbook, new DZ8; revision 4: preflight, DATA_READ audit, the adopted-project variant (§1.5), minimum layer-0 set (§15.1), DZ9–DZ11 |
 | **Scope** | What layer 0 has to provide for `qa` to start: the landing zone's own bootstrap, projects and folders, org policies, the non-prod project's APIs, Cloud KMS keys, Artifact Registry, GitHub Actions federation and pipeline identities, the state bucket, the parent DNS zone and the delegated zone, the public identifier, the global address pool, Binary Authorization, budgets. `hub` and `prod` only where they change something |
 | **Why now** | Every `qa` proposal leaves it requirements (§0.1) and none describes it. It is the first thing applied and the only thing bootstrapped by hand |
 | **Basis** | S1 §4.13 (control plane access), §4.14 (KMS), §4.15 (separate VPC); architecture §11.2 (pipeline identity), §11.4 (segregation), §11.5 (state); AM §3 (layers), §7 (binding), §9.2 (global pool). What is already there is not repeated |
@@ -78,8 +78,9 @@ The procedure for steps 2 and 3 is kept in the deployment repository as `docs/ru
 | Project | `disasterproject-lz` | Directly under the organisation, not in a folder: that way no later stack moves it and changes its org policy inheritance. The organisation's billing account |
 | APIs | `storage`, `cloudkms`, `iam`, `iamcredentials`, `sts`, `cloudresourcemanager`, `serviceusage`, `cloudbilling`, `orgpolicy` | Those used by steps 2–6 themselves. The environment projects' APIs are enabled by `gcp-lz-projects` (§2.1) |
 | State bucket | `disasterproject-tfstate-gcp` | `europe-west1`; uniform access; public access prevention enforced; versioning, noncurrent versions kept 30 days; `prevent_destroy` |
+| Audit of state reads | `google_project_iam_audit_config` on `disasterproject-lz`, service `storage.googleapis.com`, `DATA_READ` and `DATA_WRITE` | Answers *who read the state*: Cloud Audit Logs, which no bucket setting can switch off. **Not** GCS bucket access logging: it requires granting the bucket to `group:cloud-storage-analytics@google.com`, which `iam.allowedPolicyMemberDomains` (§3.1) forbids; without that grant a `logging` block is configured and inert — no log is ever written and the code looks right |
 | Key ring and key | `lz` / `tofu-state` | `europe-west1`; 90-day rotation; `prevent_destroy`. Environment key rings are created by `gcp-lz-kms` (§4) |
-| Federation pool and provider | `github-pool` / `github-oidc` | `attribute_condition` on the repository **and** the numeric `repository_owner_id` (architecture §11.2); mapping of `repository`, `environment` and `ref` |
+| Federation pool and provider | `gh-disasterproject-infra` / `github-oidc` | `attribute_condition` on the repository **and** the numeric `repository_owner_id` (architecture §11.2); mapping of `repository`, `environment` and `ref` |
 | Identities | `tf-plan-lz@`, `tf-apply-lz@`, `tf-destroy-lz@` | In `disasterproject-lz`. `tf-plan-lz@` ← `attribute.repository/disasterproject/infra`; `tf-apply-lz@` ← `attribute.environment/landing-zone`; `tf-destroy-lz@` ← `attribute.environment/landing-zone-destroy` |
 | Grants to `tf-apply-lz@` | Organisation: `resourcemanager.folderAdmin`, `resourcemanager.projectCreator`, `orgpolicy.policyAdmin`, `iam.organizationRoleAdmin`; billing account: `billing.user`; `disasterproject-lz`: `cloudkms.admin`, `artifactregistry.admin`, `dns.admin`, `iam.serviceAccountAdmin`; bucket: `storage.admin` | `storage.admin` on the bucket, not the project: it is what lets it set the per-prefix conditions on the environment identities (§5.1) |
 | Grants to `tf-plan-lz@` | Organisation: `browser`, `orgpolicy.policyViewer`, `iam.securityReviewer`; `disasterproject-lz`: `viewer`; bucket: read on the `lz/` prefix | Read-only, for the landing zone's preview and drift |
@@ -157,6 +158,18 @@ gcloud organizations add-iam-policy-binding "$ORG_ID" \
 terramate generate --detailed-exit-code    # 0: generated code is main's
 cd stacks/landing-zone/gcp/bootstrap
 
+# --- 1b. Preflight: nothing else holds our names -------------------------------
+# A name already taken is not in our state: the plan says "create", the API says
+# 409 thirty resources later, and the landing zone is left half applied.
+gcloud storage buckets describe gs://disasterproject-tfstate-gcp >/dev/null 2>&1 && echo "TAKEN bucket"
+gcloud iam workload-identity-pools describe gh-disasterproject-infra \
+  --location=global --project="$LZ_PROJECT" >/dev/null 2>&1 && echo "TAKEN pool (or deleted < 30 days)"
+gcloud kms keyrings describe lz --location=europe-west1 --project="$LZ_PROJECT" >/dev/null 2>&1 && echo "TAKEN key ring"
+for sa in tf-plan-lz tf-apply-lz tf-destroy-lz; do
+  gcloud iam service-accounts describe "$sa@$LZ_PROJECT.iam.gserviceaccount.com" >/dev/null 2>&1 && echo "TAKEN $sa"
+done
+gcloud org-policies describe iam.allowedPolicyMemberDomains --organization="$ORG_ID"   # shapes every grant (§1.1)
+
 # --- 2. Apply with local state ------------------------------------------------
 mv _backend.tf _backend.tf.final           # gcs backend + encryption: neither exists yet
 cat > _backend_local.tf <<'HCL'
@@ -197,6 +210,8 @@ After step 3, a pull request (step 4) changes the mixin for this stack: it remov
 
 > **Verify in VZ1.** That `tofu init -migrate-state` with the `fallback` block reads the local plaintext state and writes the remote one encrypted in a single operation. If this OpenTofu version does not, the known alternative is to migrate first without encryption (step 2's `_backend.tf` with a `gcs` backend and no `encryption` block) and encrypt afterwards with the `fallback` and a `tofu apply -refresh-only`. The result is the same; it is two steps instead of one.
 
+Steps 1b and 2 run against a project the bootstrap creates, so in the reference shape only the bucket name — global across Google Cloud — can collide. In an adopted project (§1.5) every line of the preflight matters, and a `TAKEN` stops the run: our names change, never theirs.
+
 ### 1.4 If something goes wrong
 
 | Situation | What to do |
@@ -207,6 +222,27 @@ After step 3, a pull request (step 4) changes the mixin for this stack: it remov
 | The `tofu-state` key was lost | It should not be possible: `prevent_destroy`, 30 days minimum to destroy a version, and nobody with `cloudkms.admin` except `tf-apply-lz@` (RZ5). If it happens, the encrypted state is unrecoverable; rebuild it with `import.tf.example` |
 | The organisation must be rebuilt | The same runbook, from step 2, against the new organisation. The code does not change except for the id `globals` |
 | A later change to the bootstrap | Reviewed pull request; the *break-glass* account applies it from `main` with `tofu apply`, with the remote backend. Steps 2–4 are not repeated |
+| `apply` fails with **409 already exists** | The name belongs to something outside our state — the preflight was skipped or the project is shared. **Never `import` it**: someone else's resource in our state is destroyed by our next `destroy`. Rename ours (the pool id and the SA names carry the repository), plan again, and run the preflight first |
+| A **403** on an organisation grant | The account has no permission on the organisation — the usual case in an adopted project (§1.5). `grant_org_roles = false`; the organisation's owner applies those grants outside the stack, and the runbook records who and when |
+| A **412** *users do not belong to a permitted customer* | A grant to a member outside the organisation's domains, blocked by `iam.allowedPolicyMemberDomains`. Remove the grant and whatever depends on it in the same change (the `logging` block of a bucket, for instance); never request an exception for a pipeline grant |
+
+
+### 1.5 Variant: an adopted project
+
+The reference shape gives layer 0 its own project, created by the bootstrap. When nobody holds `billing.user` and `resourcemanager.projectCreator`, no project can be created, and the landing zone **adopts** one that already exists: in practice the non-production project, alongside the environments it serves. It is a legitimate shape for non-production; `prod` keeps its own project in either shape.
+
+| What changes | Reference shape | Adopted project |
+|---|---|---|
+| `create_project` | `true` | `false`; the project id is an input of the bootstrap |
+| `grant_org_roles` | `true` | `false`: the organisation's grants are applied by its owner, outside the stack (§1.4) |
+| `gcp-lz-org`, `gcp-lz-projects` | Applied | **Not applied.** The org policies of §3.1 belong to the organisation's owner: they become prerequisites, checked by VZ6, not written |
+| Minimum set to deploy an environment | §15.1 | The same, without `org` and `projects` |
+| Preflight (§1.3, 1b) | Only the bucket name can collide | **Mandatory**: pools, key rings and service accounts can already exist under our names (RZ7) |
+| Separation between the landing zone and the environments | The project boundary | Only two controls carry it: state access conditioned on the environment's **object prefix**, and KMS access on its **own key** |
+| Identities already in the project | None | Any `owner`, `editor` or `storage.admin` granted at **project** level reads and writes every state object, the landing zone's included. Narrowing them to resource level is a **prerequisite** of step 2, not hygiene (RZ6) |
+| `tf-apply-lz@` | In a project nobody else uses | In a project several environments share: a bigger target. The break-glass alerts of §5.3 also cover changes to its IAM policy |
+
+Every entry is a consequence stated up front rather than discovered on the first `apply`. None of them arises in the reference shape.
 
 ---
 
@@ -435,6 +471,8 @@ assert {
 | RZ3 | **A project-level grant where a resource-level one would do** | Medium | High — an environment identity reads or writes another's resources | G3 rule (§11.1); SAs created by the landing zone (§6.3) |
 | RZ4 | **Public identifier regenerated** by a `taint` or a `destroy` | Low | High — every public name of the environment changes | `prevent_destroy` and `ignore_changes` (§7) |
 | RZ5 | **Loss of the state key** | Low | Critical — state unreadable, unrecoverable (S1 §4.14) | No `cloudkms.admin` outside the landing zone; a 30-day minimum to destroy a version |
+| RZ6 | **State readable through project-level grants** in an adopted project (§1.5): pre-existing identities with `owner`, `editor` or `storage.admin` on the project | High in an adopted project | Critical — every environment's state, the landing zone's included, readable and writable outside the pipeline | Narrow them to resource level before step 2; state and keys granted per prefix and per key; DATA_READ audit (§1.1) shows who read what |
+| RZ7 | **Name collision in an adopted project**: the bucket, the pool, a key ring or an SA already exists under our name | Medium in an adopted project | High — `409` halfway through the bootstrap, a landing zone half applied | Preflight (§1.3, 1b); names that carry the repository (`gh-disasterproject-infra`); never `import` a resource we did not create |
 
 ### 11.4 Verifications
 
@@ -446,6 +484,7 @@ assert {
 | VZ4 | Shared Binary Authorization | Two non-production clusters with different rules; a landing zone `apply` alters neither; a cluster without a rule admits no pods |
 | VZ5 | Control plane DNS endpoint (DZ4) | `helm`, `kubernetes` and `kubectl` work from a hosted runner with IAM only; no authorised networks |
 | VZ6 | Org policies | `run.allowedIngress` rejects a service with `ingress=all`; `compute.restrictVpcPeering` admits the PSA connection (= VW5) |
+| VZ7 | Preflight and audit (§1.3, §1.5) | The preflight prints no `TAKEN`; a read of `lz/` by `tf-plan-qa@` is refused and appears in the DATA_READ audit; in an adopted project, no principal outside §5.1 holds a project-level storage role |
 
 ---
 
@@ -470,6 +509,8 @@ assert {
 | `network-qa` §1.1 | Service agents forced with `google_project_service_identity` | **Applied** |
 | Architecture §11.2 | Pipeline identities in the landing zone project; per-prefix IAM condition on the state bucket | **Applied** |
 | `risk-register.md` | RZ1–RZ3 as R58–R60 | **Applied** |
+| `risk-register.md` | RZ6–RZ7 as R61–R62 | **Applied** |
+| Architecture §11.2, §11.10 | Pool id `gh-disasterproject-infra` (DZ9); DATA_READ audit on the state, not bucket access logs (DZ11) | **Applied** |
 
 ---
 
@@ -485,6 +526,9 @@ assert {
 | DZ6 | Binary Authorization | **Approved** | The project's policy written only by the landing zone; `ALWAYS_DENY` by default | Each `gke` writes its rule |
 | DZ7 | Budgets | **Proposed** | Per environment, filtered by the `environment` label | One per project |
 | DZ8 | Who applies `gcp-lz-bootstrap` after the bootstrap | **Proposed** | Only the *break-glass* account, from `main` after a pull request; the pipeline plans it but never applies it (`--no-tags bootstrap`) | `tf-apply-lz@`, which could widen its own permissions and touch the federation it authenticates with |
+| DZ9 | Federation pool id | **Proposed** | One per repository, `gh-disasterproject-infra`: pool ids are per project and a deleted pool keeps its id for 30 days | A generic `github-pool`, which collides with any other pool in the same project |
+| DZ10 | Project for layer 0 when one cannot be created | **Proposed** | Adopt the non-production project with the consequences of §1.5 stated up front | Wait for `billing.user`; layer 0 in an environment's own project |
+| DZ11 | Who read the state | **Proposed** | DATA_READ audit logs on `storage.googleapis.com` | GCS bucket access logging: impossible under `iam.allowedPolicyMemberDomains`, and inert without its grant |
 
 ---
 
@@ -499,3 +543,18 @@ assert {
 | **4 · Access** | DNS endpoint (DZ4); **VZ5** | `helm` and `kubectl` against the `qa` cluster from a hosted runner | 0.5 days |
 
 Five days for one person. It is phase 0 of S1 §6: it blocks everything else.
+
+### 15.1 Minimum layer-0 set for an environment
+
+The phases above build the whole landing zone. A new environment does not wait for all of it: each layer of the environment needs a specific set of landing zone stacks, and nothing more.
+
+| For the environment to reach… | Landing zone stacks applied | Why |
+|---|---|---|
+| Its first `tofu init` | `bootstrap`, `kms` | The backend names the environment's key; without it `init` fails |
+| A deploy job | `identities` | `tf-plan-<env>@`, `tf-apply-<env>@` and their federation bindings |
+| Layer 1 (`network`, `edge-base`) | `dns` | The wildcard certificate is validated by DNS in the environment's delegated zone |
+| Layer 2 (`gke`) | `identities` (node SA, DZ5), `binauthz` | A cluster without its Binary Authorization rule admits no pods (DZ6) |
+| Layer 2b and above (pods) | `registry` | Images by digest from the mirror (§6.2) |
+| Not on the path | `org`, `projects` (in an adopted project, §1.5), budgets | Budgets are recommended, not blocking |
+
+The usual sequence for a new environment: bootstrap (by hand) → repository variables (step 5) → `first-deploy` of `landing-zone` with `kms`, `identities`, `dns`, `binauthz`, `registry` → `first-deploy` of the environment.

@@ -197,7 +197,7 @@ registry/
 | Generated artefact | Consumer |
 |---|---|
 | `enum` blocks in `schemas/*.schema.json` | `check-jsonschema` |
-| `registry/*.json` bundle | `conftest --data` |
+| `registry/registry.json` bundle (top-level key `registry`) | `conftest --data` |
 | Gatekeeper chart `values.yaml` | `ConstraintTemplate` parameters |
 
 The YAML is the source. A schema edited by hand is a bug, guarded by a `registry-generate --check` gate in CI exactly like `terramate generate --detailed-exit-code`.

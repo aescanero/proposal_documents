@@ -45,6 +45,7 @@ jobs:
         run: exit 1
 
   drift-prod:                                  # prod: sin aprobación, pero solo desde main (DR7)
+    if: vars.PROD_ENABLED == 'true'               # las identidades de prod solo existen cuando prod se ha incorporado
     runs-on: ubuntu-latest
     environment: prod-drift                    # política de ramas: solo main
     steps:

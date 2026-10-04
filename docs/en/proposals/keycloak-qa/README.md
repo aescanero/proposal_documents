@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 8 |
+| **Status** | Proposal · revision 9 · `oidc-idp-saml` contract values as locals: Terramate copies `output.value` verbatim (§11) |
 | **Scope** | The layer 4 `keycloak` archetype on `qa`: installation, data, configuration, `disasterproject` realm with Entra ID as upstream IdP, consumer clients as tenant resources, keys, publishing, network, availability, observability, stacks, policies, execution and plan |
 | **Data assumption** | The environment's global `database-platform` provider ([`../postgres-cloudsql-qa/`](../postgres-cloudsql-qa/README.md)). On `qa`, `postgres-cloudsql`: Keycloak creates its own Cloud SQL instance (`data` stack, §3). With `postgres-operator`, its own CNPG `Cluster` (`data-tenant` stack) |
 | **Known consumers** | SonarQube over SAML ([`../sonarqube-qa/`](../sonarqube-qa/README.md), S1/S2), Grafana over OIDC, future applications with an OIDC `SecurityPolicy` on the Gateway |
@@ -545,8 +545,8 @@ All are deterministic; they are published as contract outputs so that consumers 
 
 ```hcl
 # imports/contracts/contract_oidc_idp_saml.tm.hcl (S2 §2) — producer side, realm stack
-output "saml_sso_url"         { backend = "tofu"  value = "${global.keycloak.issuer_url}/protocol/saml" }
-output "saml_idp_certificate" { backend = "tofu"  value = global.keycloak.saml_signing_certificate }
+output "saml_sso_url"         { backend = "tofu"  value = local.saml_sso_url }              # locals the realm generator emits from global.keycloak
+output "saml_idp_certificate" { backend = "tofu"  value = local.saml_signing_certificate }
 ```
 
 No secret values: the certificate is public (R8).

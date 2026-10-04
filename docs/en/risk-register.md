@@ -6,7 +6,7 @@
 |---|---|
 | **Scope** | Every identified failure mode across generation, resolution, identity, edge, policy and multi-tenancy |
 | **Section references** | `§n` refers to the architecture document unless prefixed `AM §n` (archetype model) |
-| **Identifiers** | R1–R60. R28 is **retired** (duplicate of R26), and R38 and R39 are retired with the control plane DNS endpoint (`landing-zone-qa` DZ4); retired numbers are not reused |
+| **Identifiers** | R1–R62. R28 is **retired** (duplicate of R26), and R38 and R39 are retired with the control plane DNS endpoint (`landing-zone-qa` DZ4); retired numbers are not reused |
 | **Review cadence** | At each roadmap phase gate, and whenever a pinned tool version changes |
 
 Risks are grouped by domain rather than numbered order, because that is how they are reviewed. The original R-numbers are stable identifiers and must not be reused if a risk is retired.
@@ -54,6 +54,7 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R43 | **Offboarded user keeps application tokens** where the application has no SCIM | Medium | Medium — access continues after the upstream account is disabled | Daily reconciliation job against the upstream directory; no personal tokens in CI |
 | R54 | **Workload Identity sameness in the shared non-prod project**: one pool per GCP project, so the same namespace and KSA in two non-prod clusters are one GCP identity | High unless KSAs are prefixed | High — one non-prod environment reads another's secrets, buckets and databases | Every KSA with GCP IAM named `<env>-<name>`; Gatekeeper P12 rejects another environment's prefix; G1 checks every IAM `member`. Residual: a cluster-admin of one non-prod environment can bypass admission — accepted for non-prod only; `prod` never shares a project (`CLAUDE.md`) |
 | R60 | **A project-level grant where a resource-level one would do**: in the shared non-prod project, a role on the project reaches every environment in it | Medium | High — an environment identity reads or writes another environment's resources | Grants on keys, repositories, zones and SAs per resource; the landing zone creates the SAs that receive cross-project grants; a G3 rule on landing zone IAM (`landing-zone-qa` §6.3, §11.1) |
+| R61 | **State readable through project-level grants when layer 0 adopts an existing project**: identities that already hold `owner`, `editor` or `storage.admin` on the project read and write every state object | High in an adopted project | Critical — every environment's state, the landing zone's included, readable and writable outside the pipeline | Narrowed to resource level before the bootstrap stores state; state per prefix and keys per key; DATA_READ audit on `storage.googleapis.com` (`landing-zone-qa` §1.5, RZ6) |
 
 ## 3. Networking and address planning
 
@@ -70,7 +71,7 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|---|
-| R20 | **GCP NEG is not in Terraform state** | Certain | Medium — "all in IaC" claim is false | Declare as `data`, name explicitly, split into three stacks with `after`; record the absence of `iac-owned-edge` in the archetype manifest rather than hiding it (§10.2) |
+| R20 | **GCP NEG is not in Terraform state** | Certain | Medium — "all in IaC" claim is false | Reference it by its deterministic URL (never a `resource`, never a `data` source that fails the preview), split into three stacks with `after` checked by a named G1 rule; record the absence of `iac-owned-edge` in the archetype manifest rather than hiding it (§10.2) |
 | R21 | **`TargetGroupBinding` lets a tenant redirect another tenant's traffic** | Medium on shared EKS | Critical | Kubernetes RBAC denying the CRD to application namespaces; only the `gateway` archetype creates them; controller IAM scoped to specific target groups (§10.3) |
 | R22 | **Keycloak ↔ Gateway bootstrap cycle** | High on first cold start | High — environment does not start | Keycloak's `HTTPRoute` carries no `SecurityPolicy`; OIDC discovery via in-cluster Service; documented as an invariant (§10.7) |
 | R24 | **`kubernetes_manifest` breaks PR previews** | High if used | Medium | Package Gateway API custom resources in the archetype's Helm chart; deploy via `helm_release` (§10.5) |
@@ -113,6 +114,7 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R56 | **CMDB edges silently empty**: the extractor does not evaluate a `from_stack_id`, the stack appears to have no consumers | Medium until the extractor is verified against the pinned Terramate version | Critical — the destroy guard counts 0 and lets a platform with consumers go (R5) | `archetypectl cmdb check` fails when a stack has `input` blocks and no evaluated `consumes`; one extractor shared with the R2 rule of G1, so both fail together (§12.4) |
 | R57 | **A secret value reaches the CMDB**: an output carrying one is not marked `sensitive` and ends up in the observed half and the read model | Medium | High — a secret in a file every repository reader can fetch | The G1 secret-name rule (§13.3); the collector drops `sensitive` outputs; the read model is a private release asset, never public Pages (AM §11.2) |
 | R58 | **An unrepeatable landing zone bootstrap**: nobody remembers how the organisation was started when it has to be rebuilt | Medium | High — the platform cannot be recreated from the repository | The bootstrap is a stack in the repository with a runbook, applied once by hand and then managed with remote state (`landing-zone-qa` §1) |
+| R62 | **A name already taken in a shared project**: the plan says `create` because the resource is not in our state, and the API answers `409` thirty resources later | Medium in a shared or adopted project | High — the landing zone or an environment half applied | A preflight that checks every name before the first `apply`; names that carry the repository or the environment; never `import` a resource we did not create (`landing-zone-qa` §1.3, RZ7) |
 
 ---
 

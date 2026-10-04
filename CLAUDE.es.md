@@ -17,7 +17,9 @@ Una plataforma de infraestructura multi-nube construida sobre **Terramate CLI + 
 | **Resolve** | `archetype-model.md` | Qué se puede componer con qué — manifiestos, capabilities, traits, pools, CMDB, resolución |
 | **Generate** | `terramate-outputs-sharing-architecture.md` | Cómo se genera y se aplica — generadores, outputs sharing, IAM, política, CI/CD, guías por nube |
 
-Además `platform-overview.md` (mapa guiado por diagramas, léelo primero), `risk-register.md` (60 riesgos por dominio, 57 activos), `glossary.md` (cada término, definido) y `developer-guide.md` (la mitad del desarrollador de aplicaciones — branching, versionado, build, rollback). Cada uno de estos vive en **dos idiomas**: `docs/en/<archivo>.md` y `docs/es/<archivo>.md`. Más abajo, una referencia simple a `docs/<archivo>.md` significa "ese archivo, en el idioma que estés leyendo" — ambas copias dicen lo mismo, así que la ruta es neutral respecto al idioma por diseño.
+Además `platform-overview.md` (mapa guiado por diagramas, léelo primero), `risk-register.md` (62 riesgos por dominio, 59 activos), `glossary.md` (cada término, definido) y `developer-guide.md` (la mitad del desarrollador de aplicaciones — branching, versionado, build, rollback). Cada uno de estos vive en **dos idiomas**: `docs/en/<archivo>.md` y `docs/es/<archivo>.md`. Más abajo, una referencia simple a `docs/<archivo>.md` significa "ese archivo, en el idioma que estés leyendo" — ambas copias dicen lo mismo, así que la ruta es neutral respecto al idioma por diseño.
+
+**Este repositorio es la especificación de diseño normativa, y lo sigue siendo.** No está congelado, y ningún repositorio de despliegue lo sustituye. Un repositorio de despliegue (`disasterproject/infra`, `infra-repo-qa`) implementa lo que aquí se escribe y lleva una copia idéntica byte a byte de `registry/` y `schemas/` fijada a un commit de este (DR4); nunca edita esa copia. Lo que enseña implementar el diseño — un comportamiento medido de una herramienta, una puerta que no se ejecutaba, una restricción de una organización real — vuelve aquí como un cambio de diseño, en los dos idiomas, expresado como un hecho sobre el diseño y no como el informe de dónde se encontró.
 
 **La costura entre las dos mitades es `binding.tm.hcl`.** El resolver escribe globals; los generadores los consumen. Ninguna de las dos conoce las internas de la otra.
 
@@ -38,6 +40,7 @@ Reglas que se derivan de "mantenerse sincronizados", no solo "traducido una vez"
 - **Un cambio a un documento de referencia cambia ambas copias en el mismo commit o la misma pull request.** Una PR que edita `docs/en/risk-register.md` sin tocar `docs/es/risk-register.md` está incompleta, no es un seguimiento para después — las dos son un solo documento con dos representaciones, y dejar que diverjan es exactamente el tipo de divergencia silenciosa que las demás puertas de este repositorio (registry vs. schema, generador vs. Gatekeeper) existen para evitar.
 - **Los diagramas son parte del documento, no un adjunto.** Una fuente Mermaid o un SVG hecho a mano con etiquetas en un idioma necesita su propia copia renderizada con etiquetas en el otro — nunca una captura de pantalla del diagrama del otro idioma reetiquetada, y nunca el diagrama de un idioma dejado para representar a ambos. `docs/es/proposals/sonarqube-qa/diagrams/20-bloques-presentacion.py` es el patrón para un SVG hecho a mano: el script generador viaja junto con el idioma que renderiza.
 - **Los identificadores permanecen en inglés en ambas copias.** Nombres de capability, nombres de trait, IDs de stack, claves de HCL/YAML, valores `kind:`, nombres de environment — cualquier cosa que también sea una cadena literal en algún lugar del registry, un schema, o código generado — no se traduce, en ninguno de los dos idiomas. Solo se traducen la prosa, las descripciones de tabla y los comentarios. Por eso traducir los bloques de código literalmente (no transliterarlos) es correcto, no un descuido.
+- **Los nombres de fichero son identificadores, y van en inglés en las dos copias.** Eso incluye los ficheros de diagramas: `docs/es/…/diagrams/02-request-path.mmd` y `docs/en/…/diagrams/02-request-path.mmd`, nunca un nombre en español en el árbol inglés ni al revés. La regla se aplica a todo fichero nuevo; los diagramas nombrados antes conservan su nombre hasta que se renombren juntos, en los dos idiomas, con sus enlaces.
 - **Un documento nuevo no está terminado hasta que existan ambos idiomas.** Añadir solo `docs/en/foo.md` (o solo la propuesta en español) y posponer la otra copia a "un seguimiento" es el modo de fallo que esta sección existe para nombrar y prohibir.
 
 ---
@@ -111,19 +114,29 @@ La misma tecnología puede ser ambas cosas. `postgres-operator` (archetype, prov
 
 Estos son los modos de fallo que ya se han identificado. No los redescubras.
 
-**Outputs sharing no crea orden de ejecución.** Cada bloque `input` necesita un `after` correspondiente en `stack.tm.hcl`. Un ordenamiento no resuelto aplica un valor obsoleto **sin ningún error**. Este es el riesgo R2, el riesgo principal, y la política conftest G1 existe específicamente para detectarlo.
+**Outputs sharing no crea orden de ejecución.** Cada bloque `input` necesita un `after` correspondiente en `stack.tm.hcl`. Un ordenamiento no resuelto aplica un valor obsoleto **sin ningún error**. Este es el riesgo R2, el riesgo principal, y la política conftest G1 existe específicamente para detectarlo. La regla exige al **productor mismo** en `after`: ejecutarse después de un stack que va después del productor es correcto hoy y falla G1 a propósito, porque solo se sostiene hasta que alguien reordena el stack intermedio (arquitectura §13.3).
 
 **Los globals no se resuelven en `stack.after` — es un error de análisis, no uno silencioso** (medido, Terramate 0.16.0 y 0.17.3, `poc/RESULTS.es.md`). El resolver debe escribir valores literales; preferir `after = ["tag:<capability>"]` a una ruta para que un stack pueda moverse. El fallo silencioso que queda es un `after` *olvidado*: un consumidor con un `input` y sin orden se genera limpiamente y puede programarse antes que su productor, sin error en ninguna fase. Eso es R2, y G1 es lo que lo detecta.
 
 **Los tags de Terramate no pueden contener `:`** (medido, 0.16.0 y 0.17.3: solo minúsculas, dígitos, `.`, `_`, `-`, `/`). En un filtro, `:` significa AND y `,` significa OR, y dos opciones `--tags` son OR. Por eso los tags de instancia y de arquetipo son `instance/<id>` y `archetype/<name>`, y `--tags gcp:qa:network` selecciona los stacks que llevan los tres tags. Un tag escrito `instance:alpha` hace fallar la carga entera de la configuración.
 
-**`terramate list` no tiene `--json`** (0.16.0, 0.17.3): imprime rutas. El inventario de stacks (ids, tags, `after`) sale de `terramate run --quiet -- terramate experimental eval 'tm_jsonencode({...terramate.stack...})'`, envuelto como `ci/stacks-json.sh` (arquitectura §14.4).
+**`terramate list` no tiene `--json`** (0.16.0, 0.17.3): imprime rutas. Y `terramate experimental eval` expone `terramate.stack.id`, `tags` y `path` pero **no `after`** (medido, 0.17.3) — un inventario construido sobre él no puede alimentar la regla de R2. El inventario sale de `terramate debug show metadata`, que sí lleva `after`, leído por `ci/stacks-json.sh`; se niega a devolver un array vacío (arquitectura §14.4, `poc/RESULTS.es.md` A8).
+
+**Los bloques `script` siguen siendo experimentales en 0.17.3.** `experiments = ["outputs-sharing", "scripts"]`: sin `"scripts"`, un solo bloque `script` hace fallar la carga de **toda** la configuración, y cualquier comando `terramate` sale con 1 (`poc/RESULTS.es.md` A8a).
+
+**`output.value` se copia literalmente al código generado.** Terramate no interpola ahí ni `global.*` ni `"${global.x}"`: `value = global.project_id` llega al `.tf` como una referencia inválida, igual que un `var.*` que ningún `input` declara. Un contrato publica `module.*`, `resource.*`, `data.*` o un `local` que emite el generador (arquitectura §4.3, `poc/RESULTS.es.md` A8d).
 
 **La opción de G0 es `terramate generate --detailed-exit-code`** (0 = al día, 2 = deriva, 1 = error). `--check` no existe en Terramate y falla con `unknown flag`. Un mock de tipo incorrecto no cambia ningún fichero generado, así que G0 no puede detectarlo; G1 comprueba la forma del mock contra el contrato.
 
 **`mock_on_fail` debe ser true en preview y false en deploy.** Bloques `script` nombrados por separado para que no se pueda confundir. Un deployment que cae silenciosamente en un mock aplica un sinsentido.
 
-**Los mocks deben tener el tipo correcto.** Un campo base64 mockeado como `"mock"` rompe `base64decode()`. Un campo lista mockeado como una cadena valida el tipo localmente y explota al aplicar. Prefijar cada mock con `mock-`.
+**Los mocks deben tener el tipo correcto.** Un campo base64 mockeado como `"mock"` rompe `base64decode()`. Un campo lista mockeado como una cadena valida el tipo localmente y explota al aplicar. Prefijar cada mock con `mock-` — y un mock base64 también se decodifica a un valor `mock-` (`bW9jay1jYQ==`, `mock-ca`), para que una CA mockeada que llegue a un log de deploy sea reconocible.
+
+**`--mock-on-fail` cubre bloques `input`, nunca fuentes `data`.** Una fuente `data` que lee algo que crea otro stack hace fallar la preview siempre que ese algo aún no exista, y ningún flag la salva. Referenciar por un nombre o una URL deterministas — el NEG se referencia por su URL, construida a partir de `neg_name` (arquitectura §10.2). Un `after` sin `input` detrás no lo comprueba nadie, así que la única arista así, la ascendente, tiene una regla G1 con nombre (§13.3).
+
+**Una puerta que no puede ejecutarse es peor que una ausente, porque informa de éxito.** Medido: `conftest test` sin `--all-namespaces` solo evalúa `package main` y pasa con `0 tests`; `--data registry/` deja `data.registry` vacío, así que un rasgo desconocido pasa; `--namespace terraform` no coincide con ningún `package terraform.public_names`; un bucle con `shopt -s nullglob` sobre un glob que no encuentra nada no valida nada y sale con 0. Toda puerta demuestra que evaluó algo: G1 y G3 fallan con cero reglas, `stacks-json.sh` con cero stacks, `validate.yml` con un directorio existente que no contiene ningún fichero (arquitectura §14.4, `poc/RESULTS.es.md` A8). Lo mismo vale para un paso del que depende una puerta: un marcador de deploy atado al job entero nunca avanza mientras el observador que sigue al apply esté roto, así que se ata al paso de apply.
+
+**En un proyecto compartido, el plan dice `create` y la API responde `409`.** Un recurso que ya existe con nuestro nombre no está en nuestro estado, así que nada antes del apply lo ve, y el apply se detiene treinta recursos después. Una comprobación previa revisa cada nombre antes; los nombres llevan el repositorio o el entorno (`gh-disasterproject-infra`); un recurso que no creamos nunca se importa (`landing-zone-qa` §1.3, R62).
 
 **Nunca compartir secretos a través de outputs sharing.** Los valores aterrizan en variables de entorno `TF_VAR_*`, que se filtran en logs y árboles de procesos. Compartir referencias — un ID de secreto, un ARN, un nombre de clave — y dejar que el consumer lo lea bajo su propia identidad. Los tokens de autenticación se obtienen localmente por cada consumer (`google_client_config`, `aws_eks_cluster_auth`), nunca compartidos.
 
@@ -179,12 +192,12 @@ cmdb-data/              CMDB de nivel 0, mitad declarada, un archivo por stack (
 
 ## El registry es estructural
 
-`registry/*.yaml` es la **única fuente de verdad** para capabilities, traits, nombres de zone y labels obligatorias. Se generan tres artefactos a partir de él:
+`registry/*.yaml` es la **única fuente de verdad** para capabilities, traits, nombres de zone y labels obligatorias, y se escribe **aquí**: un repositorio de despliegue lleva una copia idéntica byte a byte de `registry/` y `schemas/` fijada en `spec.lock.json`, comprobada en los dos sentidos por `ci/spec-sync.sh`, y nunca la edita (`infra-repo-qa` DR4). Se generan tres artefactos a partir de él:
 
 | Generado | Consumidor |
 |---|---|
 | bloques `enum` en `schemas/*.schema.json` | `check-jsonschema` |
-| bundle `registry/*.json` | `conftest --data` |
+| bundle `registry/registry.json` (clave de primer nivel `registry`) | `conftest --data` |
 | `values.yaml` del chart de Gatekeeper | parámetros de `ConstraintTemplate` |
 
 **Nunca editar a mano un `enum` en `schemas/`.** Eso es un bug. El modo de fallo de la divergencia es desagradable: una label que el generador dejó de emitir mientras el `Constraint` de admisión todavía la exige bloquea deployments legítimos en la admisión. Riesgo R34.
@@ -202,7 +215,7 @@ El generador (`registry-generate`) **todavía no está escrito**. Es la primera 
 | Tags de stack | cloud, env, capability, `platform`\|`archetype/<name>`, `instance/<id>`, `producer`\|`consumer`, `protected` | |
 | Archivos generados | `_<propósito>.tf` | `_main.tf`, `_sharing_generated.tf` |
 | Generadores | `imports/generators/v<N>/gen_<capability>.tm.hcl` | |
-| Contratos | `imports/contracts/contract_<capability>[_<cloud>].tm.hcl` | |
+| Contratos | `imports/contracts/contract_<capability>[_<stack>][_<cloud>].tm.hcl` — `<stack>` para un stack interno de un arquetipo de varios stacks | `contract_run_subnet_gcp.tm.hcl` |
 | Mocks | prefijados con `mock-` | `mock-endpoint.example.invalid` |
 
 El código generado **se commitea a git**, prefijado con `_`, y cubierto por `CODEOWNERS`. La puerta `terramate generate --detailed-exit-code` (G0) existe por esto: sin ella, alguien edita a mano un `_main.tf`, el escaneo pasa, y el siguiente generate revierte silenciosamente el arreglo.
@@ -223,6 +236,7 @@ El roadmap está en `terramate-outputs-sharing-architecture.md` §16. Posición 
 | `--mock-on-fail` se comporta como está documentado cuando el producer no tiene state | Confirmada; no enmascara un stack productor inexistente |
 | Las lecturas de state entre proyectos funcionan con los roles OIDC | No probada — primer despliegue de `qa`, `landing-zone-qa` VZ1–VZ3 |
 | El control plane es alcanzable desde el runner | No probada — ahora el endpoint DNS solo con IAM, `landing-zone-qa` VZ5 |
+| Las herramientas de las puertas evalúan lo que dicen (2026-10-04, 0.17.3, conftest 0.70.1) | **Refutada** tal como estaba escrito — experimento `scripts` obligatorio, sin `after` en `experimental eval`, `output.value` literal, namespaces y datos de conftest. Corregido en la arquitectura y las plantillas (`poc/RESULTS.es.md` A8) |
 
 Dos hallazgos laterales: un proyecto Terramate es **un repositorio git con una configuración raíz** (no puede anidarse en otro), y `output.description` no se emite en el bloque generado.
 

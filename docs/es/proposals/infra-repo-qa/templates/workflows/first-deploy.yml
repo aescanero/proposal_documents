@@ -26,7 +26,7 @@ jobs:
       - name: Solo desde main, y solo si el entorno nunca se desplegó
         run: |
           [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::first-deploy solo se ejecuta desde main"; exit 1; }
-          git fetch origin cmdb-observed
+          ./ci/fetch-observed.sh
           if git show "origin/cmdb-observed:cmdb-data/observed/deployed/${{ inputs.env }}.json" >/dev/null 2>&1; then
             echo "::error::${{ inputs.env }} ya tiene marcador de deploy: sus cambios los aplica deploy"
             exit 1
@@ -41,6 +41,7 @@ jobs:
         run: terramate generate --detailed-exit-code
 
       - name: Apply escalonado
+        id: apply
         env:
           ENV: ${{ inputs.env }}
         run: |
@@ -62,7 +63,7 @@ jobs:
             archetypectl cmdb observe --out "$RUNNER_TEMP/observed"
 
       - name: Primer marcador de deploy
-        if: ${{ success() }}
+        if: ${{ !cancelled() && steps.apply.outcome == 'success' }}   # el apply, no el job: una observación fallida no retiene el marcador
         run: |
           mkdir -p "$RUNNER_TEMP/observed/deployed"
           jq -n --arg sha "$GITHUB_SHA" --argjson run "$GITHUB_RUN_NUMBER" '{sha: $sha, run: $run}' \

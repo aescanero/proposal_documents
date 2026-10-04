@@ -49,22 +49,22 @@ jobs:
 
       - name: Validate manifests
         run: |
-          shopt -s nullglob
-          for f in archetypes/*/manifest.yaml; do
-            check-jsonschema --schemafile schemas/archetype-manifest.schema.json "$f"
-          done
-          for f in components/*/component.yaml; do
-            check-jsonschema --schemafile schemas/component.schema.json "$f"
-          done
-          for f in environments/*/binding.yaml; do
-            check-jsonschema --schemafile schemas/environment-binding.schema.json "$f"
-          done
-          for f in cmdb-data/pools/*.json; do
-            check-jsonschema --schemafile schemas/pool-ledger.schema.json "$f"
-          done
-          for f in cmdb-data/stacks/*.json; do
-            check-jsonschema --schemafile schemas/cmdb-stack.schema.json "$f"
-          done
+          set -eo pipefail; shopt -s nullglob
+          # A glob that matches nothing validates nothing and exits 0. A directory that exists
+          # and holds no file of its kind is therefore an error, not a pass; an absent directory
+          # is legitimate here (this repository holds no archetypes or bindings) and is reported.
+          check() {   # check <schema> <dir> <pattern>
+            local schema=$1 dir=$2 files=( $2/$3 )
+            if [ ! -d "$dir" ]; then echo "$dir/$3: directory absent, 0 files"; return 0; fi
+            if [ ${#files[@]} -eq 0 ]; then echo "::error::$dir exists but $dir/$3 matches nothing"; return 1; fi
+            check-jsonschema --schemafile "$schema" "${files[@]}"
+            echo "$dir/$3: ${#files[@]} file(s)" | tee -a "$GITHUB_STEP_SUMMARY"
+          }
+          check schemas/archetype-manifest.schema.json  archetypes        '*/manifest.yaml'
+          check schemas/component.schema.json           components        '*/component.yaml'
+          check schemas/environment-binding.schema.json environments      '*/binding.yaml'
+          check schemas/pool-ledger.schema.json         cmdb-data/pools   '*.json'
+          check schemas/cmdb-stack.schema.json          cmdb-data/stacks  '*.json'
         shell: bash
 
   policy:

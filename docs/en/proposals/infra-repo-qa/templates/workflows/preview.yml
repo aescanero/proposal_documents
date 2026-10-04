@@ -1,8 +1,7 @@
 # Destination: .github/workflows/preview.yml — architecture §14.1
 name: preview
 on:
-  pull_request:
-    branches: [main]
+  pull_request:                # every base branch: a pull request stacked on another runs the same gates
 
 permissions:
   contents: read
@@ -47,6 +46,15 @@ jobs:
           done
           echo "envs=$(jq -cn '$ARGS.positional' --args "${envs[@]}")" >> "$GITHUB_OUTPUT"
           echo "prod=$prod" >> "$GITHUB_OUTPUT"
+
+  spec-pin:                                    # its own job: the specification's checkout holds poc/, a Terramate root
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4                # the specification, to check the pin both ways (DR4)
+        with: { repository: aescanero/proposal_documents, path: .spec, fetch-depth: 0 }   # a read-only token if it is private
+      - name: registry/ and schemas/ match their pin (DR4)
+        run: ./ci/spec-sync.sh --check && ./ci/spec-sync.sh --upstream .spec
 
   plan:                                        # one job per touched environment, with its read-only identity
     needs: gates

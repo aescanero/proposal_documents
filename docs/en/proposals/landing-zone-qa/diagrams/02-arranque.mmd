@@ -9,7 +9,7 @@ sequenceDiagram
     R->>R: bootstrap PR merged · gcs backend + encryption with fallback
     Note over R,CI: the preview only passes G0 and G1 · no federation yet
     P->>B: temporary local backend · tofu apply
-    B->>G: lz project · bucket · key ring lz · github-pool · tf-plan/apply/destroy-lz@
+    B->>G: lz project · bucket · key ring lz · gh-disasterproject-infra · tf-plan/apply/destroy-lz@
     P->>G: backend restored · tofu init -migrate-state → encrypted state
     P->>P: shred the local state · tofu plan with no changes
     R->>R: PR removes the fallback · enforced = true

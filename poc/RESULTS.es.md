@@ -11,6 +11,8 @@ cadena de herramientas fijada. Cada transcripción de abajo es salida real de
 | **Terramate** | `0.16.0`; repetida con `0.17.3` (2026-09-28) con salida idéntica |
 | **OpenTofu** | `v1.10.6` |
 | **Fecha** | 2026-09-16 (repetida el 2026-09-28, misma cadena, mismos resultados) |
+| **conftest** | `0.70.1` (OPA `1.20.2`), solo A8 |
+| **Sondas de puertas** | `./gates/run-gates.sh`, 2026-10-04, Terramate `0.17.3` |
 | **Arnés** | `./run-poc.sh` (ver [Por qué un arnés](#por-qué-un-arnés-y-no-solo-terramate-generate)) |
 
 ---
@@ -27,6 +29,11 @@ cadena de herramientas fijada. Cada transcripción de abajo es salida real de
 | A5 | De extremo a extremo: los valores reales fluyen productor → consumidor una vez aplicados | ☑ **Confirmada** |
 | A6 | Lecturas de estado entre proyectos / cuentas con roles OIDC | ☐ **No probada** — necesita credenciales de nube |
 | A7 | Plano de control privado alcanzable desde el runner elegido | ☐ **No probada** — ya superada: el pipeline llega a GKE por el endpoint DNS del plano de control (solo IAM, sin camino de red), así que lo que queda es la comprobación VZ5 de `landing-zone-qa` |
+| A8a | Un bloque `script` carga sin el experimento `scripts` (0.17.3) | ☒ **Refutada, ruidosamente** — falla la carga de toda la configuración |
+| A8b | `terramate experimental eval` expone `terramate.stack.after` | ☒ **Refutada** — solo `id`, `tags`, `path` |
+| A8c | `terramate debug show metadata` lleva `after` | ☑ **Confirmada** — el inventario de stacks se construye con él |
+| A8d | Un global en `output.value` se resuelve al generar | ☒ **Refutada** — se copia literalmente: `value = global.project_id` llega al `.tf`, donde no es válido |
+| A8e–h | Los comandos conftest de G1 y G3 evalúan las políticas | ☒ **Refutada** — cero reglas sin `--all-namespaces` o con un `--namespace` inexacto; `data.registry` vacío con `--data registry/` |
 
 **Efecto neto sobre la arquitectura: el modelo de *late binding* funciona.** A1
 y A2 son las dos en las que descansa todo el diseño de `imports/contracts/`, y
@@ -54,6 +61,7 @@ poc/
     after-global-expr/              after = [global.producer_path]
     after-global-interp/            after = ["${global.producer_path}"]
     no-after/                       an input with no ordering at all
+  gates/run-gates.sh                A8 — builds its own fixtures: scripts experiment, inventory, conftest flags
 ```
 
 El productor comparte tres valores elegidos para ejercitar la trampa de la
@@ -399,6 +407,75 @@ pod_ranges = [
 Ningún prefijo `mock-` en ningún sitio, `range_count` es 2 y no 1, y la CA
 decodificada es la del productor. **Los dos estilos de enlace llegaron al mismo
 productor con datos reales.** A1, A2 y A5 se cumplen.
+
+---
+
+## A8 — las herramientas detrás de las puertas ☒
+
+Cinco comportamientos de los que dependen las puertas, los contratos y el inventario de stacks,
+probados contra las versiones fijadas con `./gates/run-gates.sh`. Cada uno, tal
+como estaba escrito, o no cargaba la configuración, o generaba código inválido, o
+**pasaba sin haber evaluado nada**.
+
+```
+========== A8a — a script block without the "scripts" experiment ==========
+----- terramate list
+Error: unable to parse configuration
+> <work>/tm/b/stack.tm.hcl:6,1-16: terramate schema error: loading from <work>/tm/b: unrecognized block "script" (script is an experimental feature, it must be enabled before usage with `terramate.config.experiments = ["scripts"]`)
+[exit 1]
+----- same, with experiments = ["outputs-sharing", "scripts"]
+script ran
+[exit 0]
+
+========== A8b — experimental eval: is terramate.stack.after exposed? ==========
+Error: <cmdline>:1,64-70: eval expression: eval "tm_jsonencode({id = terramate.stack.id, after = terramate.stack.after})": This object does not have an attribute named "after".
+[exit 1]
+
+========== A8c — debug show metadata carries after ==========
+stack "/b":
+	terramate.stack.id="b"
+	terramate.stack.tags=["gcp","qa"]
+	terramate.stack.after=["tag:gcp:qa:network","/a"]
+[exit 0]
+
+========== A8d — output.value is copied verbatim into the generated code ==========
+// TERRAMATE: GENERATED AUTOMATICALLY DO NOT EDIT
+
+output "project_id" {
+  value = global.project_id
+}
+
+========== A8e — G1 without --all-namespaces ==========
+0 tests, 0 passed, 0 warnings, 0 failures, 0 exceptions
+[exit 0]
+
+========== A8f — --all-namespaces, but --data registry/ (YAML at the root of data) ==========
+2 tests, 2 passed, 0 warnings, 0 failures, 0 exceptions
+[exit 0]
+
+========== A8g — --all-namespaces and the bundle with top-level key registry ==========
+FAIL - manifest.json - archetype.composition - unknown trait bogus
+2 tests, 1 passed, 0 warnings, 1 failure, 0 exceptions
+[exit 1]
+
+========== A8h — G3: --namespace terraform vs the exact package ==========
+----- --namespace terraform
+0 tests, 0 passed, 0 warnings, 0 failures, 0 exceptions
+[exit 0]
+----- --namespace terraform.public_names
+FAIL - plan.json - terraform.public_names - environment name in a public name
+[exit 1]
+```
+
+| Sonda | Consecuencia | Aplicada en |
+|---|---|---|
+| A8a | `experiments` debe listar `"scripts"` además de `"outputs-sharing"`. Sin él ningún comando `terramate` carga la configuración | Arquitectura §4.1; `infra-repo-qa` `terramate.tm.hcl` |
+| A8b–c | `ci/stacks-json.sh` lee `debug show metadata`; con `experimental eval` el inventario no tiene `after` y la regla de R2 no puede ejecutarse | Arquitectura §14.4; `infra-repo-qa` `ci/stacks-json.sh` |
+| A8d | El `value` de un contrato solo puede referenciar lo que el código generado declara — `module.*`, `resource.*`, `data.*`, `local.*`, y `var.*` solo para una variable que crea un `input`. No `global.*`, no un `var.*` que nadie declara | Arquitectura §4.3, §5.2 |
+| A8e | G1 ejecuta `conftest test --all-namespaces`: las políticas viven en `terramate.*`, `archetype.*`, `environment.*`, nunca en `main` | Arquitectura §13, §14.4; `ci/g1.sh` |
+| A8f–g | `--data registry/registry.json`, un paquete con la clave de primer nivel `registry`; `--data registry/` pone cada fichero en la raíz de `data` y un rasgo desconocido pasa | Ídem; `registry/README.es.md` |
+| A8h | G3 nombra cada paquete exactamente: `--namespace terraform` no coincide con `terraform.public_names` | Arquitectura §13.4 |
+| todas | Toda puerta conftest falla cuando evaluó cero reglas (`ct` en `ci/g1.sh`) | Arquitectura §14.4 |
 
 ---
 

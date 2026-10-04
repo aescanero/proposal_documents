@@ -60,7 +60,7 @@ T=dict(
    ("budgets","Per environment",["environment label","50 · 90 · 100 %","unlabelled spend"])],
   [("KMS","Key ring per environment",["tofu-state · gke-secrets","cosign","grant per key"]),
    ("registry","Artifact Registry",["apps · third-party · charts","copy by digest","reader per repository"]),
-   ("federation","github-pool",["plan: any branch","apply: Environment only","state by prefix"])],
+   ("federation","gh-disasterproject-infra",["plan: any branch","apply: Environment only","state by prefix"])],
   [("identifier","Random public_id",["7 letters","delegated zone + DS","never rotates"]),
    ("SAs","With cross-project grants",["gke-nodes-qa@","no upward edge","global for gke"]),
    ("BinAuthz","One policy per project",["rule per cluster","ALWAYS_DENY default","only the LZ writes it"])]],

@@ -11,6 +11,8 @@ not a reconstruction.
 | **Terramate** | `0.16.0`; re-run on `0.17.3` (2026-09-28) with identical output |
 | **OpenTofu** | `v1.10.6` |
 | **Date** | 2026-09-16 (re-run 2026-09-28, same toolchain, same results) |
+| **conftest** | `0.70.1` (OPA `1.20.2`), A8 only |
+| **Gate probes** | `./gates/run-gates.sh`, 2026-10-04, Terramate `0.17.3` |
 | **Harness** | `./run-poc.sh` (see [Why a harness](#why-a-harness-and-not-just-terramate-generate)) |
 
 ---
@@ -27,6 +29,11 @@ not a reconstruction.
 | A5 | End-to-end: real values flow producer → consumer once applied | ☑ **Confirmed** |
 | A6 | Cross-project / cross-account state reads with OIDC roles | ☐ **Not tested** — needs cloud credentials |
 | A7 | Private control plane reachable from the chosen runner | ☐ **Not tested** — since superseded: the pipeline reaches GKE through the control plane DNS endpoint (IAM only, no network path), so what remains is the `landing-zone-qa` VZ5 check |
+| A8a | A `script` block loads without the `scripts` experiment (0.17.3) | ☒ **Refuted, loudly** — the whole configuration fails to load |
+| A8b | `terramate experimental eval` exposes `terramate.stack.after` | ☒ **Refuted** — `id`, `tags`, `path` only |
+| A8c | `terramate debug show metadata` carries `after` | ☑ **Confirmed** — the stack inventory is built from it |
+| A8d | A global in `output.value` is resolved at generate time | ☒ **Refuted** — copied verbatim: `value = global.project_id` lands in the `.tf`, where it is invalid |
+| A8e–h | The G1 and G3 conftest commands evaluate the policies | ☒ **Refuted** — zero rules without `--all-namespaces` or with an inexact `--namespace`; `data.registry` empty with `--data registry/` |
 
 **Net effect on the architecture: the late-binding model works.** A1 and A2 are
 the two that the whole `imports/contracts/` design rests on, and both hold. A3
@@ -54,6 +61,7 @@ poc/
     after-global-expr/              after = [global.producer_path]
     after-global-interp/            after = ["${global.producer_path}"]
     no-after/                       an input with no ordering at all
+  gates/run-gates.sh                A8 — builds its own fixtures: scripts experiment, inventory, conftest flags
 ```
 
 The producer shares three values chosen to exercise the mock type-correctness
@@ -390,6 +398,74 @@ pod_ranges = [
 No `mock-` prefix anywhere, `range_count` is 2 not 1, and the decoded CA is the
 producer's. **Both binding styles reached the same producer with real data.**
 A1, A2 and A5 all hold.
+
+---
+
+## A8 — the tooling behind the gates ☒
+
+Five behaviours the gates, the contracts and the stack inventory depend on, probed against the
+pinned versions by `./gates/run-gates.sh`. Each one, as previously written,
+either failed to load, generated invalid code, or **passed having evaluated nothing**.
+
+```
+========== A8a — a script block without the "scripts" experiment ==========
+----- terramate list
+Error: unable to parse configuration
+> <work>/tm/b/stack.tm.hcl:6,1-16: terramate schema error: loading from <work>/tm/b: unrecognized block "script" (script is an experimental feature, it must be enabled before usage with `terramate.config.experiments = ["scripts"]`)
+[exit 1]
+----- same, with experiments = ["outputs-sharing", "scripts"]
+script ran
+[exit 0]
+
+========== A8b — experimental eval: is terramate.stack.after exposed? ==========
+Error: <cmdline>:1,64-70: eval expression: eval "tm_jsonencode({id = terramate.stack.id, after = terramate.stack.after})": This object does not have an attribute named "after".
+[exit 1]
+
+========== A8c — debug show metadata carries after ==========
+stack "/b":
+	terramate.stack.id="b"
+	terramate.stack.tags=["gcp","qa"]
+	terramate.stack.after=["tag:gcp:qa:network","/a"]
+[exit 0]
+
+========== A8d — output.value is copied verbatim into the generated code ==========
+// TERRAMATE: GENERATED AUTOMATICALLY DO NOT EDIT
+
+output "project_id" {
+  value = global.project_id
+}
+
+========== A8e — G1 without --all-namespaces ==========
+0 tests, 0 passed, 0 warnings, 0 failures, 0 exceptions
+[exit 0]
+
+========== A8f — --all-namespaces, but --data registry/ (YAML at the root of data) ==========
+2 tests, 2 passed, 0 warnings, 0 failures, 0 exceptions
+[exit 0]
+
+========== A8g — --all-namespaces and the bundle with top-level key registry ==========
+FAIL - manifest.json - archetype.composition - unknown trait bogus
+2 tests, 1 passed, 0 warnings, 1 failure, 0 exceptions
+[exit 1]
+
+========== A8h — G3: --namespace terraform vs the exact package ==========
+----- --namespace terraform
+0 tests, 0 passed, 0 warnings, 0 failures, 0 exceptions
+[exit 0]
+----- --namespace terraform.public_names
+FAIL - plan.json - terraform.public_names - environment name in a public name
+[exit 1]
+```
+
+| Probe | Consequence | Applied in |
+|---|---|---|
+| A8a | `experiments` must list `"scripts"` as well as `"outputs-sharing"`. Without it no `terramate` command loads the configuration | Architecture §4.1; `infra-repo-qa` `terramate.tm.hcl` |
+| A8b–c | `ci/stacks-json.sh` parses `debug show metadata`; with `experimental eval` the inventory has no `after` and the R2 rule cannot run | Architecture §14.4; `infra-repo-qa` `ci/stacks-json.sh` |
+| A8d | A contract's `value` may reference only what the generated code declares — `module.*`, `resource.*`, `data.*`, `local.*`, and `var.*` only for a variable an `input` creates. Not `global.*`, not a `var.*` nobody declares | Architecture §4.3, §5.2 |
+| A8e | G1 runs `conftest test --all-namespaces`: the policies live in `terramate.*`, `archetype.*`, `environment.*`, never in `main` | Architecture §13, §14.4; `ci/g1.sh` |
+| A8f–g | `--data registry/registry.json`, a bundle with the top-level key `registry`; `--data registry/` puts each file at the root of `data` and an unknown trait passes | Same; `registry/README.md` |
+| A8h | G3 names each package exactly: `--namespace terraform` matches no `terraform.public_names` | Architecture §13.4 |
+| all | Every conftest gate fails when it evaluated zero rules (`ct` in `ci/g1.sh`) | Architecture §14.4 |
 
 ---
 

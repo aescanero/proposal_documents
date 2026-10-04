@@ -32,6 +32,7 @@ jobs:
         run: terramate generate --detailed-exit-code
 
       - name: Apply de los stacks cambiados, mocks desactivados
+        id: apply
         run: terramate script run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" --no-tags bootstrap tofu deploy
 
       - name: Observaciones para la CMDB
@@ -41,7 +42,7 @@ jobs:
             archetypectl cmdb observe --out "$RUNNER_TEMP/observed"
 
       - name: Marcador de deploy
-        if: ${{ success() }}                   # solo un apply completamente correcto lo mueve
+        if: ${{ !cancelled() && steps.apply.outcome == 'success' }}   # el apply, no el job: una observación fallida no retiene el marcador
         run: |
           mkdir -p "$RUNNER_TEMP/observed/deployed"
           jq -n --arg sha "$GITHUB_SHA" --argjson run "$GITHUB_RUN_NUMBER" '{sha: $sha, run: $run}' \

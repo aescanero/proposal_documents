@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 6 |
+| **Estado** | Propuesta · revisión 7 · el NEG se referencia por URL, no se lee con una fuente `data`; la arista ascendente la comprueba una regla G1 con nombre (§4) |
 | **Alcance** | El borde público de `qa`: IP, zona DNS pública y registros, certificado, Cloud Armor, el Global external Application LB hacia el NEG de Envoy, TLS, las excepciones L4 (patrón B), observabilidad, el contrato `env-edge`, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | Es la última pieza para que SonarQube, Keycloak y Grafana sean alcanzables. La propuesta de Envoy Gateway le dejó requisitos (health check, drenaje, `after`, NEG como `data`) y la de SonarQube, dos más (timeout de 120 s y exclusiones de Cloud Armor) |
 | **Base** | E1 §4.5 (publicación), §4.15 (VPC separada y borde propio); propuesta de Envoy Gateway §1, §2, §4.4, §5.2, §7.1; propuesta `network-qa`; arquitectura §10.2 y §10.8; AM §3 (capabilities de borde en la capa 1). No se repite lo que ya está allí |
@@ -37,7 +37,7 @@ Fuente: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 |---|---|---|
 | E1 §4.5, R45 | Timeout del backend service de **120 s** | §4 |
 | E2 §9 | Exclusiones de Cloud Armor en `/api/ce/submit` | §3.2 |
-| Envoy Gateway §5.2, §7.1 | Health check HTTP al puerto de readiness (`health_check` del contrato); `connection_draining_timeout_sec: 60`; NEG `eg-qa-neg` como `data` por zona; `after` al stack `proxy` | §4 |
+| Envoy Gateway §5.2, §7.1 | Health check HTTP al puerto de readiness (`health_check` del contrato); `connection_draining_timeout_sec: 60`; NEG `eg-qa-neg` por zona, fuera del estado; `after` al stack `proxy` | §4 |
 | Envoy Gateway §2.1 | HTTP → HTTPS en el URL map; HTTP hacia el backend (Envoy Gateway DG14) | §4, §6 |
 | Envoy Gateway §4.4 | Balanceador passthrough por excepción (patrón B), con `sources` en la regla | §5 |
 | E1 §4.15 | Zona `tqbvzkr.disasterproject.com` delegada; wildcard creado una vez | §1 |
@@ -116,7 +116,7 @@ Fuente: [`diagrams/02-borde.mmd`](diagrams/02-borde.mmd)
 |---|---|---|
 | Esquema | `EXTERNAL_MANAGED` (Global external Application LB) | El clásico (`EXTERNAL`) es el anterior; el gestionado admite gestión de tráfico avanzada y es el que recibe las funciones nuevas (DL3) |
 | Backend service | `qa-envoy`, `protocol = HTTP` hacia 8080, **120 s** de timeout (R45), `connection_draining_timeout_sec = 60`, `security_policy = qa-edge`, logs al 100 % en `qa` | Envoy Gateway §2.2 y §5.2 |
-| Backends | Un NEG `eg-qa-neg` por zona (`b`, `c`, `d`), leídos con `data "google_compute_network_endpoint_group"`; `balancing_mode = RATE`, `max_rate_per_endpoint = 1000` | El NEG lo crea el controlador de GKE (R20). `RATE` es obligatorio con NEG; el valor reparte, no corta **(verificar el comportamiento a saturación, VL4)** |
+| Backends | Un NEG `eg-qa-neg` por zona (`b`, `c`, `d`), referenciados por URL a partir del `neg_name` determinista (`projects/disasterproject-nonprod/zones/europe-west1-<z>/networkEndpointGroups/eg-qa-neg`), nunca leídos con una fuente `data`; `balancing_mode = RATE`, `max_rate_per_endpoint = 1000` | El NEG lo crea el controlador de GKE (R20). Nada se lee al planificar, así que la preview planifica antes de que exista el Gateway. `RATE` es obligatorio con NEG; el valor reparte, no corta **(verificar el comportamiento a saturación, VL4)** |
 | Health check | HTTP, `USE_FIXED_PORT` al puerto de `health_check` del contrato `ingress` (`/ready`) | Contra 8080 una petición sin host devuelve 404 (Envoy Gateway §5.2) |
 | Cabeceras de respuesta | `Strict-Transport-Security: max-age=31536000; includeSubDomains` en `custom_response_headers` | Una vez en el borde, para todas las aplicaciones |
 | URL map `qa-https` | Un solo backend por defecto, sin reglas de host | El host lo decide Envoy (Envoy Gateway DG2); duplicarlo aquí son dos sitios que se desincronizan |
@@ -126,7 +126,7 @@ Fuente: [`diagrams/02-borde.mmd`](diagrams/02-borde.mmd)
 | Hacia el backend | **HTTP**, sin certificado | El TLS público termina aquí. El borde no depende de ningún certificado de la capa 3: con HTTPS, el de Envoy salía de cert-manager, una arista hacia arriba, y el GLB no lo validaba. Google cifra a nivel de red el tráfico del GLB a los backends de la VPC **(verificar, VL4)** (DL9) |
 | Firewall | El de los rangos de health check y GFE lo declara Envoy Gateway (§5.2): quien reclama escribe la regla | — |
 
-**`after` y mock.** El stack `gcp-qa-edge` declara `after` al stack `proxy` de Envoy Gateway: es la arista ascendente de AM §3. En la preview de una PR, el `data` del NEG falla si el Gateway aún no existe y se usa el mock (`--mock-on-fail`); en despliegue, el mock está prohibido (`CLAUDE.md`).
+**`after`, y por qué la preview no necesita mock.** El stack `gcp-qa-edge` declara `after` al stack `proxy` de Envoy Gateway: es la arista ascendente de AM §3. El NEG se referencia por su URL, así que la preview de una PR planifica sin que exista el Gateway. Una fuente `data` haría fallar esa preview, y `--mock-on-fail` no la salvaría: cubre bloques `input`, nunca fuentes `data`. Ningún `input` respalda este `after`, así que la regla genérica de R2 no lo ve; lo ve la regla G1 con nombre `terramate.order` (arquitectura §13.3).
 
 **Orden de destrucción.** `gcp-qa-edge` primero: el backend service suelta el NEG. Al revés, el NEG queda retenido (arquitectura §10.8).
 
@@ -249,7 +249,7 @@ stacks:
 | Stack | Contenido | Cuándo | Entradas por sharing |
 |---|---|---|---|
 | `edge-base` | IP, registros DNS (wildcard, `CAA`, autorización), certificado y mapa, política de Cloud Armor, política SSL | Fase A de E1 §6, con la red | — |
-| `edge` | Health check, backend service, URL maps, proxies, forwarding rules | Fase B, después del stack `proxy` de Envoy Gateway | — (el NEG es `data`; `neg_name` y `health_check` son globals del contrato `ingress`) |
+| `edge` | Health check, backend service, URL maps, proxies, forwarding rules | Fase B, después del stack `proxy` de Envoy Gateway | — (el NEG por URL a partir de `neg_name`; `neg_name` y `health_check` son globals del contrato `ingress`) |
 | `edge-l4` | §5 | Solo con excepciones | Grupos de instancias del stack `nodepools` de GKE |
 
 **Por qué dos stacks.** El certificado tarda en pasar a `ACTIVE`, y la IP y Cloud Armor no dependen de nada del cluster. En un stack aparte se aplican en la fase A y están listos cuando llega el Gateway; `edge` solo espera al NEG (DL1).
