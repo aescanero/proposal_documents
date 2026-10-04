@@ -50,7 +50,7 @@ T=dict(
  blocks=[
   [("CRDs","Gateway API, canal estándar",["BackendTLSPolicy v1","keep al desinstalar","sin experimental"]),
    ("controller","Envoy Gateway, 2 réplicas",["xDS con cert-manager","PatchPolicy: off","Backend: off"]),
-   ("Gateway qa","Uno por entorno",["listener http 8080","sin hostname","allowedRoutes Selector"])],
+   ("Gateway qa","Uno por entorno",["listener https · HTTP 8080","sin hostname","allowedRoutes Selector"])],
   [("EnvoyProxy","Service ClusterIP + NEG",["eg-qa-neg, por zona","HPA 3–6 · 1+ por zona","PDB 2 · maxUnavailable 0"]),
    ("timeouts","Tres tramos que cuadran",["idle 620 s > GLB 600 s","petición 60 s por defecto","ruta ≤ 120 s"]),
    ("health","Visto desde el GLB",["readiness de Envoy","GFE → 8080 y readiness","drenaje 60 s"])],

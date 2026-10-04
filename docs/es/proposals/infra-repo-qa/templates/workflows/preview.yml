@@ -1,8 +1,7 @@
 # Destino: .github/workflows/preview.yml — arquitectura §14.1
 name: preview
 on:
-  pull_request:
-    branches: [main]
+  pull_request:                # cualquier rama base: un pull request apilado sobre otro pasa las mismas puertas
 
 permissions:
   contents: read
@@ -47,6 +46,15 @@ jobs:
           done
           echo "envs=$(jq -cn '$ARGS.positional' --args "${envs[@]}")" >> "$GITHUB_OUTPUT"
           echo "prod=$prod" >> "$GITHUB_OUTPUT"
+
+  spec-pin:                                    # job propio: el checkout de la especificación contiene poc/, una raíz Terramate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4                # la especificación, para comprobar el pin en los dos sentidos (DR4)
+        with: { repository: aescanero/proposal_documents, path: .spec, fetch-depth: 0 }   # un token de solo lectura si es privada
+      - name: registry/ y schemas/ coinciden con su pin (DR4)
+        run: ./ci/spec-sync.sh --check && ./ci/spec-sync.sh --upstream .spec
 
   plan:                                        # un job por entorno tocado, con su identidad de solo lectura
     needs: gates

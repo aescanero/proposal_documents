@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 3 · DZ4, DZ5 y DZ6 aprobadas y aplicadas (§13); §1 ampliado a runbook del bootstrap, DZ8 nueva |
+| **Estado** | Propuesta · revisión 4 · DZ4, DZ5 y DZ6 aprobadas y aplicadas (§13); §1 ampliado a runbook del bootstrap, DZ8 nueva; revisión 4: comprobación previa, auditoría DATA_READ, la variante de proyecto adoptado (§1.5), conjunto mínimo de capa 0 (§15.1), DZ9–DZ11 |
 | **Alcance** | Lo que la capa 0 tiene que dar para que `qa` arranque: arranque de la propia landing zone, proyectos y carpetas, org policies, APIs del proyecto non-prod, claves de Cloud KMS, Artifact Registry, federación de GitHub Actions e identidades del pipeline, bucket de estado, DNS padre y zona delegada, identificador público, pool global de direcciones, Binary Authorization, presupuestos. `hub` y `prod` solo donde cambian algo |
 | **Por qué ahora** | Todas las propuestas de `qa` le dejan requisitos (§0.1) y ninguna la describe. Es lo primero que se aplica y lo único que se arranca a mano |
 | **Base** | E1 §4.13 (acceso al plano de control), §4.14 (KMS), §4.15 (VPC separada); arquitectura §11.2 (identidad del pipeline), §11.4 (segregación), §11.5 (estado); AM §3 (capas), §7 (binding), §9.2 (pool global). No se repite lo que ya está allí |
@@ -78,8 +78,9 @@ El procedimiento de los pasos 2 y 3 se guarda en el repositorio de despliegue co
 | Proyecto | `disasterproject-lz` | Directamente bajo la organización, no en una carpeta: así ningún stack posterior lo mueve y cambia su herencia de org policies. Cuenta de facturación de la organización |
 | APIs | `storage`, `cloudkms`, `iam`, `iamcredentials`, `sts`, `cloudresourcemanager`, `serviceusage`, `cloudbilling`, `orgpolicy` | Las que usan los propios pasos 2–6. Las de los proyectos de entorno las habilita `gcp-lz-projects` (§2.1) |
 | Bucket de estado | `disasterproject-tfstate-gcp` | `europe-west1`; acceso uniforme; *public access prevention* forzada; versionado, versiones anteriores 30 días; `prevent_destroy` |
+| Auditoría de lecturas del estado | `google_project_iam_audit_config` en `disasterproject-lz`, servicio `storage.googleapis.com`, `DATA_READ` y `DATA_WRITE` | Responde *quién leyó el estado*: Cloud Audit Logs, que ningún ajuste del bucket puede desactivar. **No** el access logging de GCS: exige conceder el bucket a `group:cloud-storage-analytics@google.com`, que `iam.allowedPolicyMemberDomains` (§3.1) prohíbe; sin esa concesión un bloque `logging` queda configurado e inerte — nunca se escribe un log y el código parece correcto |
 | Key ring y clave | `lz` / `tofu-state` | `europe-west1`; rotación 90 días; `prevent_destroy`. Los key rings de entorno los crea `gcp-lz-kms` (§4) |
-| Pool y proveedor de federación | `github-pool` / `github-oidc` | `attribute_condition` sobre el repositorio **y** el `repository_owner_id` numérico (arquitectura §11.2); mapeo de `repository`, `environment` y `ref` |
+| Pool y proveedor de federación | `gh-disasterproject-infra` / `github-oidc` | `attribute_condition` sobre el repositorio **y** el `repository_owner_id` numérico (arquitectura §11.2); mapeo de `repository`, `environment` y `ref` |
 | Identidades | `tf-plan-lz@`, `tf-apply-lz@`, `tf-destroy-lz@` | En `disasterproject-lz`. `tf-plan-lz@` ← `attribute.repository/disasterproject/infra`; `tf-apply-lz@` ← `attribute.environment/landing-zone`; `tf-destroy-lz@` ← `attribute.environment/landing-zone-destroy` |
 | Grants de `tf-apply-lz@` | Organización: `resourcemanager.folderAdmin`, `resourcemanager.projectCreator`, `orgpolicy.policyAdmin`, `iam.organizationRoleAdmin`; cuenta de facturación: `billing.user`; `disasterproject-lz`: `cloudkms.admin`, `artifactregistry.admin`, `dns.admin`, `iam.serviceAccountAdmin`; bucket: `storage.admin` | `storage.admin` sobre el bucket, no el proyecto: es lo que le deja poner las condiciones por prefijo a las identidades de entorno (§5.1) |
 | Grants de `tf-plan-lz@` | Organización: `browser`, `orgpolicy.policyViewer`, `iam.securityReviewer`; `disasterproject-lz`: `viewer`; bucket: lectura del prefijo `lz/` | Solo lectura, para la preview y el drift de la landing zone |
@@ -157,6 +158,18 @@ gcloud organizations add-iam-policy-binding "$ORG_ID" \
 terramate generate --detailed-exit-code    # 0: el código generado es el de main
 cd stacks/landing-zone/gcp/bootstrap
 
+# --- 1b. Comprobación previa: nadie más tiene nuestros nombres ------------------
+# Un nombre ya ocupado no está en nuestro estado: el plan dice "create", la API
+# responde 409 treinta recursos después, y la landing zone queda aplicada a medias.
+gcloud storage buckets describe gs://disasterproject-tfstate-gcp >/dev/null 2>&1 && echo "TAKEN bucket"
+gcloud iam workload-identity-pools describe gh-disasterproject-infra \
+  --location=global --project="$LZ_PROJECT" >/dev/null 2>&1 && echo "TAKEN pool (o borrado hace < 30 días)"
+gcloud kms keyrings describe lz --location=europe-west1 --project="$LZ_PROJECT" >/dev/null 2>&1 && echo "TAKEN key ring"
+for sa in tf-plan-lz tf-apply-lz tf-destroy-lz; do
+  gcloud iam service-accounts describe "$sa@$LZ_PROJECT.iam.gserviceaccount.com" >/dev/null 2>&1 && echo "TAKEN $sa"
+done
+gcloud org-policies describe iam.allowedPolicyMemberDomains --organization="$ORG_ID"   # condiciona cada concesión (§1.1)
+
 # --- 2. Apply con estado local ------------------------------------------------
 mv _backend.tf _backend.tf.final           # backend gcs + cifrado: aún no existen
 cat > _backend_local.tf <<'HCL'
@@ -197,6 +210,8 @@ Tras el paso 3, un PR (paso 4) cambia el mixin para este stack: quita `method "u
 
 > **Verificar en VZ1.** Que `tofu init -migrate-state` con el bloque `fallback` lee el estado local en claro y escribe el remoto cifrado en una sola operación. Si esta versión de OpenTofu no lo hace, la alternativa conocida es migrar primero sin cifrado (el `_backend.tf` del paso 2 con backend `gcs` y sin bloque `encryption`) y cifrar después con el `fallback` y un `tofu apply -refresh-only`. El resultado es el mismo; son dos pasos en lugar de uno.
 
+Los pasos 1b y 2 se ejecutan contra un proyecto que crea el propio bootstrap, así que en la forma de referencia solo puede colisionar el nombre del bucket, global en todo Google Cloud. En un proyecto adoptado (§1.5) importa cada línea de la comprobación previa, y un `TAKEN` detiene la ejecución: cambian nuestros nombres, nunca los suyos.
+
 ### 1.4 Si algo sale mal
 
 | Situación | Qué hacer |
@@ -207,6 +222,27 @@ Tras el paso 3, un PR (paso 4) cambia el mixin para este stack: quita `method "u
 | Se perdió la clave `tofu-state` | No debería poder ocurrir: `prevent_destroy`, 30 días mínimos para destruir una versión y nadie con `cloudkms.admin` salvo `tf-apply-lz@` (RZ5). Si ocurre, el estado cifrado es irrecuperable; se reconstruye con `import.tf.example` |
 | Hay que rehacer la organización | El mismo runbook, desde el paso 2, contra la organización nueva. El código no cambia salvo los `globals` de ids |
 | Un cambio posterior al bootstrap | PR revisado; lo aplica la cuenta *break-glass* desde `main` con `tofu apply`, ya con backend remoto. No se repiten los pasos 2–4 |
+| El `apply` falla con **409 already exists** | El nombre pertenece a algo fuera de nuestro estado — se saltó la comprobación previa o el proyecto es compartido. **Nunca `import`**: un recurso ajeno en nuestro estado lo destruye nuestro próximo `destroy`. Renombrar el nuestro (el id del pool y los nombres de SA llevan el repositorio), volver a planificar y ejecutar antes la comprobación previa |
+| Un **403** en una concesión de organización | La cuenta no tiene permiso sobre la organización — lo habitual en un proyecto adoptado (§1.5). `grant_org_roles = false`; el propietario de la organización aplica esas concesiones fuera del stack, y el runbook registra quién y cuándo |
+| Un **412** *users do not belong to a permitted customer* | Una concesión a un miembro fuera de los dominios de la organización, bloqueada por `iam.allowedPolicyMemberDomains`. Quitar la concesión y lo que dependa de ella en el mismo cambio (el bloque `logging` de un bucket, por ejemplo); nunca pedir una excepción para una concesión del pipeline |
+
+
+### 1.5 Variante: un proyecto adoptado
+
+La forma de referencia da a la capa 0 su propio proyecto, creado por el bootstrap. Cuando nadie tiene `billing.user` y `resourcemanager.projectCreator`, no se puede crear un proyecto, y la landing zone **adopta** uno que ya existe: en la práctica el proyecto de no producción, junto a los entornos a los que sirve. Es una forma legítima para no producción; `prod` conserva su propio proyecto en cualquiera de las dos formas.
+
+| Qué cambia | Forma de referencia | Proyecto adoptado |
+|---|---|---|
+| `create_project` | `true` | `false`; el id del proyecto es una entrada del bootstrap |
+| `grant_org_roles` | `true` | `false`: las concesiones de organización las aplica su propietario, fuera del stack (§1.4) |
+| `gcp-lz-org`, `gcp-lz-projects` | Se aplican | **No se aplican.** Las org policies de §3.1 pertenecen al propietario de la organización: pasan a ser requisitos, comprobados por VZ6, no escritos |
+| Conjunto mínimo para desplegar un entorno | §15.1 | El mismo, sin `org` ni `projects` |
+| Comprobación previa (§1.3, 1b) | Solo puede colisionar el nombre del bucket | **Obligatoria**: pools, key rings y cuentas de servicio pueden existir ya con nuestros nombres (RZ7) |
+| Separación entre la landing zone y los entornos | El límite del proyecto | Solo la sostienen dos controles: el acceso al estado condicionado al **prefijo de objeto** del entorno, y el acceso a KMS a su **propia clave** |
+| Identidades que ya están en el proyecto | Ninguna | Cualquier `owner`, `editor` o `storage.admin` concedido a nivel de **proyecto** lee y escribe todos los objetos de estado, los de la landing zone incluidos. Reducirlos a nivel de recurso es un **requisito** del paso 2, no higiene (RZ6) |
+| `tf-apply-lz@` | En un proyecto que nadie más usa | En un proyecto que comparten varios entornos: un objetivo mayor. Las alertas *break-glass* de §5.3 cubren también los cambios en su política IAM |
+
+Cada fila es una consecuencia declarada de antemano en lugar de descubierta en el primer `apply`. Ninguna se da en la forma de referencia.
 
 ---
 
@@ -435,6 +471,8 @@ assert {
 | RZ3 | **Grant de proyecto donde bastaba uno de recurso** | Media | Alta — una identidad de entorno lee o escribe recursos de otro | Regla de G3 (§11.1); SAs creadas por la landing zone (§6.3) |
 | RZ4 | **Identificador público regenerado** por un `taint` o un `destroy` | Baja | Alta — todos los nombres públicos del entorno cambian | `prevent_destroy` e `ignore_changes` (§7) |
 | RZ5 | **Pérdida de la clave de estado** | Baja | Crítico — estado ilegible, irrecuperable (E1 §4.14) | Sin `cloudkms.admin` fuera de la landing zone; 30 días mínimos para destruir una versión |
+| RZ6 | **Estado legible por concesiones a nivel de proyecto** en un proyecto adoptado (§1.5): identidades previas con `owner`, `editor` o `storage.admin` sobre el proyecto | Alta en un proyecto adoptado | Crítico — el estado de todos los entornos, el de la landing zone incluido, legible y modificable fuera del pipeline | Reducirlas a nivel de recurso antes del paso 2; estado y claves concedidos por prefijo y por clave; la auditoría DATA_READ (§1.1) muestra quién leyó qué |
+| RZ7 | **Colisión de nombres en un proyecto adoptado**: el bucket, el pool, un key ring o una SA ya existen con nuestro nombre | Media en un proyecto adoptado | Alto — `409` a mitad del bootstrap, una landing zone aplicada a medias | Comprobación previa (§1.3, 1b); nombres que llevan el repositorio (`gh-disasterproject-infra`); nunca `import` de un recurso que no creamos |
 
 ### 11.4 Verificaciones
 
@@ -446,6 +484,7 @@ assert {
 | VZ4 | Binary Authorization compartida | Dos clusters no productivos con reglas distintas; un `apply` de la landing zone no altera la regla de ninguno; un cluster sin regla no admite pods |
 | VZ5 | Endpoint DNS del plano de control (DZ4) | `helm`, `kubernetes` y `kubectl` funcionan desde un runner alojado con solo IAM; sin redes autorizadas |
 | VZ6 | Org policies | `run.allowedIngress` rechaza un servicio con `ingress=all`; `compute.restrictVpcPeering` admite la conexión de PSA (= VW5) |
+| VZ7 | Comprobación previa y auditoría (§1.3, §1.5) | La comprobación previa no imprime ningún `TAKEN`; una lectura de `lz/` por `tf-plan-qa@` se rechaza y aparece en la auditoría DATA_READ; en un proyecto adoptado, ningún principal fuera de §5.1 tiene un rol de storage a nivel de proyecto |
 
 ---
 
@@ -470,6 +509,8 @@ assert {
 | `network-qa` §1.1 | Agentes de servicio forzados con `google_project_service_identity` | **Aplicado** |
 | Arquitectura §11.2 | Identidades del pipeline en el proyecto de la landing zone; condición IAM por prefijo en el bucket de estado | **Aplicado** |
 | `risk-register.md` | RZ1–RZ3 como R58–R60 | **Aplicado** |
+| `risk-register.md` | RZ6–RZ7 como R61–R62 | **Aplicado** |
+| Arquitectura §11.2, §11.10 | Id de pool `gh-disasterproject-infra` (DZ9); auditoría DATA_READ del estado, no access logs del bucket (DZ11) | **Aplicado** |
 
 ---
 
@@ -485,6 +526,9 @@ assert {
 | DZ6 | Binary Authorization | **Aprobada** | Política del proyecto escrita solo por la landing zone; `ALWAYS_DENY` por defecto | Cada `gke` escribe su regla |
 | DZ7 | Presupuestos | **Propuesta** | Por entorno, filtrados por la etiqueta `environment` | Uno por proyecto |
 | DZ8 | Quién aplica `gcp-lz-bootstrap` después del arranque | **Propuesta** | Solo la cuenta *break-glass*, desde `main` tras PR; el pipeline lo planifica pero nunca lo aplica (`--no-tags bootstrap`) | `tf-apply-lz@`, que podría ampliar sus propios permisos y tocar la federación con la que se autentica |
+| DZ9 | Id del pool de federación | **Propuesta** | Uno por repositorio, `gh-disasterproject-infra`: los ids de pool son por proyecto y un pool borrado conserva su id 30 días | Un `github-pool` genérico, que colisiona con cualquier otro pool del mismo proyecto |
+| DZ10 | Proyecto para la capa 0 cuando no se puede crear uno | **Propuesta** | Adoptar el proyecto de no producción con las consecuencias de §1.5 declaradas de antemano | Esperar a `billing.user`; la capa 0 en el proyecto de un entorno |
+| DZ11 | Quién leyó el estado | **Propuesta** | Logs de auditoría DATA_READ sobre `storage.googleapis.com` | Access logging de GCS: imposible con `iam.allowedPolicyMemberDomains`, e inerte sin su concesión |
 
 ---
 
@@ -499,3 +543,18 @@ assert {
 | **4 · Acceso** | Endpoint DNS (DZ4); **VZ5** | `helm` y `kubectl` contra el cluster de `qa` desde un runner alojado | 0,5 días |
 
 Cinco días para una persona. Es la fase 0 de E1 §6: bloquea todo lo demás.
+
+### 15.1 Conjunto mínimo de capa 0 para un entorno
+
+Las fases anteriores construyen la landing zone entera. Un entorno nuevo no la espera completa: cada capa del entorno necesita un conjunto concreto de stacks de la landing zone, y nada más.
+
+| Para que el entorno llegue a… | Stacks de la landing zone aplicados | Por qué |
+|---|---|---|
+| Su primer `tofu init` | `bootstrap`, `kms` | El backend nombra la clave del entorno; sin ella `init` falla |
+| Un job de deploy | `identities` | `tf-plan-<env>@`, `tf-apply-<env>@` y sus vínculos de federación |
+| Capa 1 (`network`, `edge-base`) | `dns` | El certificado comodín se valida por DNS en la zona delegada del entorno |
+| Capa 2 (`gke`) | `identities` (SA de nodos, DZ5), `binauthz` | Un clúster sin su regla de Binary Authorization no admite pods (DZ6) |
+| Capa 2b y superiores (pods) | `registry` | Imágenes por digest desde el espejo (§6.2) |
+| Fuera del camino | `org`, `projects` (en un proyecto adoptado, §1.5), presupuestos | Los presupuestos son recomendables, no bloqueantes |
+
+La secuencia habitual para un entorno nuevo: bootstrap (a mano) → variables del repositorio (paso 5) → `first-deploy` de `landing-zone` con `kms`, `identities`, `dns`, `binauthz`, `registry` → `first-deploy` del entorno.

@@ -6,7 +6,7 @@ Visual map of the two reference documents. Nothing here is normative; every diag
 |---|---|
 | `archetype-model.md` | *What may be composed with what?* Manifests, capabilities, traits, pools, CMDB, resolution |
 | `terramate-outputs-sharing-architecture.md` | *How is it generated and applied?* Generators, outputs sharing, IAM, policy, CI/CD, per-cloud guides |
-| `risk-register.md` | *What can go wrong, and is the control actually in place?* 60 risks by domain (57 active), reviewed at each phase gate |
+| `risk-register.md` | *What can go wrong, and is the control actually in place?* 62 risks by domain (59 active), reviewed at each phase gate |
 
 ---
 
@@ -409,7 +409,7 @@ The resolver **computes**; OPA **asserts**. They must not implement the same rul
 flowchart TD
     REG["<b>registry/*.yaml</b><br/>capabilities · traits · zones · labels"]
     REG -->|generate| S["schemas/*.schema.json<br/>enum blocks"]
-    REG -->|generate| D["registry/*.json<br/>conftest --data"]
+    REG -->|generate| D["registry/registry.json<br/>conftest --data"]
     REG -->|generate| V["Gatekeeper chart values<br/>ConstraintTemplate params"]
     S --> CK["check-jsonschema"]
     D --> CF["conftest"]

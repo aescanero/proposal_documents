@@ -38,6 +38,7 @@ de `proposal_documents`. Ver RESULTS.es.md → "Por qué un arnés".
 | `stacks/consumer-inherited/` | A1 — `from_stack_id = global.producer_id`, ordenado por ruta literal |
 | `stacks/consumer-interpolated/` | A2 — `from_stack_id = "${global.env}-producer"`, ordenado por `tag:producer` |
 | `cases/` | Fixtures que el arnés prueba de uno en uno, ver abajo |
+| `gates/run-gates.sh` | A8 — las herramientas detrás de las puertas: el experimento `scripts`, el inventario de stacks, los namespaces y datos de conftest. Construye sus propios fixtures; necesita `terramate`, `conftest` y `jq` |
 
 ## Por qué `cases/` no es `stacks/`
 

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 7 |
+| **Estado** | Propuesta · revisión 8 · el listener se llama `https` en todo el documento (§2.1, DG2), como lo publica el contrato; fila `grpc-route` alineada con DG14 |
 | **Alcance** | El arquetipo de capa 3 `gateway-envoy-gke` en `qa`: el camino de una petición desde el GLB hasta el pod, el Gateway único del entorno, quién puede enganchar qué ruta y con qué política, los CRDs de Gateway API, la flota de proxies y su relación con el NEG, tiempos de espera, observabilidad, red, contrato `ingress`, stacks, políticas, ejecución y plan |
 | **Por qué ahora** | SonarQube (E1 §4.5, E2 §5.8), Keycloak (§8), monitorización (Grafana) y cert-manager (§1, §3) ya publican rutas en el Gateway `qa` o le emiten certificados, y cada uno lo daba por hecho. E2 §9 le dejó tres requisitos pendientes |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -39,7 +39,7 @@ Fuente: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 | Tramo o función | Quién | Motivo |
 |---|---|---|
 | IP global, certificado `*.tqbvzkr.disasterproject.com`, Cloud Armor, backend service, URL map | **`gcp-qa-edge`**, capa 1 (E1 §4.15) | Deben estar en el mismo proyecto que el balanceador |
-| NEG `eg-qa-neg` | El **controlador de NEG de GKE**, a partir de la anotación del Service que genera Envoy Gateway | Fuera del estado de Terraform (§10.2, R20); `gcp-qa-edge` lo lee como `data` |
+| NEG `eg-qa-neg` | El **controlador de NEG de GKE**, a partir de la anotación del Service que genera Envoy Gateway | Fuera del estado de Terraform (§10.2, R20); `gcp-qa-edge` lo referencia por URL, a partir de su nombre determinista |
 | Tramo GLB → Envoy | **HTTP**, sin certificado (DG14) | El TLS público termina en el GLB con el certificado de la capa 1. Un certificado de la CA interna en este tramo hacía depender el borde (capa 1) de cert-manager (capa 3), y el GLB no lo validaba: cifraba sin autenticar |
 | Enrutado por host y ruta, políticas de tráfico | Este arquetipo: Gateway `qa` y las `HTTPRoute` de los consumidores | Gateway API: la ruta vive con quien la publica (§10.6) |
 | Autenticación de usuarios | **Cada aplicación**; la `SecurityPolicy` OIDC solo si el consumidor la pide (§4.3) | SonarQube (E1 §4.6), Grafana y Keycloak no pueden llevarla |
@@ -59,7 +59,8 @@ Fuente: [`diagrams/02-camino-peticion.mmd`](diagrams/02-camino-peticion.mmd)
 
 | Ajuste | Valor | Motivo |
 |---|---|---|
-| Listener | Uno, `http`, **puerto 8080**, `protocol: HTTP` | Por encima de 1024: sin remapeo de puertos y sin capacidades en el contenedor. Solo lo alcanzan los rangos del GFE (§5.2, §9.3) |
+| Listener | Uno, llamado `https`, **puerto 8080**, `protocol: HTTP` | Por encima de 1024: sin remapeo de puertos y sin capacidades en el contenedor. Solo lo alcanzan los rangos del GFE (§5.2, §9.3) |
+| Nombre del listener | `https` | El nombre es un identificador, no el protocolo: es el `listener_name` del contrato (§7.1), el `sectionName` de cada `HTTPRoute` de tenant, y nombra lo que ve el **cliente** — HTTPS, terminado en el GLB. Cambiarlo es una versión mayor de `ingress`, porque toda ruta que lo nombra deja de engancharse |
 | `hostname` del listener | **Ninguno** | El host se decide en las `HTTPRoute`, por la cabecera `Host` (DG2): un solo sitio donde se declara qué nombre va a qué servicio |
 | Certificado | **Ninguno** en el listener | cert-manager sigue emitiendo los certificados xDS del controlador (DG9) y los de `BackendTLSPolicy` hacia los backends que lo exigen; ninguno sale hacia el borde |
 | Listener HTTPS | **No** | El cliente solo habla TLS con el GLB; la redirección de HTTP a HTTPS la hace el URL map del GLB. La aplicación sabe que el origen era HTTPS por `X-Forwarded-Proto` y por su URL base fijada (`sonar.core.serverBaseURL`, `hostname` de Keycloak) (VG1) |
@@ -315,7 +316,7 @@ La última es la única que ve lo que Prometheus no puede ver: el GLB sin backen
 | `listener_name` | `https` | `parentRefs[].sectionName` |
 | `route_namespace_label` | `gateway.disasterproject.com/routes: "true"` | Etiqueta del namespace para poder enganchar rutas |
 | `security_policy_label` | `gateway.disasterproject.com/security-policy: "true"` | Etiqueta del namespace para poder crear `SecurityPolicy` |
-| `neg_name` | `eg-qa-neg` | `gcp-qa-edge`: `data "google_compute_network_endpoint_group"` por zona |
+| `neg_name` | `eg-qa-neg` | `gcp-qa-edge`: la URL del NEG por zona, sin fuente `data` |
 | `health_check` | `{ port: 19003, path: "/ready" }` (puerto a confirmar, VG2) | `gcp-qa-edge`: health check del backend service |
 
 Todas son deterministas y los consumidores las reciben como globals. `gcp-qa-edge` necesita además `after`: el NEG no existe hasta que hay proxies listos (§8.3). Las cinco últimas son nuevas y compatibles con la versión que ya se consume (`>=3.0.0 <4.0.0`), así que el contrato sube a **3.2.0** (MINOR, AM §4.5).
@@ -327,7 +328,7 @@ Todas son deterministas y los consumidores las reciben como globals. `gcp-qa-edg
 | `oidc-security-policy`, `jwt-auth` | Sí | `SecurityPolicy` de Envoy Gateway |
 | `local-rate-limit` | Sí | `BackendTrafficPolicy` |
 | **`backend-tls`** (nuevo) | Sí | `BackendTLSPolicy`, canal estándar. Keycloak lo usa (§8.1 de su propuesta) y hasta ahora no había trait que lo expresara (DG11) |
-| `grpc-route` | **No** | El backend service del GLB habla HTTPS (HTTP/1.1) con Envoy. gRPC exigiría protocolo HTTP/2 en el borde: se ofrecerá cuando alguien lo necesite |
+| `grpc-route` | **No** | El backend service del GLB habla HTTP/1.1 en claro con Envoy (DG14). gRPC exigiría HTTP/2 en ese tramo (`protocol = H2C`) y en el borde: se ofrecerá cuando alguien lo necesite |
 | `tcp-route` | **No** | Canal experimental, y además no pasa por un balanceador L7 |
 | `global-rate-limit` | **No** | Necesita el servicio de rate limit y Redis |
 | `mtls-backend` | **No** | Nadie lo pide en `qa` |
@@ -439,7 +440,7 @@ capacity:
 | Arista | Tipo | Motivo |
 |---|---|---|
 | `proxy` → `gcp-qa-certs-ca` | `after` | El `Certificate` del backend necesita el `ClusterIssuer` (cert-manager RT6) |
-| `gcp-qa-edge` → `proxy` | `after` + `data` del NEG | La arista ascendente (§1). En la preview, el `data` falla y se usa el mock (`--mock-on-fail`, §10.2) |
+| `gcp-qa-edge` → `proxy` | `after`; NEG por URL | La arista ascendente (§1). Nada se lee al planificar, así que la preview no necesita mock; ningún `input` respalda el `after`, así que lo comprueba la regla G1 con nombre `terramate.order` (arquitectura §13.3) |
 | Consumidores (`frontdoor` de Keycloak, Grafana y SonarQube) → `proxy` | `after` | Una `HTTPRoute` antes que el Gateway queda `Accepted=False` hasta que existe. No rompe nada, pero confunde el criterio de salida |
 
 Destrucción en orden inverso: `gcp-qa-edge` primero (el backend service suelta el NEG) y después el Gateway. Al revés, el NEG queda retenido porque sigue referenciado (§10.8).
@@ -545,7 +546,7 @@ Fuente: [`diagrams/04-red.mmd`](diagrams/04-red.mmd)
 | # | Decisión | Estado | Recomendación | Alternativa |
 |---|---|---|---|---|
 | DG1 | Gateways | Consecuencia de §10.6 | Uno, `qa`, en `envoy-gateway-system` | Uno por tenant (fan-in, un NEG por Gateway) |
-| DG2 | Listener | Propuesta | HTTP 8080 sin `hostname`; el host lo deciden las rutas | Listener con `*.tqbvzkr.disasterproject.com` |
+| DG2 | Listener | Propuesta | Un listener llamado `https`, `protocol: HTTP` en 8080, sin `hostname`; el host lo deciden las rutas | Listener con `*.tqbvzkr.disasterproject.com` |
 | DG3 | CRDs de Gateway API | Propuesta | Los instala el arquetipo, canal estándar; Gateway API de GKE desactivado | Gestionados por GKE |
 | DG4 | Propiedad de los hostnames | Propuesta | Claim + anotación del namespace + Gatekeeper referencial + G1 | Confianza en los tenants |
 | DG5 | Extensiones de Envoy Gateway | Propuesta | `EnvoyPatchPolicy` y `Backend` desactivados; `EnvoyExtensionPolicy` solo en el namespace del Gateway | Disponibles para tenants |

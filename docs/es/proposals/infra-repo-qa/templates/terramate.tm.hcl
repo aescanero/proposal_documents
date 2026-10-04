@@ -3,7 +3,7 @@ terramate {
   required_version = "= 0.17.3"
 
   config {
-    experiments = ["outputs-sharing"]            # los scripts ya no son experimentales
+    experiments = ["outputs-sharing", "scripts"] # sin "scripts", un bloque script hace fallar la carga de toda la configuración (0.17.3)
 
     git {
       default_branch = "main"

@@ -313,7 +313,7 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 | Término | Definición |
 |---|---|
 | **Trait `iac-owned-edge`** | Se gana cuando el mecanismo de adjunto del balanceador de carga está completamente creado y rastreado en el estado de Terraform — cierto para `TargetGroupBinding` de AWS y AGFC de Azure, **falso** para el NEG standalone gestionado por el controlador de GCP (el hueco se registra en vez de ocultarse). |
-| **NEG standalone (Network Endpoint Group)** | El mecanismo de GCP que expone pods a un balanceador de carga; creado por el controlador de NEG de GKE (no por Terraform) y referenciado como fuente `data`. Los NEG son zonales, así que `minReplicas` debe ser ≥ el número de zonas. |
+| **NEG standalone (Network Endpoint Group)** | El mecanismo de GCP que expone pods a un balanceador de carga; creado por el controlador de NEG de GKE (no por Terraform) y referenciado por su URL determinista — ni `resource` ni fuente `data`. Los NEG son zonales, así que `minReplicas` debe ser ≥ el número de zonas. |
 | **`TargetGroupBinding`** | Un CRD de Kubernetes de AWS que enlaza un Service con un target group de ALB/NLB aprovisionado enteramente en Terraform. Nunca se combina con `aws_lb_target_group_attachment`. En un cluster compartido puede referenciar **cualquier** target group de la cuenta, así que solo el arquetipo `gateway` puede crearlo (riesgo R21). |
 | **Envoy Gateway** | La implementación de referencia de Gateway API elegida para ingress; OIDC nativo vía `SecurityPolicy`. Su Service de cara al borde lo genera el controlador (vía `EnvoyProxy`), no se escribe a mano. |
 | **`EnvoyProxy`** | Recurso personalizado que configura el Service de proxy generado por el controlador (tipo, anotaciones de cloud, número de réplicas, topology spread); admite `mergeGateways` para compartir una sola flota de proxies entre varios Gateways. |
@@ -380,7 +380,7 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 | **G2 — escaneo estático de seguridad** | `checkov -d . --framework terraform` en cada PR; bloqueante en HIGH/CRITICAL. Ve la *llamada* al módulo. |
 | **G3 — escaneo del plan** | `checkov -f plan.json --framework terraform_plan` + `conftest --namespace terraform`, ejecutado antes del apply; bloqueante en HIGH/CRITICAL. Ve el *resultado* del módulo, atrapando configuraciones incorrectas solo alcanzables con una combinación concreta de globals. |
 | **Checkov** | Escáner de seguridad de IaC estático/de plan; la "biblioteca estándar" de comprobaciones conocidas de configuración incorrecta cloud, complementario a OPA/Rego (que codifica reglas específicas de la plataforma que Checkov no puede expresar). Configuración en `.checkov/gcp.yaml`, `.checkov/aws.yaml`. |
-| **conftest** | Herramienta de política CLI sin estado que consume `registry/*.json` como `--data`; elegida para las comprobaciones de política en CI en vez de correr un servidor OPA. |
+| **conftest** | Herramienta de política CLI sin estado que consume `registry/registry.json` como `--data`, siempre con `--all-namespaces`; elegida para las comprobaciones de política en CI en vez de correr un servidor OPA. |
 | **check-jsonschema** | Herramienta CLI que valida manifiestos, ficheros de componente, bindings de entorno y ledgers de pool contra JSON Schemas antes de que se ejecute la resolución. |
 | **`conftest verify`** | Ejecuta los tests unitarios propios de las políticas Rego (`policy/*_test.rego`) para que una regla que nunca se dispara no dé una falsa confianza (riesgo R36). |
 | **`archetypectl enrich`** | Herramienta a medida que escanea cada stack en busca de declaraciones `from_stack_id`/`after`, emitiendo los campos `consumes[]` y `after_ids[]`, ya que el inventario de stacks (`ci/stacks-json.sh`) no expone los bloques `input` — se mantiene pequeña e independiente para que el Rego siga siendo portable y testeable contra fixtures. |
@@ -552,7 +552,7 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 
 ---
 
-## 26. Registro de riesgos (`risk-register.md`) — 60 riesgos por dominio (57 activos)
+## 26. Registro de riesgos (`risk-register.md`) — 62 riesgos por dominio (59 activos)
 
 Cada riesgo tiene un número R estable y nunca reutilizado, una probabilidad, un impacto y una mitigación ligada a una sección del documento.
 
@@ -577,7 +577,7 @@ Cada riesgo tiene un número R estable y nunca reutilizado, una probabilidad, un
 | **R17** | Una clave de cifrado de estado acotada por stack bloquea outputs sharing (los consumidores no pueden descifrar el estado del productor). Mitigado con una clave de cifrado de estado por entorno, no por stack. |
 | **R18** | Plano de control privado inalcanzable desde runners alojados por GitHub. Resuelto decidiendo entre runners self-hosted o una concesión de red autorizada en la fase 0. |
 | **R19** | Usar la cuenta de servicio por defecto como identidad de workload arriesga permisos amplios (p. ej. Editor del proyecto). Mitigado con una identidad dedicada por workload, forzada por política. |
-| **R20** | El NEG de GCP no está en el estado de Terraform, haciendo falsa la afirmación de "todo en IaC". Mitigado declarándolo como fuente `data`, nombrándolo explícitamente, y registrando el hueco en el manifiesto del arquetipo. |
+| **R20** | El NEG de GCP no está en el estado de Terraform, haciendo falsa la afirmación de "todo en IaC". Mitigado referenciándolo por su URL determinista, y registrando el hueco en el manifiesto del arquetipo. |
 | **R21** | `TargetGroupBinding` deja que un tenant redirija el tráfico de otro en EKS compartido. Mitigado con RBAC que deniega el CRD a los namespaces de aplicación y restringe la creación al arquetipo `gateway`. |
 | **R22** | El ciclo de arranque Keycloak ↔ Gateway puede provocar un interbloqueo en el primer arranque en frío. Mitigado con el `HTTPRoute` de Keycloak sin llevar `SecurityPolicy` y el descubrimiento OIDC resolviéndose vía el Service interno del cluster. |
 | **R23** | La no transitividad del peering de VPC en GCP bloquea el LB del hub → NEG del spoke si el hub-and-spoke usa VPC separadas. Resuelto con Shared VPC, Network Connectivity Center, o un balanceador por spoke — decidido en la fase 0. |
@@ -607,6 +607,7 @@ Cada riesgo tiene un número R estable y nunca reutilizado, una probabilidad, un
 | **R47–R53** | SonarQube en `qa`: saturación de la cola del compute engine, un análisis de pull request registrado como `main`, OOMKill multi-JVM, pérdida de la clave de cifrado de settings, token global de análisis filtrado, migración de upgrade irreversible, pérdida del volumen zonal. Ver `risk-register.md` §8. |
 | **R55–R57** | CMDB: el sync que escribe en `main`; aristas vacías en silencio, con lo que la guarda de destroy cuenta 0; un valor secreto que llega a la CMDB. Ver `risk-register.md` §7. |
 | **R58–R60** | Landing zone: arranque irrepetible; una política singleton del proyecto (Binary Authorization) escrita por un entorno; un grant de proyecto donde bastaba uno de recurso. Ver `risk-register.md`. |
+| **R61–R62** | Landing zone en un proyecto adoptado: estado legible por concesiones a nivel de proyecto; un nombre ya ocupado en un proyecto compartido. Ver `risk-register.md`. |
 
 **Los cinco principales riesgos** (ordenados por probabilidad × impacto, mitigación aún no implantada): 1) R2 (falta `after`), 2) R12 (`sub` comodín OIDC), 3) R26 (rango de pods dimensionado para pocos nodos), 4) R34 (divergencia del registro), 5) R5 (plataforma compartida destruida al desmontar una instancia).
 

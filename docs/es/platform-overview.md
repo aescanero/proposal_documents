@@ -6,7 +6,7 @@ Mapa visual de los dos documentos de referencia. Nada aquí es normativo; cada d
 |---|---|
 | `archetype-model.md` | *¿Qué se puede componer con qué?* Manifiestos, capabilities, traits, pools, CMDB, resolución |
 | `terramate-outputs-sharing-architecture.md` | *¿Cómo se genera y se aplica?* Generadores, outputs sharing, IAM, política, CI/CD, guías por nube |
-| `risk-register.md` | *¿Qué puede salir mal, y el control está realmente implementado?* 60 riesgos por dominio (57 activos), revisados en cada puerta de fase |
+| `risk-register.md` | *¿Qué puede salir mal, y el control está realmente implementado?* 62 riesgos por dominio (59 activos), revisados en cada puerta de fase |
 
 ---
 
@@ -409,7 +409,7 @@ El resolver **computa**; OPA **afirma**. No deben implementar la misma regla dos
 flowchart TD
     REG["<b>registry/*.yaml</b><br/>capabilities · traits · zones · labels"]
     REG -->|genera| S["schemas/*.schema.json<br/>bloques enum"]
-    REG -->|genera| D["registry/*.json<br/>conftest --data"]
+    REG -->|genera| D["registry/registry.json<br/>conftest --data"]
     REG -->|genera| V["valores del chart de Gatekeeper<br/>parámetros de ConstraintTemplate"]
     S --> CK["check-jsonschema"]
     D --> CF["conftest"]

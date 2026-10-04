@@ -197,7 +197,7 @@ registry/
 | Artefacto generado | Consumidor |
 |---|---|
 | bloques `enum` en `schemas/*.schema.json` | `check-jsonschema` |
-| bundle `registry/*.json` | `conftest --data` |
+| bundle `registry/registry.json` (clave de primer nivel `registry`) | `conftest --data` |
 | `values.yaml` del chart de Gatekeeper | parámetros de `ConstraintTemplate` |
 
 El YAML es la fuente. Un esquema editado a mano es un bug, protegido por una comprobación `registry-generate --check` en CI exactamente igual que `terramate generate --detailed-exit-code`.

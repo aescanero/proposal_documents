@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: ./.github/actions/setup
-      - run: git fetch origin cmdb-observed
+      - run: ./ci/fetch-observed.sh                # un repositorio nuevo aún no tiene cmdb-observed
       - id: c
         run: ./ci/changed-envs.sh
 

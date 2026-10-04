@@ -438,7 +438,7 @@ Addressing: a `/17` from the permanent block `10.4.0.0/14`, assigned by resoluti
 
 | Topic | Decision | Reference |
 |---|---|---|
-| NEG outside Terraform state | Declared as `data`, explicitly named | §10.2, R20 |
+| NEG outside Terraform state | Referenced by its deterministic URL; neither a `resource` nor a `data` source | §10.2, R20 |
 | VPC | **Separate**; `qa`'s edge and its NEG in the same VPC | §4.15, R23 |
 | Node service account | Dedicated, with `artifactregistry.reader`, logging and monitoring writer | §5.7 |
 | Workload Identity | Exact principal per namespace and KSA | R15 |

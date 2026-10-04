@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 7 |
+| **Status** | Proposal · revision 8 · the listener is named `https` throughout (§2.1, DG2), as the contract publishes it; `grpc-route` row aligned with DG14 |
 | **Scope** | The layer 3 `gateway-envoy-gke` archetype on `qa`: the path of a request from the GLB to the pod, the environment's single Gateway, who may attach which route and with which policy, the Gateway API CRDs, the proxy fleet and its relationship with the NEG, timeouts, observability, network, the `ingress` contract, stacks, policies, execution and plan |
 | **Why now** | SonarQube (S1 §4.5, S2 §5.8), Keycloak (§8), monitoring (Grafana) and cert-manager (§1, §3) already publish routes on the `qa` Gateway or issue it certificates, and each one took it for granted. S2 §9 left it three open requirements |
 | **Reference specification** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
@@ -39,7 +39,7 @@ Source: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 | Segment or function | Who | Reason |
 |---|---|---|
 | Global IP, `*.tqbvzkr.disasterproject.com` certificate, Cloud Armor, backend service, URL map | **`gcp-qa-edge`**, layer 1 (S1 §4.15) | Must share a project with the load balancer |
-| NEG `eg-qa-neg` | The **GKE NEG controller**, from the annotation on the Service that Envoy Gateway generates | Outside Terraform state (§10.2, R20); `gcp-qa-edge` reads it as a `data` source |
+| NEG `eg-qa-neg` | The **GKE NEG controller**, from the annotation on the Service that Envoy Gateway generates | Outside Terraform state (§10.2, R20); `gcp-qa-edge` references it by URL, from its deterministic name |
 | GLB → Envoy leg | **HTTP**, no certificate (DG14) | Public TLS terminates at the GLB with the layer-1 certificate. A certificate from the internal CA on this leg made the edge (layer 1) depend on cert-manager (layer 3), and the GLB did not validate it: it encrypted without authenticating |
 | Routing by host and path, traffic policies | This archetype: the `qa` Gateway and the consumers' `HTTPRoute`s | Gateway API: the route lives with whoever publishes it (§10.6) |
 | User authentication | **Each application**; the OIDC `SecurityPolicy` only if the consumer asks for it (§4.3) | SonarQube (S1 §4.6), Grafana and Keycloak cannot carry one |
@@ -59,7 +59,8 @@ Source: [`diagrams/02-camino-peticion.mmd`](diagrams/02-camino-peticion.mmd)
 
 | Setting | Value | Reason |
 |---|---|---|
-| Listener | One, `http`, **port 8080**, `protocol: HTTP` | Above 1024: no port remapping and no capabilities in the container. Only the GFE ranges reach it (§5.2, §9.3) |
+| Listener | One, named `https`, **port 8080**, `protocol: HTTP` | Above 1024: no port remapping and no capabilities in the container. Only the GFE ranges reach it (§5.2, §9.3) |
+| Listener name | `https` | The name is an identifier, not the protocol: it is the contract's `listener_name` (§7.1), the `sectionName` of every tenant `HTTPRoute`, and it names what the **client** sees — HTTPS, terminated at the GLB. Changing it is a major version of `ingress`, because every route that names it stops attaching |
 | Listener `hostname` | **None** | The host is decided in the `HTTPRoute`s, by the `Host` header (DG2): one place where which name goes to which service is declared |
 | Certificate | **None** on the listener | cert-manager still issues the controller's xDS certificates (DG9) and those for `BackendTLSPolicy` towards backends that require it; none goes towards the edge |
 | HTTPS listener | **No** | The client only speaks TLS to the GLB; the HTTP-to-HTTPS redirect is done by the GLB's URL map. The application knows the origin was HTTPS from `X-Forwarded-Proto` and from its pinned base URL (`sonar.core.serverBaseURL`, Keycloak's `hostname`) (VG1) |
@@ -315,7 +316,7 @@ The last one is the only alert that sees what Prometheus cannot: a GLB with no h
 | `listener_name` | `https` | `parentRefs[].sectionName` |
 | `route_namespace_label` | `gateway.disasterproject.com/routes: "true"` | Namespace label required to attach routes |
 | `security_policy_label` | `gateway.disasterproject.com/security-policy: "true"` | Namespace label required to create a `SecurityPolicy` |
-| `neg_name` | `eg-qa-neg` | `gcp-qa-edge`: `data "google_compute_network_endpoint_group"` per zone |
+| `neg_name` | `eg-qa-neg` | `gcp-qa-edge`: the NEG's URL per zone, with no `data` source |
 | `health_check` | `{ port: 19003, path: "/ready" }` (port to confirm, VG2) | `gcp-qa-edge`: the backend service's health check |
 
 All are deterministic; consumers receive them as globals. `gcp-qa-edge` also needs `after`: the NEG does not exist until there are ready proxies (§8.3). The last five are new and compatible with the version already consumed (`>=3.0.0 <4.0.0`), so the contract goes to **3.2.0** (MINOR, AM §4.5).
@@ -327,7 +328,7 @@ All are deterministic; consumers receive them as globals. `gcp-qa-edge` also nee
 | `oidc-security-policy`, `jwt-auth` | Yes | Envoy Gateway `SecurityPolicy` |
 | `local-rate-limit` | Yes | `BackendTrafficPolicy` |
 | **`backend-tls`** (new) | Yes | `BackendTLSPolicy`, standard channel. Keycloak uses it (§8.1 of its proposal) and until now no trait could express it (DG11) |
-| `grpc-route` | **No** | The GLB's backend service speaks HTTPS (HTTP/1.1) to Envoy. gRPC would require HTTP/2 at the edge; it will be offered when someone needs it |
+| `grpc-route` | **No** | The GLB's backend service speaks plain HTTP/1.1 to Envoy (DG14). gRPC would require HTTP/2 on that leg (`protocol = H2C`) and at the edge; it will be offered when someone needs it |
 | `tcp-route` | **No** | Experimental channel, and it does not pass through an L7 load balancer anyway |
 | `global-rate-limit` | **No** | Needs the rate-limit service and Redis |
 | `mtls-backend` | **No** | Nobody on `qa` asks for it |
@@ -439,7 +440,7 @@ capacity:
 | Edge | Type | Reason |
 |---|---|---|
 | `proxy` → `gcp-qa-certs-ca` | `after` | The backend `Certificate` needs the `ClusterIssuer` (cert-manager RT6) |
-| `gcp-qa-edge` → `proxy` | `after` + NEG `data` source | The upward edge (§1). In preview, the `data` source fails and the mock is used (`--mock-on-fail`, §10.2) |
+| `gcp-qa-edge` → `proxy` | `after`; NEG by URL | The upward edge (§1). Nothing is read at plan time, so the preview needs no mock; no `input` backs the `after`, so the named G1 rule `terramate.order` checks it (architecture §13.3) |
 | Consumers (`frontdoor` of Keycloak, Grafana and SonarQube) → `proxy` | `after` | An `HTTPRoute` created before the Gateway sits at `Accepted=False` until it exists. It breaks nothing, but it muddles the exit criterion |
 
 Destruction runs in reverse order: `gcp-qa-edge` first (the backend service lets go of the NEG), then the Gateway. The other way round, the NEG is retained because it is still referenced (§10.8).
@@ -545,7 +546,7 @@ Default-deny ingress and egress `NetworkPolicy` in `envoy-gateway-system`:
 | # | Decision | Status | Recommendation | Alternative |
 |---|---|---|---|---|
 | DG1 | Gateways | Consequence of §10.6 | One, `qa`, in `envoy-gateway-system` | One per tenant (fan-in, one NEG per Gateway) |
-| DG2 | Listener | Proposal | HTTP 8080 without `hostname`; routes decide the host | Listener with `*.tqbvzkr.disasterproject.com` |
+| DG2 | Listener | Proposal | One listener named `https`, `protocol: HTTP` on 8080, without `hostname`; routes decide the host | Listener with `*.tqbvzkr.disasterproject.com` |
 | DG3 | Gateway API CRDs | Proposal | Installed by the archetype, standard channel; GKE's Gateway API disabled | Managed by GKE |
 | DG4 | Hostname ownership | Proposal | Claim + namespace annotation + referential Gatekeeper + G1 | Trust the tenants |
 | DG5 | Envoy Gateway extensions | Proposal | `EnvoyPatchPolicy` and `Backend` disabled; `EnvoyExtensionPolicy` only in the Gateway's namespace | Available to tenants |

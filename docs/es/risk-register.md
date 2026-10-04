@@ -6,7 +6,7 @@
 |---|---|
 | **Alcance** | Todos los modos de fallo identificados en generación, resolución, identidad, borde, políticas y multi-tenancy |
 | **Referencias de sección** | `§n` se refiere al documento de arquitectura salvo que lleve el prefijo `AM §n` (modelo de arquetipos) |
-| **Identificadores** | R1–R60. R28 está **retirado** (duplicado de R26), y R38 y R39 se retiran con el endpoint DNS del plano de control (`landing-zone-qa` DZ4); los números retirados no se reutilizan |
+| **Identificadores** | R1–R62. R28 está **retirado** (duplicado de R26), y R38 y R39 se retiran con el endpoint DNS del plano de control (`landing-zone-qa` DZ4); los números retirados no se reutilizan |
 | **Cadencia de revisión** | En cada fase del roadmap, y siempre que cambie la versión fijada de una herramienta |
 
 Los riesgos se agrupan por dominio, no por orden numérico, porque así es como se revisan. Los números R son identificadores estables y no deben reutilizarse si un riesgo se retira.
@@ -54,6 +54,7 @@ Un riesgo cuya mitigación es una puerta de CI solo está mitigado cuando esa pu
 | R43 | **Un usuario dado de baja conserva tokens de la aplicación** cuando la aplicación no tiene SCIM | Media | Media — el acceso continúa tras deshabilitar la cuenta superior | Job de reconciliación diario contra el directorio superior; sin tokens personales en CI |
 | R54 | **Identidad de Workload Identity compartida en el proyecto non-prod**: un pool por proyecto de GCP, así que el mismo namespace y KSA en dos clusters no productivos son una sola identidad de GCP | Alta si los KSA no llevan prefijo | Alta — un entorno no productivo lee los secretos, buckets y bases de datos de otro | Todo KSA con IAM de GCP se llama `<env>-<nombre>`; Gatekeeper P12 rechaza el prefijo de otro entorno; G1 comprueba cada `member` de IAM. Residual: un cluster-admin de un entorno no productivo puede saltarse la admisión — aceptado solo para no producción; `prod` nunca comparte proyecto (`CLAUDE.md`) |
 | R60 | **Un grant de proyecto donde bastaba uno de recurso**: en el proyecto non-prod compartido, un rol sobre el proyecto alcanza a todos sus entornos | Media | Alta — una identidad de un entorno lee o escribe recursos de otro | Grants por recurso sobre claves, repositorios, zonas y SAs; la landing zone crea las SAs que reciben grants entre proyectos; regla de G3 sobre el IAM de la landing zone (`landing-zone-qa` §6.3, §11.1) |
+| R61 | **Estado legible por concesiones a nivel de proyecto cuando la capa 0 adopta un proyecto existente**: identidades que ya tienen `owner`, `editor` o `storage.admin` sobre el proyecto leen y escriben todos los objetos de estado | Alta en un proyecto adoptado | Crítico — el estado de todos los entornos, el de la landing zone incluido, legible y modificable fuera del pipeline | Reducidas a nivel de recurso antes de que el bootstrap guarde estado; estado por prefijo y claves por clave; auditoría DATA_READ sobre `storage.googleapis.com` (`landing-zone-qa` §1.5, RZ6) |
 
 ## 3. Redes y planificación de direcciones
 
@@ -70,7 +71,7 @@ Un riesgo cuya mitigación es una puerta de CI solo está mitigado cuando esa pu
 
 | # | Riesgo | Probabilidad | Impacto | Mitigación |
 |---|---|---|---|---|
-| R20 | **El NEG de GCP no está en el estado de Terraform** | Segura | Media — la afirmación de "todo en IaC" es falsa | Declararlo como `data`, nombrado explícitamente, dividido en tres stacks con `after`; registrar la ausencia de `iac-owned-edge` en el manifiesto del arquetipo en vez de ocultarla (§10.2) |
+| R20 | **El NEG de GCP no está en el estado de Terraform** | Segura | Media — la afirmación de "todo en IaC" es falsa | Referenciarlo por su URL determinista (nunca un `resource`, nunca una fuente `data` que hace fallar la preview), dividido en tres stacks con `after` comprobado por una regla G1 con nombre; registrar la ausencia de `iac-owned-edge` en el manifiesto del arquetipo en vez de ocultarla (§10.2) |
 | R21 | **`TargetGroupBinding` deja que un tenant redirija el tráfico de otro** | Media en EKS compartido | Crítico | RBAC de Kubernetes que deniega el CRD a los namespaces de aplicación; solo el arquetipo `gateway` los crea; IAM del controlador acotado a target groups concretos (§10.3) |
 | R22 | **Ciclo de arranque Keycloak ↔ Gateway** | Alta en el primer arranque en frío | Alta — el entorno no arranca | El `HTTPRoute` de Keycloak no lleva `SecurityPolicy`; el descubrimiento OIDC pasa por el Service interno del cluster; documentado como invariante (§10.7) |
 | R24 | **`kubernetes_manifest` rompe las previsualizaciones de PR** | Alta si se usa | Media | Empaquetar los recursos personalizados de Gateway API en el chart Helm del arquetipo; desplegar con `helm_release` (§10.5) |
@@ -113,6 +114,7 @@ Un riesgo cuya mitigación es una puerta de CI solo está mitigado cuando esa pu
 | R56 | **Aristas de la CMDB vacías en silencio**: el extractor no evalúa un `from_stack_id` y el stack parece no tener consumidores | Media hasta verificar el extractor con la versión fijada de Terramate | Crítico — la guarda de destroy cuenta 0 y deja ir una plataforma con consumidores (R5) | `archetypectl cmdb check` falla cuando un stack tiene bloques `input` y ningún `consumes` evaluado; un único extractor compartido con la regla de R2 de G1, así que fallan juntos (§12.4) |
 | R57 | **Un valor secreto llega a la CMDB**: una salida que lo lleva no está marcada `sensitive` y acaba en la mitad observada y en el modelo de lectura | Media | Alta — un secreto en un fichero que cualquier lector del repositorio puede descargar | La regla de nombres de secreto de G1 (§13.3); el colector descarta las salidas `sensitive`; el modelo de lectura es un asset de release privado, nunca unas Pages públicas (AM §11.2) |
 | R58 | **Arranque de la landing zone irrepetible**: nadie recuerda cómo se arrancó la organización cuando hay que reconstruirla | Media | Alta — la plataforma no se puede recrear desde el repositorio | El bootstrap es un stack del repositorio con un runbook, aplicado una vez a mano y gestionado después con estado remoto (`landing-zone-qa` §1) |
+| R62 | **Un nombre ya ocupado en un proyecto compartido**: el plan dice `create` porque el recurso no está en nuestro estado, y la API responde `409` treinta recursos después | Media en un proyecto compartido o adoptado | Alto — la landing zone o un entorno aplicados a medias | Una comprobación previa de cada nombre antes del primer `apply`; nombres que llevan el repositorio o el entorno; nunca `import` de un recurso que no creamos (`landing-zone-qa` §1.3, RZ7) |
 
 ---
 

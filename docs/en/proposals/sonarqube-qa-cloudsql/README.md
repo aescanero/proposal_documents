@@ -557,7 +557,7 @@ globals "db" {
 | Stack | `input` | Producer | Mock |
 |---|---|---|---|
 | those using Kubernetes | `cluster_endpoint` | `gcp-qa-gke` | `mock-endpoint.example.invalid` |
-| those using Kubernetes | `cluster_ca` (sensitive) | `gcp-qa-gke` | `bW9jaw==` |
+| those using Kubernetes | `cluster_ca` (sensitive) | `gcp-qa-gke` | `bW9jay1jYQ==` |
 | `secrets`, `data` | `workload_identity_pool` | `gcp-qa-gke` | `mock-project.svc.id.goog` |
 | `data` | `notification_channel_id` | `gcp-qa-cloudmon` | `projects/mock-project/notificationChannels/mock-channel` |
 | `app` | `saml_sso_url` | `gcp-qa-keycloak` | `https://mock-idp.example.invalid/realms/mock/protocol/saml` |

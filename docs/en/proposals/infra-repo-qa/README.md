@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 1 |
+| **Status** | Proposal · revision 2 · G1 with `--all-namespaces` and the registry bundle; inventory over `debug show metadata`; `scripts` experiment; `ci/fetch-observed.sh`; deploy marker tied to the apply step (`poc/RESULTS.md` A8) |
 | **Scope** | How the repository the platform is deployed from is organised: which repositories exist and what goes in each, the directory layout, the branch model (and why there is no `qa` branch), the GitHub configuration (rulesets, Environments, variables, CODEOWNERS), the workflows and an environment's life cycle. Includes validated workflow **templates** in [`templates/`](templates/) |
 | **Why now** | This repository (`proposal_documents`) is documentation and proposals only. The `qa` proposals describe stacks, identities and guards, but none says where they live or which workflow applies them; and the architecture's deploy workflow could not apply `qa` at all (§5.1) |
 | **Basis** | Architecture §4.11 (first deployment), §11.2–§11.4 (pipeline identities), §12.4 (destroy), §14 (CI/CD); `landing-zone-qa` §1, §5, §10; `cmdb-qa` §2–§6; `developer-guide.md` §1, §3; `poc/RESULTS.md`. What is already there is not repeated |
@@ -15,7 +15,7 @@ It reopens no decision in `CLAUDE.md`. Taking the architecture to a real reposit
 1. **There is no `qa` branch, and there must not be one.** In the infrastructure repository an environment is a **directory** (`environments/qa/`, `stacks/platforms/gcp/qa/`) and a **GitHub Environment** (`qa`), not a branch. A branch per environment would make `qa` and `prod` run different versions of the same generators and modules, and the difference would surface at merge time (§3.2). The per-environment branches in the developer guide (`release/*` → `qa`) belong to **application** repositories, and remain valid there.
 2. **A Terramate project is one repository** (measured, `poc/RESULTS.md`). Everything that passes values through outputs sharing — the landing zone, the platforms, the archetypes and their instances — has to live in the same repository. That clashes with the developer guide, which puts an application's stacks in the application's repository (DR6, open, §8).
 3. **The architecture's deploy was a single job with `environment: production`**, while each environment's apply identity can only be impersonated from the Environment of that name (architecture §11.2). That job could not have applied `qa`. Fixed in architecture §14.2: one job per environment (§5.1).
-4. **Two Terramate facts measured while writing the templates** (0.16.0 and 0.17.3): tags cannot contain `:` (`instance:alpha` breaks the configuration load; now `instance/alpha`), and `terramate list` has no `--json` (the inventory comes from `ci/stacks-json.sh`). Fixed in `CLAUDE.md`, the architecture, the glossary and the affected proposals (§12).
+4. **Terramate facts measured while writing the templates** (0.16.0 and 0.17.3): tags cannot contain `:` (`instance:alpha` breaks the configuration load; now `instance/alpha`), `terramate list` has no `--json`, and `experimental eval` does not expose `after` (the inventory comes from `ci/stacks-json.sh`, over `debug show metadata`); `script` blocks still need the `scripts` experiment on 0.17.3 (`poc/RESULTS.md` A8). Fixed in `CLAUDE.md`, the architecture, the glossary and the affected proposals (§12).
 
 ---
 
@@ -30,7 +30,7 @@ Four kinds of repository, each with a single purpose:
 | Repository | Holds | Who writes | What it deploys |
 |---|---|---|---|
 | `aescanero/proposal_documents` (this one) | Reference documents, proposals, `poc/` as evidence | Platform, by pull request | Nothing |
-| **`disasterproject/infra`** | Everything Terramate applies: landing zone, platforms, archetypes, instances, registry, policies, CMDB | Platform; application teams by pull request to their instances | **Everything**, from its workflows |
+| **`disasterproject/infra`** | Everything Terramate applies: landing zone, platforms, archetypes, instances, a pinned copy of the registry, policies, CMDB | Platform; application teams by pull request to their instances | **Everything**, from its workflows |
 | `disasterproject/platform-tools` | `archetypectl`, `registry-generate`: Go code with its tests and releases | Platform | Versioned binaries, which `infra` pins with `mise` |
 | Application repositories (`orders-app`, …) | Code, `manifest.yaml`, Helm values overlays (DG §1) | Each team | Images and charts to the registry; **no** infrastructure (DR6) |
 
@@ -64,9 +64,16 @@ This repository has branches with code that is **not** merged here: it is implem
 
 The three seeds branch from a `main` more than 80 commits old: they are copied as a starting point, not merged, and reviewed against what the documents say today (`instance/<id>` tags, `ci/stacks-json.sh`, `--detailed-exit-code`).
 
-### 1.4 `registry/` and `schemas/` move to `infra` (DR4)
+### 1.4 `registry/` and `schemas/`: normative here, a pinned copy in `infra` (DR4)
 
-The registry is the source of truth for what the pipeline admits (`CLAUDE.md`, "The registry is load-bearing"), and its consumer is `infra`: conftest, the schemas' `enum`s, the Gatekeeper values. Keeping the source here and a copy there is the drift R34 describes. When `infra` is created, `registry/` and `schemas/` move there with their history; this repository keeps a `README` pointing to them and goes on documenting the model.
+This repository is the normative specification and stays so: `registry/` is written here, and `schemas/` is generated from it here (`CLAUDE.md`, "The registry is load-bearing"). Its consumer is `infra` — conftest, the schemas' `enum`s, the Gatekeeper values — which carries a **byte-identical copy pinned to a commit** of this repository. A copy is the drift R34 describes unless something checks it, so two blocking checks run in `gates`, in opposite directions ([`ci/spec-sync.sh`](templates/ci/spec-sync.sh)):
+
+| Check | Catches |
+|---|---|
+| `spec-sync.sh --check` — the files against `spec.lock.json` (`{spec_repo, commit, files: {path: sha256}}`) | A hand edit in `infra`, or a file added beside the copy |
+| `spec-sync.sh --upstream <clone>` — `spec.lock.json` against the pinned commit of this repository | A lock edited by hand to make the first check pass |
+
+A registry change is made **here first**, by pull request; raising the pin in `infra` is a second pull request (`spec-sync.sh --update`) whose diff shows exactly which capabilities, traits or schema fields changed. The schemas are copied unannotated: JSON Schema carries no comments, and a `$comment` would break the exact-equality check. Provenance lives in the lock.
 
 ---
 
@@ -77,8 +84,9 @@ disasterproject/infra/
 ├── terramate.tm.hcl                 single root: version, experiments, sharing_backend
 ├── config.tm.hcl                    organisation globals (domain, region, lz project)
 ├── .mise.toml                       terramate, tofu, checkov, conftest, platform-tools
-├── registry/                        SOURCE OF TRUTH: capabilities, traits, zones, labels
-├── schemas/                         GENERATED from registry/
+├── spec.lock.json                   pin of registry/ and schemas/: origin commit + sha256 per file (DR4)
+├── registry/                        COPY of the specification's registry, never edited here
+├── schemas/                         COPY of the specification's schemas, never edited here
 ├── environments/
 │   ├── qa/binding.yaml              the environment binding (AM §7)
 │   └── prod/binding.yaml
@@ -104,7 +112,8 @@ disasterproject/infra/
 ├── charts/policy-gatekeeper/        ConstraintTemplates and values generated from the registry
 ├── cmdb-data/                       declared half of the CMDB (cmdb-qa §3); the observed half, on its branch
 ├── images/third-party.yaml          third-party images to mirror (landing-zone-qa §6.2)
-├── ci/                              g1.sh, changed-envs.sh, stacks-json.sh
+├── ci/                              g1.sh, changed-envs.sh, stacks-json.sh, fetch-observed.sh, spec-sync.sh
+├── .gitattributes                   _*.tf linguist-generated: the diff collapses, so a hand edit stands out
 ├── docs/runbooks/                   lz-bootstrap.md, env-onboarding.md, break-glass.md
 └── .github/
     ├── workflows/                   §5
@@ -114,10 +123,11 @@ disasterproject/infra/
 
 | Path | Written by | Reviewed by |
 |---|---|---|
-| `registry/`, `archetypes/`, `imports/`, `modules/`, `policy/` | People, by pull request | Platform (and security for `registry/`, `policy/`) |
+| `archetypes/`, `imports/`, `modules/`, `policy/` | People, by pull request | Platform (and security for `policy/`) |
+| `registry/`, `schemas/`, `spec.lock.json` | `ci/spec-sync.sh --update`, from a commit of the specification | Platform and security; `spec-sync.sh --check` and `--upstream` fail a hand edit |
 | `environments/<env>/binding.yaml` | People, by pull request | Platform; `prod` also its approvers |
 | `stacks/**/stack.tm.hcl`, `instance.tm.hcl` | People, by pull request | Platform, or the team that owns the instance |
-| `stacks/**/_*.tf`, `binding.tm.hcl`, `schemas/`, `cmdb-data/` | **Generated**, committed in the same pull request | G0 and `archetypectl cmdb check` fail if they differ |
+| `stacks/**/_*.tf`, `binding.tm.hcl`, `cmdb-data/` | **Generated**, committed in the same pull request | G0 and `archetypectl cmdb check` fail if they differ |
 | `cmdb-observed` branch | Only `cmdb-sync` | Nobody: they are observations |
 
 Conventions that change from earlier drafts and that the templates already apply: tags `instance/<id>` and `archetype/<name>` (not `:`); every stack carries its environment as a tag (`qa`, `prod`) and the landing zone's carry `landing-zone`; the bootstrap stack also carries `bootstrap`.
@@ -229,7 +239,7 @@ Deploy order: the landing zone first and alone; then the non-production environm
 { "sha": "9f2c41e…", "run": 1284 }
 ```
 
-`apply-env` writes it only if the apply finished cleanly; `cmdb-sync` only moves it forward (higher `run`); `changed-envs.sh` reads it and fails if that commit is not in `main`'s history. An environment with no marker is not deployed by `deploy`: its first deployment is `first-deploy`.
+`apply-env` writes it only if the apply step finished cleanly, whatever happens to the observation after it; `cmdb-sync` only moves it forward (higher `run`); `changed-envs.sh` reads it and fails if that commit is not in `main`'s history. An environment with no marker is not deployed by `deploy`: its first deployment is `first-deploy`.
 
 ### 5.3 Before the bootstrap
 
@@ -366,7 +376,7 @@ Pending DR6's approval: DG §1 (application repository layout) and §3 (who depl
 | DR1 | Deployment repository | **Proposed** | One, `disasterproject/infra`, for the landing zone and every environment | One per environment or per layer: breaks outputs sharing, which only resolves inside a Terramate project |
 | DR2 | Branches | **Proposed** | Trunk-based; environments as directories and GitHub Environments; **no `qa` branch** | A branch per environment (§3.2) |
 | DR3 | Tools | **Proposed** | A `platform-tools` repository, binaries pinned with `mise` | Inside `infra` |
-| DR4 | `registry/` and `schemas/` | **Proposed** | They move to `infra` when it is created; a pointer stays here | Source here and a copy there |
+| DR4 | `registry/` and `schemas/` | **Proposed** — revision 2 | Normative here; a byte-identical copy in `infra`, pinned in `spec.lock.json` and checked both ways by `ci/spec-sync.sh` | Move them to `infra` (the specification would stop being the origin of what the pipeline admits); an unchecked copy (R34) |
 | DR5 | Environments | **Proposed** | `<env>`, `<env>-destroy`, `landing-zone`, `landing-zone-destroy`, `prod-plan`, `prod-drift`, `image-mirror` | One `production` Environment for everything: cannot work with per-environment identities |
 | DR6 | Application stacks | **Open** | In `infra`; the application publishes and opens a pull request with digests (§8) | Each application, its own Terramate project |
 | DR7 | `prod` plan | **Proposed** | In pull requests, with approval via `prod-plan`; the daily drift via `prod-drift`, with no approval and from `main` only | From any branch, like non-production: anyone with write access reads `prod`'s state (RR1) |
@@ -378,7 +388,7 @@ Pending DR6's approval: DG §1 (application repository layout) and §3 (who depl
 
 | Phase | Content | Exit criterion | Estimate |
 |---|---|---|---|
-| **0 · Repository** | Create `infra` and `platform-tools`; settings, rulesets, CODEOWNERS; move `registry/` and `schemas/`; `.mise.toml`, `terramate.tm.hcl`, `ci/`, workflows | An empty pull request passes `gates`; **VR1** | 1 day |
+| **0 · Repository** | Create `infra` and `platform-tools`; settings, rulesets, CODEOWNERS; copy `registry/` and `schemas/` with `spec-sync.sh --update` (DR4); `.mise.toml`, `terramate.tm.hcl`, `ci/`, workflows | An empty pull request passes `gates`; **VR1** | 1 day |
 | **1 · Seeds** | `registry-generate` and `archetypectl` from their branches to `platform-tools`, with a release; G1 policies to `infra/policy/`, reviewed against the `instance/` tags | `ci/g1.sh` green in `infra` | 2 days |
 | **2 · Landing zone** | `landing-zone-qa` §1 and its phases; `landing-zone*` Environments | `first-deploy` of `landing-zone` with a marker; **VR2** | As in `landing-zone-qa` §15 |
 | **3 · `qa`** | `qa` onboarding (§6.1); the stacks of the `qa` proposals | `first-deploy` of `qa`; a later change applied by `deploy`; **VR3**, **VR5** | As in each proposal |

@@ -174,6 +174,10 @@ repo/
 │       ├── contract_cluster_eks.tm.hcl
 │       └── contract_data.tm.hcl
 │
+├── archetypes/                            # el CATÁLOGO: un directorio por arquetipo, nunca por entorno
+│   ├── webapp-3tier/manifest.yaml         # requires / provides / stacks / claims
+│   └── event-driven/manifest.yaml
+│
 └── stacks/
     ├── platforms/
     │   ├── gcp/
@@ -196,7 +200,6 @@ repo/
     │
     └── archetypes/
         ├── webapp-3tier/
-        │   ├── manifest.yaml              # requires / provides / stacks / claims
         │   ├── archetype.tm.hcl           # globals comunes al arquetipo
         │   └── instances/
         │       ├── alpha/                 # ligada a gcp/demos
@@ -215,6 +218,8 @@ repo/
 ```
 
 Los directorios de stack de una instancia se **generan a partir de `stacks[]` del arquetipo**, y un stack cuya `condition` sea falsa no tiene directorio alguno. `binding.tm.hcl` es la salida del resolver, nunca editado a mano.
+
+**Los manifiestos viven en la raíz, en `archetypes/<nombre>/`, no bajo `stacks/`.** Un manifiesto describe una *versión* de arquetipo, que varios entornos enlazan a la vez; dentro de uno de sus despliegues no tiene un sitio correcto en cuanto hay dos. `stacks/archetypes/<nombre>/` contiene solo `archetype.tm.hcl` y las instancias. Toda puerta que recorre `archetypes/*/manifest.yaml` (G1, la comprobación de esquema) depende de esta ruta, y un glob que no encuentra nada no valida nada — así que cada una falla también ante un resultado vacío (§14.4).
 
 Tres reglas que hacen funcionar esta disposición:
 
@@ -256,11 +261,11 @@ La implicación crítica de la tercera flecha: **el job de CI que ejecuta un sta
 terramate {
   # Fija una versión que hayas verificado. La semántica de bloques de
   # Outputs Sharing cambió en 0.10.9 (el campo `sensitive` perdió su valor por defecto).
-  required_version = ">= 0.11.0"
+  required_version = "= 0.17.3"     # la versión que midió poc/; mise.toml fija la misma
 
   config {
-    # Outputs Sharing es experimental y debe activarse explícitamente.
-    experiments = ["outputs-sharing"]
+    # Outputs Sharing y los scripts son experimentales y deben activarse explícitamente.
+    experiments = ["outputs-sharing", "scripts"]
 
     git {
       default_branch = "main"
@@ -280,7 +285,7 @@ terramate {
 | Elemento | Propósito | Notas |
 |---|---|---|
 | `required_version` | Protege contra la deriva del CLI entre los portátiles de los desarrolladores y la CI | Fíjala; no uses `latest` en CI |
-| `experiments` | Habilita `sharing_backend`, `input`, `output` | Sin esto, los bloques son errores de parseo |
+| `experiments` | `outputs-sharing` habilita `sharing_backend`, `input`, `output`; `scripts` habilita los bloques `script` de §14 | Sin ellos los bloques son errores de parseo, y un solo bloque no reconocido hace fallar la carga de **toda** la configuración: cualquier comando `terramate`, `run` y `script run` incluidos, sale con 1 (medido, 0.17.3) |
 | `config.git` | Línea base para la detección de cambios | `--changed` compara contra `default_branch` |
 | `config.run.env` | Entorno inyectado en cada `terramate run` | Buen lugar para la caché de plugins; una caché compartida reduce materialmente el tiempo de CI cuando tienes docenas de stacks |
 
@@ -328,7 +333,7 @@ output "private_service_range" {
 |---|---|---|
 | label | sí | Nombre del output. Es la **clave pública del contrato** — trata los renombrados como cambios disruptivos. |
 | `backend` | sí | Debe coincidir con un label de `sharing_backend`. |
-| `value` | sí | Expresión evaluada **en el código OpenTofu generado**, así que puede referenciar `module.*`, `resource.*`, `data.*`. |
+| `value` | sí | Expresión copiada **literalmente** al código OpenTofu generado y evaluada allí, así que puede referenciar `module.*`, `resource.*`, `data.*`, `local.*`. No `global.*`: Terramate no la interpola, y `global.project_id` llega al `.tf` como una referencia inválida (medido, 0.17.3, `poc/RESULTS.md` A8d). Tampoco un `var.*`, salvo que un `input` del mismo stack cree esa variable. Un valor que el stack conoce al generar lo emite el generador como `local` y se publica como `local.<nombre>` |
 | `description` | no | Documenta el contrato en `imports/contracts/`. **No** se emite en el bloque `output` generado (medido, Terramate 0.16.0 y 0.17.3, `poc/RESULTS.es.md`), así que no llega a `tofu output`. Úsala igualmente — es donde un revisor lee qué significa la clave. |
 | `sensitive` | no | Solo se emite cuando se fija. Ver la advertencia más abajo. |
 
@@ -341,7 +346,7 @@ output "private_service_range" {
 # Importado por cada stack de network de GCP.
 output "network_self_link"     { backend = "tofu"  value = module.network.network_self_link }
 output "private_service_range" { backend = "tofu"  value = module.network.psa_range_name }
-output "project_id"            { backend = "tofu"  value = var.project_id }
+output "project_id"            { backend = "tofu"  value = module.network.project_id }
 ```
 
 ```hcl
@@ -752,8 +757,8 @@ GKE en modo VPC-native requiere que existan **rangos IP secundarios para pods y 
 
 ```hcl
 # imports/contracts/contract_network_gcp.tm.hcl
-output "project_id"              { backend = "tofu"  value = var.project_id }
-output "region"                  { backend = "tofu"  value = var.region }
+output "project_id"              { backend = "tofu"  value = module.network.project_id }   # no var.*: ningún stack la declara (§4.3)
+output "region"                  { backend = "tofu"  value = module.network.region }
 output "network_self_link"       { backend = "tofu"  value = module.network.network_self_link }
 output "network_name"            { backend = "tofu"  value = module.network.network_name }
 output "private_service_range"   { backend = "tofu"  value = module.network.psa_range_name }
@@ -831,7 +836,7 @@ output "cluster_ca" {
 }
 output "workload_identity_pool" {
   backend = "tofu"
-  value   = "${var.project_id}.svc.id.goog"
+  value   = module.gke.workload_identity_pool
 }
 output "node_service_account" { backend = "tofu"  value = module.gke.node_sa_email }
 ```
@@ -904,7 +909,7 @@ input "cluster_ca" {
   from_stack_id = global.platform.cluster_stack_id
   value         = outputs.cluster_ca.value
   sensitive     = true
-  mock          = "bW9jaw=="              # base64("mock") — mock con el tipo correcto
+  mock          = "bW9jay1jYQ=="          # base64("mock-ca"): tipo correcto, y el valor decodificado conserva el prefijo mock-
 }
 input "workload_identity_pool" {
   backend       = "tofu"
@@ -930,7 +935,7 @@ input "cluster_endpoint" {
 }
 input "cluster_ca" {
   backend = "tofu"  from_stack_id = global.platform.cluster_stack_id
-  value = outputs.cluster_ca.value  sensitive = true  mock = "bW9jaw=="
+  value = outputs.cluster_ca.value  sensitive = true  mock = "bW9jay1jYQ=="
 }
 input "workload_identity_pool" {
   backend = "tofu"  from_stack_id = global.platform.cluster_stack_id
@@ -992,7 +997,7 @@ Nótese `global.platform.namespace` — esto es lo que permite que dos instancia
 | **El provider de Kubernetes necesita un cluster vivo en el momento del plan** | `tofu plan` en el stack de services falla si el cluster todavía no se ha aplicado | Usa `--mock-on-fail` para las previews de PR; acepta que un primer despliegue de un entorno nuevo requiere un apply escalonado (network → cluster → services) |
 | **`tofu output -json` en el stack de network requiere acceso de lectura al estado** | El job de CI que aplica el cluster debe leer el objeto de estado GCS del stack de network | Concede al job del cluster `roles/storage.objectViewer` sobre el prefijo de estado de network. Si network y cluster viven en proyectos distintos, esto es una concesión entre proyectos |
 | **Endpoints de cluster privados** | Si el plano de control es privado, el runner de CI no puede alcanzar `cluster_endpoint` | O ejecuta la CI en un runner privado dentro de la VPC, o autoriza la IP de salida del runner en `master_authorized_networks`, o —en GKE, la opción de `qa`— usa el endpoint DNS del plano de control, alcanzable desde cualquier sitio y controlado solo por IAM (`landing-zone-qa` DZ4) |
-| **`cluster_ca` es base64** | Un mock de `"mock"` rompe `base64decode()` en el momento del plan | Usa un mock con una cadena base64 válida (`"bW9jaw=="`) |
+| **`cluster_ca` es base64** | Un mock de `"mock"` rompe `base64decode()` en el momento del plan | Usa un mock con una cadena base64 válida (`"bW9jay1jYQ=="`, base64 de `mock-ca`: el valor decodificado conserva el prefijo) |
 | **Protección contra borrado** | `deletion_protection = true` bloquea `tofu destroy` | Fíjala desde `global.cluster.deletion_protection`; `false` para demos, `true` para prod, reforzado con un `assert` |
 
 ### 5.7 Línea base de IAM y seguridad de GKE
@@ -1200,7 +1205,7 @@ input "oidc_provider_url" {
 
 output "alb_controller_ready" { backend = "tofu"  value = helm_release.alb_controller.status }
 output "ingress_class"        { backend = "tofu"  value = "alb" }
-output "external_dns_zone_id" { backend = "tofu"  value = var.hosted_zone_id }
+output "external_dns_zone_id" { backend = "tofu"  value = local.hosted_zone_id }   # un local que emite el generador (§4.3)
 ```
 
 ### 6.5 Stack 4 — instancia de arquetipo e IRSA
@@ -1389,7 +1394,7 @@ input "network_self_link" {
 
 output "direct_egress_subnet_id"  { backend = "tofu"  value = try(google_compute_subnetwork.egress[0].id, "") }
 output "vpc_connector_id"         { backend = "tofu"  value = try(google_vpc_access_connector.this[0].id, "") }
-output "egress_cidr"              { backend = "tofu"  value = global.serverless.serverless_subnet }
+output "egress_cidr"              { backend = "tofu"  value = local.serverless_subnet }
 ```
 
 La subred es la reclamación del runtime (AM §9.5, `/24` mínimo), así que su propietario es también quien escribe sus reglas de firewall: las reglas de egress desde `egress_cidr` hacia el rango PSA y hacia los servicios privados del entorno viven en este stack, no en `network`. Reconstruir o eliminar la plataforma Cloud Run nunca toca la red. Los consumidores encuentran el stack mediante `global.platform.runtime_subnet_stack_id` (`gcp-demos-run-subnet`), la contrapartida serverless de `cluster_subnet_stack_id` (§5.3).
@@ -1430,7 +1435,7 @@ output "static_ip_name"         { backend = "tofu"  value = module.edge.global_i
 output "cert_map_id"            { backend = "tofu"  value = module.edge.certificate_map_id }
 output "cloud_armor_policy_id"  { backend = "tofu"  value = module.edge.security_policy_id }
 output "dns_zone_name"          { backend = "tofu"  value = module.dns.zone_name }
-output "run_service_agent"      { backend = "tofu"  value = "service-${var.project_number}@serverless-robot-prod.iam.gserviceaccount.com" }
+output "run_service_agent"      { backend = "tofu"  value = "service-${local.project_number}@serverless-robot-prod.iam.gserviceaccount.com" }
 ```
 
 `run_service_agent` importa: el **agente de servicio de Cloud Run**, no la service account de runtime, es quien extrae imágenes de Artifact Registry. Conceder `roles/artifactregistry.reader` al principal equivocado es un fallo clásico del primer despliegue.
@@ -1795,7 +1800,7 @@ output "alb_https_listener_arn" { backend = "tofu"  value = module.alb.https_lis
 output "alb_security_group_id"  { backend = "tofu"  value = module.alb.security_group_id }
 output "ecr_registry_url"       { backend = "tofu"  value = module.ecr.registry_url }
 output "cloudmap_namespace_id"  { backend = "tofu"  value = module.ecs.cloudmap_namespace_id }
-output "log_group_prefix"       { backend = "tofu"  value = "/ecs/${var.cluster_name}" }
+output "log_group_prefix"       { backend = "tofu"  value = "/ecs/${local.cluster_name}" }
 output "task_role_boundary_arn" { backend = "tofu"  value = aws_iam_policy.tenant_boundary.arn }
 ```
 
@@ -2294,10 +2299,10 @@ Este es el elemento menos portable de la arquitectura, y el que decide si un ent
 
 Terraform posee el backend service, el health check, el URL map, el target proxy, la forwarding rule, el certificado y las reglas de firewall. **No** posee el NEG.
 
-- Declara el NEG como un data source, nunca como un `resource`, o Terraform y el controlador lucharán en cada plan.
+- Referencia el NEG por su URL, construida a partir del nombre determinista (`projects/<proyecto>/zones/<zona>/networkEndpointGroups/<neg_name>`), nunca como un `resource` — Terraform y el controlador lucharían en cada plan — y tampoco como fuente `data`: una fuente `data` se lee al planificar y hace fallar la preview siempre que el Gateway aún no exista, y `--mock-on-fail` cubre solo bloques `input`, nunca fuentes `data`.
 - Nómbralo explícitamente en la anotación `EnvoyProxy` para que la búsqueda sea determinista.
 - Los NEG son **zonales**. Refuerza `minReplicas ≥ número de zonas` más topology spread con una aserción, o una zona sin pods de Envoy produce un NEG ausente y un apply fallido.
-- Arranque en frío: el NEG no existe hasta que los pods de Envoy están Ready. Divide en tres stacks (`aks`/`gke` → `gateway` → `edge`) con `after`, y confía en `--mock-on-fail` para las previews de PR.
+- Arranque en frío: el NEG no existe hasta que los pods de Envoy están Ready. Divide en tres stacks (`aks`/`gke` → `gateway` → `edge`) con `after`. Ningún `input` respalda ese `after` — el nombre del NEG es un global — así que la regla de R2 no lo ve; lo ve una regla G1 con nombre (§13.3).
 - **El tramo hacia el backend es HTTP.** El TLS público termina en el balanceador con el certificado de la capa 1 (Certificate Manager en GCP, ACM en AWS, certificados de App Gateway en Azure); el balanceador habla HTTP con Envoy. Un certificado de `cert-manager` en ese tramo haría depender la capa 1 de la capa 3, y el balanceador tampoco lo valida. La única arista hacia arriba que conserva el borde es el nombre del NEG (AM §3). Si algún día se exige autenticar el tramo, la raíz de confianza tiene que ser una CA de plataforma en la capa 1 (propuesta `envoy-gateway-qa`, DG14).
 
 ### 10.3 AWS — TargetGroupBinding
@@ -2396,7 +2401,7 @@ Workload Identity Federation, con el pool y el provider poseídos por un stack d
 
 ```hcl
 resource "google_iam_workload_identity_pool" "github" {
-  workload_identity_pool_id = "github-pool"
+  workload_identity_pool_id = "gh-disasterproject-infra"   # uno por repositorio, nunca un nombre genérico: los ids de pool son por proyecto, y un pool borrado retiene su id 30 días
   project                   = var.bootstrap_project_id
 }
 
@@ -2677,6 +2682,7 @@ La fila del runner de CI es la que muerde durante el despliegue: un plano de con
 ### 11.10 Auditoría y trazabilidad
 
 - **Nombrado de sesión.** `gha-<run_id>-<run_attempt>` en AWS, y el claim `google.subject` de WIF en GCP, atan cada llamada a la API de cloud a una ejecución de workflow y por tanto a un commit.
+- **Lecturas del estado.** Quién leyó un objeto de estado lo responden Cloud Audit Logs (`DATA_READ` sobre `storage.googleapis.com`) y los data events de CloudTrail, no el access logging del bucket. En GCP, el access logging del bucket exige concederlo a `group:cloud-storage-analytics@google.com`, que `iam.allowedPolicyMemberDomains` prohíbe; sin la concesión el bucket queda configurado para registrar y no escribe nada (`landing-zone-qa` §1.1, DZ11).
 - **Etiquetado de recursos.** Cada recurso generado lleva `Archetype`, `Instance`, `Environment`, `ManagedBy=terramate`, `CommitSha`. Esto es lo que permite que la CMDB reconcilie la realidad de la cloud contra el repositorio.
 - **Log sinks.** GCP Audit Logs y AWS CloudTrail exportados a un proyecto o cuenta separado, de solo anexado, en el que la identidad del pipeline no puede escribir.
 - **Procedencia del código generado.** Como los ficheros generados se commitean, `git blame` en una línea de `_main.tf` apunta al cambio del generador que la produjo — una propiedad que los orquestadores basados en wrappers no tienen.
@@ -3001,9 +3007,9 @@ OPA no vuelve a resolver nada. Valida que lo que el resolver y los generadores p
 | Puerta | Cuándo | Comando | Bloqueante |
 |---|---|---|---|
 | **G0 — integridad de la generación** | Cada PR | `terramate generate && git diff --exit-code` | Siempre |
-| **G1 — estructura y composición** | Cada PR | `conftest test --policy policy/ --data registry/ …` | Siempre |
+| **G1 — estructura y composición** | Cada PR | `conftest test --all-namespaces --policy policy/ --data registry/registry.json …` | Siempre |
 | **G2 — escaneo estático de seguridad** | Cada PR | `checkov -d . --framework terraform` | HIGH/CRITICAL |
-| **G3 — escaneo del plan** | Antes del apply | `checkov -f plan.json --framework terraform_plan` + `conftest --namespace terraform` | HIGH/CRITICAL |
+| **G3 — escaneo del plan** | Antes del apply | `checkov -f plan.json --framework terraform_plan` + `conftest --namespace terraform.<paquete>` | HIGH/CRITICAL |
 
 G0 existe porque el código generado se commitea. Sin ella, alguien edita a mano un `_main.tf`, el escaneo pasa, y el siguiente `terramate generate` revierte silenciosamente el arreglo.
 
@@ -3039,6 +3045,30 @@ deny contains msg if {
     s.capability == "app"
     count({t | some t in s.tags; startswith(t, "instance/")}) == 0
     msg := sprintf("el stack de aplicación %q no tiene tag instance/", [s.id])
+}
+```
+
+**La regla de R2 exige al productor mismo en `after`; el orden transitivo no la satisface, a propósito.** Un stack que lee `cluster_endpoint` de `gcp-qa-gke` y se ejecuta `after` `gcp-qa-gke-baseline` — que va después del clúster — está bien ordenado hoy, y falla G1. Outputs sharing resuelve contra el estado que exista, así que "da la casualidad de que va después" solo se sostiene hasta que alguien reordena el stack intermedio. Cada stack lista cada productor del que tiene un `input`, el clúster incluido, aunque la cadena ya lo arrastre.
+
+**Un `after` sin `input` detrás no lo comprueba nadie** (`network-qa` §8.1). Dos remedios: convertir el valor determinista en `input` de todos modos, para que la regla de R2 cubra la arista; o, donde el valor no puede ser una salida, una **regla con nombre**. El modelo tiene exactamente una arista así, la ascendente del borde a los proxies del gateway (§10.2), y tiene su propia regla, probada con fixtures antes de que exista ninguno de los dos stacks:
+
+```rego
+package terramate.order
+
+import rego.v1
+
+env_of(id) := split(id, "-")[1]
+
+# La arista ascendente (AM §3): <cloud>-<env>-edge lee el NEG por su nombre determinista, un global,
+# así que ningún `input` respalda su `after` y la regla de R2 de arriba no lo ve.
+deny contains msg if {
+    some edge in input.stacks
+    endswith(edge.id, "-edge")
+    some proxy in input.stacks
+    endswith(proxy.id, "-gateway-proxy")
+    env_of(proxy.id) == env_of(edge.id)
+    not proxy.id in edge.after_ids
+    msg := sprintf("%q referencia el NEG de %q pero no se ejecuta después (arista ascendente, AM §3)", [edge.id, proxy.id])
 }
 ```
 
@@ -3160,8 +3190,11 @@ terramate run --changed -- \
   checkov -f plan.json --framework terraform_plan \
           --config-file "${TM_ROOT}/.checkov/${TM_CLOUD}.yaml"
 
-conftest test --policy policy/ --data registry/ --namespace terraform plan.json
+conftest test --policy policy/ --data registry/registry.json \
+  --namespace terraform.public_names plan.json      # un --namespace por paquete de G3
 ```
+
+`--namespace` coincide con un paquete **exactamente**: `--namespace terraform` no coincide con ningún `package terraform.public_names` y el paso pasa con `0 tests` (medido, conftest 0.70.1). G3 nombra cada uno de sus paquetes, en lugar de `--all-namespaces`, para que las reglas de G1 no se ejecuten sobre un plan; y lleva la misma salvaguarda de cero reglas que G1 (§14.4).
 
 En G3 el plan lleva los nombres que G1 no ve. `env_words` se importa del paquete de G1, así que las dos comprobaciones usan la misma lista:
 
@@ -3299,7 +3332,7 @@ Todo lo demás se **genera** a partir de estos:
 | Artefacto generado | Consumidor |
 |---|---|
 | Bloques `enum` en `schemas/*.schema.json` | `check-jsonschema` |
-| Bundle `registry/*.json` | `conftest --data` |
+| Bundle `registry/registry.json` (clave de primer nivel `registry`) | `conftest --data` |
 | `values.yaml` del chart de Gatekeeper | Parámetros de `ConstraintTemplate`: etiquetas obligatorias, registros permitidos y los namespaces con un nivel de Pod Security distinto de `restricted` (propuesta de Gatekeeper §7.1) |
 
 Protégelo con una puerta `registry-generate --check` en CI, exactamente igual que `terramate generate --detailed-exit-code`. El YAML es la fuente; un schema editado a mano es un bug.
@@ -3315,8 +3348,7 @@ Protégelo con una puerta `registry-generate --check` en CI, exactamente igual q
 ```yaml
 name: preview
 on:
-  pull_request:
-    branches: [main]
+  pull_request:                # cualquier rama base: un pull request apilado sobre otro pasa las mismas puertas
 
 permissions:
   contents: read
@@ -3433,7 +3465,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: jdx/mise-action@v2
-      - run: git fetch origin cmdb-observed
+      - run: ./ci/fetch-observed.sh                # un repositorio nuevo aún no tiene cmdb-observed
       - id: c
         run: ./ci/changed-envs.sh   # lee cmdb-data/observed/deployed/<env>.json; escribe lz, nonprod, prod
 
@@ -3498,6 +3530,7 @@ jobs:
           service_account: ${{ vars.GCP_APPLY_SA }}      # variable del Environment: tf-apply-<env>@…
 
       - name: Apply changed stacks
+        id: apply
         run: terramate script run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" --no-tags bootstrap tofu deploy   # mocks DESACTIVADOS
 
       - name: Collect CMDB observations
@@ -3506,7 +3539,7 @@ jobs:
           terramate run --changed -B "${{ inputs.base }}" --tags "${{ inputs.env }}" --no-tags bootstrap -- \
             archetypectl cmdb observe --out "$RUNNER_TEMP/observed"
       - name: Record the deploy marker
-        if: ${{ success() }}                             # solo un apply completamente correcto lo mueve
+        if: ${{ !cancelled() && steps.apply.outcome == 'success' }}   # el apply, no el job: una observación fallida no retiene el marcador
         run: |
           mkdir -p "$RUNNER_TEMP/observed/deployed"
           jq -n --arg sha "$GITHUB_SHA" --argjson run "$GITHUB_RUN_NUMBER" '{sha:$sha, run:$run}' \
@@ -3520,6 +3553,8 @@ Puntos clave:
 
 - **Un entorno, una identidad, una puerta por job.** `environment: ${{ inputs.env }}` pone `environment=<env>` en el token OIDC, que es el único principal autorizado a suplantar a `tf-apply-<env>@` (§11.2). `GCP_APPLY_SA` es una variable del *Environment*, así que el mismo texto de workflow se resuelve a `tf-apply-qa@` en `qa` y a `tf-apply-prod@` en `prod`. El job único `environment: production` de borradores anteriores no podía funcionar: su token llevaba un entorno e intentaba aplicarlos todos.
 - **La base de cambios es el último deploy con éxito del entorno, no `HEAD^`.** Con `HEAD^`, una ejecución fallida o cancelada deja sus stacks sin aplicar y el siguiente merge ya no los ve; además GitHub mantiene solo una ejecución pendiente por grupo de concurrencia y cancela las demás, así que con una ráfaga de merges algunos commits nunca se despliegan por sí mismos. El marcador `deployed/<env>.json` en la rama `cmdb-observed` solo se escribe cuando el apply de un entorno tuvo éxito completo, y `cmdb-sync` solo lo mueve hacia delante (`run` mayor). La siguiente ejecución compara desde ahí y recoge todo lo posterior.
+- **El marcador sigue al paso de apply, no al job.** `steps.apply.outcome == 'success'` lo escribe aunque falle el paso de observación que va después: un observador que no puede ejecutarse (una herramienta ausente, un rechazo del esquema) pone el job en rojo y se informa, pero no retiene el marcador. Atado a `success()`, un observador roto deja a todos los entornos sin marcador para siempre, y cada ejecución vuelve a aplicar todo desde el primer despliegue.
+- **Un repositorio nuevo no tiene rama `cmdb-observed`.** `ci/fetch-observed.sh` distingue "la rama aún no existe" (`git ls-remote --exit-code` devuelve 2: ningún entorno tiene marcador) de un remoto que falló (cualquier otro código: error), y `cmdb-sync` crea la rama vacía en su primera ejecución. Un `git fetch origin cmdb-observed` sin protección hace fallar el primer `deploy`.
 - **Un entorno sin marcador no lo despliega este workflow.** Su primer apply es escalonado (§4.11) y se ejecuta desde `first-deploy`, un workflow manual con el mismo Environment; es el que escribe el primer marcador. `changes` informa de ese entorno como aviso, no como error.
 - **No productivo antes que producción.** Un cambio en un generador compartido llega primero a `qa` y `dev` en la misma ejecución; `prod` solo empieza si ninguno falló, y sus revisores ven el resultado. Es orden, no promoción — la promoción de imágenes de aplicación es asunto de la guía de desarrollo (`developer-guide.md` §5).
 - **La landing zone va primero y sola**, desde el Environment `landing-zone` con `tf-apply-lz@`. Los workflows de entorno seleccionan por `--tags <env>`, que nunca incluye los stacks de la landing zone, y sus identidades tampoco podrían aplicarlos (`landing-zone-qa` §5.2). El único stack de la landing zone que el pipeline nunca aplica es `gcp-lz-bootstrap`, que crea la propia federación e identidades del pipeline: `--no-tags bootstrap` lo excluye, y lo aplica una persona (`landing-zone-qa` §1, DZ8).
@@ -3541,13 +3576,25 @@ jobs:
     concurrency: { group: cmdb-write, cancel-in-progress: false }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: cmdb-observed, path: observed }
+        with: { path: observed }
+      - name: La rama cmdb-observed, creada vacía en la primera ejecución
+        working-directory: observed
+        run: |
+          rc=0; git ls-remote --exit-code --heads origin cmdb-observed >/dev/null || rc=$?
+          case $rc in
+            0) git fetch origin cmdb-observed && git switch -c cmdb-observed FETCH_HEAD ;;
+            2) git switch --orphan cmdb-observed ;;
+            *) exit $rc ;;
+          esac
       - uses: actions/checkout@v4
         with: { path: main, sparse-checkout: schemas }
       - uses: actions/download-artifact@v4
         with: { pattern: "${{ inputs.pattern }}", merge-multiple: true, path: "${{ runner.temp }}/in" }
       - name: Validate
-        run: check-jsonschema --schemafile main/schemas/cmdb-observed.schema.json "$RUNNER_TEMP"/in/*.json
+        run: |
+          shopt -s nullglob; files=("$RUNNER_TEMP"/in/*.json)
+          [ ${#files[@]} -gt 0 ] || { echo "::notice::ninguna observación en esta ejecución"; exit 0; }
+          check-jsonschema --schemafile main/schemas/cmdb-observed.schema.json "${files[@]}"
       - name: Merge; deploy markers only move forward
         run: |
           cp "$RUNNER_TEMP"/in/*.json observed/cmdb-data/observed/ 2>/dev/null || true
@@ -3564,7 +3611,11 @@ jobs:
           git diff --cached --quiet && exit 0
           git -c user.name=cmdb-bot -c user.email=cmdb-bot@users.noreply.github.com \
             commit -m "observed: run ${{ github.run_id }}"
-          for i in 1 2 3; do git pull --rebase && git push && exit 0; sleep $((i*5)); done
+          for i in 1 2 3; do
+            if git ls-remote --exit-code --heads origin cmdb-observed >/dev/null; then git pull --rebase origin cmdb-observed || exit 1; fi
+            git push origin HEAD:cmdb-observed && exit 0
+            sleep $((i*5))
+          done
           exit 1
 
   publish:
@@ -3574,7 +3625,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - run: git fetch origin cmdb-observed
+      - run: ./ci/fetch-observed.sh                # un repositorio nuevo aún no tiene cmdb-observed
       - name: Join both halves
         run: archetypectl cmdb publish --observed origin/cmdb-observed --out dist/   # index.json, graph.jsonld
       - name: Replace the release asset
@@ -3651,24 +3702,41 @@ El invariante de ordenamiento que antes dependía de un script de shell es ahora
 - name: G1 — structure and composition
   run: |
     conftest verify --policy policy/          # los tests propios de las políticas
-    conftest test --policy policy/ --data registry/ resolution.json stacks.json
-    for m in archetypes/*/manifest.yaml; do
-      conftest test --policy policy/ --data registry/ "$m"
-    done
-    for b in environments/*/binding.yaml; do  # nombres públicos: public_id y dns_suffix (§13.3)
-      conftest test --policy policy/ --data registry/ "$b"
-    done
+    ct() {                                    # conftest que se niega a pasar sin haber evaluado nada
+      out=$(conftest test --all-namespaces --policy policy/ --data registry/registry.json -o json "$@") \
+        || { jq -r '.[] | .filename as $f | .failures[]? | "FAIL \($f): \(.msg)"' <<<"$out"; return 1; }
+      jq -e '[.[] | .successes + (.failures // [] | length)] | add > 0' <<<"$out" >/dev/null \
+        || { echo "G1: no rule evaluated for $*" >&2; return 1; }
+    }
+    ct resolution.json stacks.json
+    for m in archetypes/*/manifest.yaml; do ct "$m"; done
+    for b in environments/*/binding.yaml; do ct "$b"; done   # nombres públicos: public_id y dns_suffix (§13.3)
 ```
 
-`ci/stacks-json.sh` construye el inventario de stacks. Terramate 0.17 **no tiene `list --json`** (medido): `terramate list` solo imprime rutas, así que el script evalúa los metadatos de cada stack:
+Dos flags sostienen la puerta, y la ausencia de cualquiera de ellos hace que **pase sin haber evaluado nada** (medido, conftest 0.70.1):
+
+| Flag | Sin él |
+|---|---|
+| `--all-namespaces` | conftest solo evalúa `package main`. Las políticas son `terramate.stacks`, `terramate.contracts`, `archetype.composition`, `environment.public_names`: no se ejecuta ninguna regla y el resultado es `0 tests, 0 passed`, salida 0 |
+| `--data registry/registry.json` | `--data registry/` carga cada fichero **en la raíz** de `data`, así que `data.registry.traits` no está definido, `not t in data.registry.traits` nunca se cumple y un rasgo desconocido pasa. El paquete que escribe `registry-generate` tiene la clave de primer nivel `registry` |
+
+La función `ct` es la tercera salvaguarda: una puerta que evaluó cero reglas falla, sea cual sea la causa — un paquete renombrado, un fichero movido, un flag nuevo en una versión de conftest. **Una puerta que no puede ejecutarse es peor que una ausente, porque informa de éxito.**
+
+`ci/stacks-json.sh` construye el inventario de stacks. Terramate 0.17 **no tiene `list --json`** (medido): `terramate list` solo imprime rutas. `terramate experimental eval` expone `terramate.stack.id`, `tags` y `path` pero **no `after`** (medido, 0.17.3: *"This object does not have an attribute named after"*), y sin `after` el inventario no puede alimentar la regla de R2. `terramate debug show metadata` imprime los metadatos de cada stack, `after` incluido, un `clave=valor` por línea con el valor en JSON; el script lo convierte en un único array:
 
 ```bash
 #!/usr/bin/env bash
 # ci/stacks-json.sh — id, ruta, tags y after de cada stack, como un único array JSON
-terramate run --quiet -- terramate experimental eval \
-  'tm_jsonencode({id = terramate.stack.id, path = terramate.stack.path.relative, tags = terramate.stack.tags, after = terramate.stack.after})' \
-  | jq -s .
+set -euo pipefail
+terramate debug show metadata | jq -Rn '
+  reduce (inputs | select(test("^\\s+terramate\\.stack\\."))
+          | capture("^\\s+terramate\\.stack\\.(?<k>[a-z_.]+)=(?<v>.*)$")) as $m
+    ([]; if $m.k == "id" then . + [{}] else . end | .[-1][$m.k] = ($m.v | fromjson))
+  | map({id, path: .["path.relative"], tags, after})
+  | if length == 0 then error("stacks-json: no stack parsed") else . end'
 ```
+
+`debug` es un comando de diagnóstico, no una interfaz estable: el script está fijado a la versión de Terramate de `mise.toml`, y un cambio de formato que no se pueda leer produce un array vacío, que el script rechaza en lugar de entregar a G1 un inventario sin stacks. Sustitúyase por `list --json` cuando Terramate ofrezca uno que lleve `after`.
 
 `archetypectl enrich` es la única pieza a medida: el inventario no expone los bloques `input`, así que el enriquecedor escanea cada stack en busca de `from_stack_id` y `after`, produciendo los campos `consumes[]` y `after_ids[]` que la política compara. Mantener esa extracción en una pequeña herramienta, en lugar de en la política, mantiene el Rego portable y testable contra fixtures.
 
@@ -3677,7 +3745,7 @@ terramate run --quiet -- terramate experimental eval \
 
 ## 15. Registro de riesgos
 
-El registro completo — 60 riesgos agrupados por dominio (57 activos; R28 retirado como duplicado de R26, R38 y R39 retirados con el endpoint DNS del plano de control), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
+El registro completo — 62 riesgos agrupados por dominio (59 activos; R28 retirado como duplicado de R26, R38 y R39 retirados con el endpoint DNS del plano de control), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
 
 Los cinco sobre los que actuar primero:
 
@@ -3803,7 +3871,7 @@ Secuenciada para que nada bloquee un despliegue real hasta que se haya observado
 | Tags de stack | `<cloud>`, `<env>`, `<capability>`, `platform`\|`archetype/<name>`, `instance/<id>`, `producer`\|`consumer`, `protected` | |
 | Ficheros generados | `_<purpose>.tf` | `_main.tf`, `_backend.tf`, `_sharing_generated.tf` |
 | Directorio de generador | `imports/generators/v<N>/gen_<capability>.tm.hcl` | `imports/generators/v1/gen_cluster.tm.hcl` |
-| Fichero de contrato | `imports/contracts/contract_<capability>[_<cloud>].tm.hcl` | `contract_cluster_eks.tm.hcl` |
+| Fichero de contrato | `imports/contracts/contract_<capability>[_<stack>][_<cloud>].tm.hcl`; `<stack>` nombra un stack interno de un arquetipo de varios stacks, cuyas salidas son internas al arquetipo | `contract_cluster_eks.tm.hcl`, `contract_run_subnet_gcp.tm.hcl` |
 | Valores mock | prefijados `mock-` / `mock` | `mock-endpoint.example.invalid` |
 
 ### Referencia de comandos
@@ -3824,7 +3892,7 @@ Secuenciada para que nada bloquee un despliegue real hasta que se haya observado
 | Regenerar el registro | `registry-generate` |
 | Verificar que el registro está al día | `registry-generate --check` |
 | Ejecutar los tests de políticas | `conftest verify --policy policy/` |
-| Ejecutar la puerta de políticas | `conftest test --policy policy/ --data registry/ resolution.json stacks.json` |
+| Ejecutar la puerta de políticas | `./ci/g1.sh` (`conftest test --all-namespaces --data registry/registry.json`, rechazando cero reglas) |
 | Resultados de auditoría de Gatekeeper | `kubectl get constraints -o json \| jq '.items[].status.violations'` |
 
 ### Tabla de decisión — ¿globals u outputs sharing?

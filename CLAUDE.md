@@ -17,7 +17,9 @@ A multi-cloud infrastructure platform built on **Terramate CLI + OpenTofu**, wit
 | **Resolve** | `archetype-model.md` | What may be composed with what — manifests, capabilities, traits, pools, CMDB, resolution |
 | **Generate** | `terramate-outputs-sharing-architecture.md` | How it is generated and applied — generators, outputs sharing, IAM, policy, CI/CD, per-cloud guides |
 
-Plus `platform-overview.md` (diagram-led map, read first), `risk-register.md` (60 risks by domain, 57 active), `glossary.md` (every term, defined) and `developer-guide.md` (the application developer's half — branching, versioning, build, rollback). Each of these lives in **two languages**: `docs/en/<file>.md` and `docs/es/<file>.md`. Below, a bare `docs/<file>.md` reference means "that file, in whichever language you are reading" — both copies say the same thing, so the path is language-neutral by design.
+Plus `platform-overview.md` (diagram-led map, read first), `risk-register.md` (62 risks by domain, 59 active), `glossary.md` (every term, defined) and `developer-guide.md` (the application developer's half — branching, versioning, build, rollback). Each of these lives in **two languages**: `docs/en/<file>.md` and `docs/es/<file>.md`. Below, a bare `docs/<file>.md` reference means "that file, in whichever language you are reading" — both copies say the same thing, so the path is language-neutral by design.
+
+**This repository is the normative design specification, and stays so.** It is not frozen, and no deployment repository replaces it. A deployment repository (`disasterproject/infra`, `infra-repo-qa`) implements what is written here and carries a byte-identical copy of `registry/` and `schemas/` pinned to a commit of this one (DR4); it never edits that copy. What implementing the design teaches — a measured tool behaviour, a gate that did not run, a constraint of a real organisation — comes back here as a design change, in both languages, stated as a fact about the design rather than as a report of where it was found.
 
 **The seam between the halves is `binding.tm.hcl`.** The resolver writes globals; the generators consume them. Neither knows the other's internals.
 
@@ -38,6 +40,7 @@ Rules that follow from "kept in sync", not just "translated once":
 - **A change to a reference document changes both copies in the same commit or the same pull request.** A PR that edits `docs/en/risk-register.md` without touching `docs/es/risk-register.md` is incomplete, not a follow-up for later — the two are one document with two renderings, and letting them drift is exactly the kind of silent divergence this repository's other gates (registry vs. schema, generator vs. Gatekeeper) exist to prevent.
 - **Diagrams are part of the document, not an attachment.** A Mermaid source or a hand-built SVG with labels in one language needs its own rendered copy with labels in the other — never a screenshot of the other language's diagram relabelled, and never one language's diagram left to stand for both. `docs/es/proposals/sonarqube-qa/diagrams/20-bloques-presentacion.py` is the pattern for a hand-built SVG: the generator script travels with the language it renders.
 - **Identifiers stay in English in both copies.** Capability names, trait names, stack IDs, HCL/YAML keys, `kind:` values, environment names — anything that is also a literal string somewhere in the registry, a schema, or generated code — is not translated, in either language. Only prose, table descriptions and comments are. This is why translating code blocks verbatim (not transliterating them) is correct, not an oversight.
+- **File names are identifiers, and stay in English in both copies.** That includes diagram files: `docs/es/…/diagrams/02-request-path.mmd` and `docs/en/…/diagrams/02-request-path.mmd`, never a Spanish name in the English tree or the other way round. The rule applies to every new file; the diagrams named before it keep their names until they are renamed together, in both languages, with their links.
 - **A new document is not done until both languages exist.** Adding only `docs/en/foo.md` (or only the Spanish proposal) and deferring the other copy to "a follow-up" is the failure mode this section exists to name and forbid.
 
 ---
@@ -111,19 +114,29 @@ The same technology can be both. `postgres-operator` (archetype, provides `datab
 
 These are the failure modes that have already been identified. Do not rediscover them.
 
-**Outputs sharing does not create execution order.** Every `input` block needs a matching `after` in `stack.tm.hcl`. An unresolved ordering applies a stale value with **no error**. This is risk R2, the top risk, and the G1 conftest policy exists specifically to catch it.
+**Outputs sharing does not create execution order.** Every `input` block needs a matching `after` in `stack.tm.hcl`. An unresolved ordering applies a stale value with **no error**. This is risk R2, the top risk, and the G1 conftest policy exists specifically to catch it. The rule wants the **producer itself** in `after`: running after a stack that runs after the producer is correct today and fails G1 on purpose, because it holds only until someone reorders the stack in between (architecture §13.3).
 
 **Globals do not resolve in `stack.after` — it is a parse error, not a silent one** (measured, Terramate 0.16.0 and 0.17.3, `poc/RESULTS.md`). The resolver must write literal values; prefer `after = ["tag:<capability>"]` over a path so a stack can move. The silent failure that remains is a *forgotten* `after`: a consumer with an `input` and no ordering generates cleanly and can be scheduled before its producer, with no error at any stage. That is R2, and G1 is what catches it.
 
 **Terramate tags cannot contain `:`** (measured, 0.16.0 and 0.17.3: only lowercase letters, digits, `.`, `_`, `-`, `/`). In a filter, `:` means AND and `,` means OR, and two `--tags` flags are OR. So instance and archetype tags are `instance/<id>` and `archetype/<name>`, and `--tags gcp:qa:network` selects stacks carrying all three tags. A tag written `instance:alpha` fails the whole configuration load.
 
-**`terramate list` has no `--json`** (0.16.0, 0.17.3): it prints paths. The stack inventory (ids, tags, `after`) comes from `terramate run --quiet -- terramate experimental eval 'tm_jsonencode({...terramate.stack...})'`, wrapped as `ci/stacks-json.sh` (architecture §14.4).
+**`terramate list` has no `--json`** (0.16.0, 0.17.3): it prints paths. And `terramate experimental eval` exposes `terramate.stack.id`, `tags` and `path` but **not `after`** (measured, 0.17.3) — an inventory built on it cannot feed the R2 rule at all. The inventory comes from `terramate debug show metadata`, which carries `after`, parsed by `ci/stacks-json.sh`; it refuses to return an empty array (architecture §14.4, `poc/RESULTS.md` A8).
+
+**`script` blocks are still experimental on 0.17.3.** `experiments = ["outputs-sharing", "scripts"]`: without `"scripts"`, one `script` block fails the load of the **whole** configuration, and every `terramate` command exits 1 (`poc/RESULTS.md` A8a).
+
+**`output.value` is copied verbatim into the generated code.** Terramate interpolates neither `global.*` nor `"${global.x}"` there: `value = global.project_id` lands in the `.tf` as an invalid reference, and so does a `var.*` no `input` declares. A contract publishes `module.*`, `resource.*`, `data.*` or a `local` the generator emits (architecture §4.3, `poc/RESULTS.md` A8d).
 
 **The G0 flag is `terramate generate --detailed-exit-code`** (0 = up to date, 2 = drift, 1 = error). `--check` does not exist in Terramate and fails with `unknown flag`. A wrong-typed mock changes no generated file, so G0 cannot catch it; G1 checks mock shape against the contract.
 
 **`mock_on_fail` must be true in preview and false in deploy.** Separate named `script` blocks so it cannot be got wrong. A deployment that silently falls back to a mock applies nonsense.
 
-**Mocks must be type-correct.** A base64 field mocked as `"mock"` breaks `base64decode()`. A list field mocked as a string type-checks locally and explodes on apply. Prefix every mock with `mock-`.
+**Mocks must be type-correct.** A base64 field mocked as `"mock"` breaks `base64decode()`. A list field mocked as a string type-checks locally and explodes on apply. Prefix every mock with `mock-` — and a base64 mock decodes to a `mock-` value too (`bW9jay1jYQ==`, `mock-ca`), so a mocked CA that reaches a deploy log is recognisable.
+
+**`--mock-on-fail` covers `input` blocks, never `data` sources.** A `data` source that reads something another stack creates fails the preview whenever that thing does not exist yet, and no flag saves it. Reference by a deterministic name or URL instead — the NEG is referenced by its URL, built from `neg_name` (architecture §10.2). An `after` with no `input` behind it is checked by nobody, so the one such edge, the upward one, has a named G1 rule (§13.3).
+
+**A gate that cannot run is worse than an absent one, because it reports success.** Measured: `conftest test` without `--all-namespaces` evaluates only `package main` and passes with `0 tests`; `--data registry/` leaves `data.registry` empty, so an unknown trait passes; `--namespace terraform` matches no `package terraform.public_names`; a `shopt -s nullglob` loop over a glob that matches nothing validates nothing and exits 0. Every gate proves it evaluated something: G1 and G3 fail on zero rules, `stacks-json.sh` on zero stacks, `validate.yml` on an existing directory that matches no file (architecture §14.4, `poc/RESULTS.md` A8). The same holds for a step a gate depends on: a deploy marker tied to the whole job never moves while the observer that follows the apply is broken, so it is tied to the apply step.
+
+**In a shared project, the plan says `create` and the API says `409`.** A resource that already exists under our name is not in our state, so nothing before the apply sees it, and the apply stops thirty resources in. A preflight checks every name first; names carry the repository or the environment (`gh-disasterproject-infra`); a resource we did not create is never imported (`landing-zone-qa` §1.3, R62).
 
 **Never share secrets through outputs sharing.** Values land in `TF_VAR_*` environment variables, which leak into logs and process trees. Share references — a secret ID, an ARN, a key name — and let the consumer read it under its own identity. Auth tokens are fetched locally per consumer (`google_client_config`, `aws_eks_cluster_auth`), never shared.
 
@@ -179,12 +192,12 @@ cmdb-data/              level 0 CMDB, declared half, one file per stack (observe
 
 ## The registry is load-bearing
 
-`registry/*.yaml` is the **single source of truth** for capabilities, traits, zone names and mandatory labels. Three artefacts are generated from it:
+`registry/*.yaml` is the **single source of truth** for capabilities, traits, zone names and mandatory labels, and it is written **here**: a deployment repository carries a byte-identical copy of `registry/` and `schemas/` pinned in `spec.lock.json`, checked both ways by `ci/spec-sync.sh`, and never edits it (`infra-repo-qa` DR4). Three artefacts are generated from it:
 
 | Generated | Consumer |
 |---|---|
 | `enum` blocks in `schemas/*.schema.json` | `check-jsonschema` |
-| `registry/*.json` bundle | `conftest --data` |
+| `registry/registry.json` bundle (top-level key `registry`) | `conftest --data` |
 | Gatekeeper chart `values.yaml` | `ConstraintTemplate` parameters |
 
 **Never hand-edit an `enum` in `schemas/`.** That is a bug. The failure mode of drift is nasty: a label the generator stopped emitting while the admission `Constraint` still demands it blocks legitimate deployments at admission. Risk R34.
@@ -202,7 +215,7 @@ The generator (`registry-generate`) is **not yet written**. It is the first task
 | Stack tags | cloud, env, capability, `platform`\|`archetype/<name>`, `instance/<id>`, `producer`\|`consumer`, `protected` | |
 | Generated files | `_<purpose>.tf` | `_main.tf`, `_sharing_generated.tf` |
 | Generators | `imports/generators/v<N>/gen_<capability>.tm.hcl` | |
-| Contracts | `imports/contracts/contract_<capability>[_<cloud>].tm.hcl` | |
+| Contracts | `imports/contracts/contract_<capability>[_<stack>][_<cloud>].tm.hcl` — `<stack>` for an internal stack of a multi-stack archetype | `contract_run_subnet_gcp.tm.hcl` |
 | Mocks | prefixed `mock-` | `mock-endpoint.example.invalid` |
 
 Generated code **is committed to git**, prefixed with `_`, and covered by `CODEOWNERS`. The `terramate generate --detailed-exit-code` gate (G0) exists because of this: without it, someone hand-edits a `_main.tf`, the scan passes, and the next generate silently reverts the fix.
@@ -223,6 +236,7 @@ Roadmap is in `terramate-outputs-sharing-architecture.md` §16. Current position
 | `--mock-on-fail` behaves as documented when the producer has no state | Confirmed; it does not mask a missing producer stack |
 | Cross-project state reads work with the OIDC roles | Not tested — first `qa` deployment, `landing-zone-qa` VZ1–VZ3 |
 | The control plane is reachable from the runner | Not tested — now the DNS endpoint with IAM only, `landing-zone-qa` VZ5 |
+| The gate tooling evaluates what it claims (2026-10-04, 0.17.3, conftest 0.70.1) | **Refuted** as previously written — `scripts` experiment required, no `after` in `experimental eval`, `output.value` verbatim, conftest namespaces and data. Fixed in the architecture and the templates (`poc/RESULTS.md` A8) |
 
 Two side findings: a Terramate project is **one git repository with one root config** (it cannot be nested in another), and `output.description` is not emitted into the generated block.
 

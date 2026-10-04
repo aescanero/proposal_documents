@@ -603,7 +603,7 @@ Alta de un equipo = app role en Entra ID (equipo de identidad) + una entrada en 
 | Stack | `input` | Productor | Mock |
 |---|---|---|---|
 | todos los que usan Kubernetes | `cluster_endpoint` | `gcp-qa-gke` | `mock-endpoint.example.invalid` (sin esquema: GKE) |
-| todos los que usan Kubernetes | `cluster_ca` (sensitive) | `gcp-qa-gke` | `bW9jaw==` |
+| todos los que usan Kubernetes | `cluster_ca` (sensitive) | `gcp-qa-gke` | `bW9jay1jYQ==` |
 | `secrets`, `data-tenant` | `workload_identity_pool` | `gcp-qa-gke` | `mock-project.svc.id.goog` |
 | `app` | `saml_sso_url` | `gcp-qa-keycloak` | `https://mock-idp.example.invalid/realms/mock/protocol/saml` |
 | `app` | `saml_idp_certificate` | `gcp-qa-keycloak` | certificado PEM de prueba válido, CN `mock-idp` |

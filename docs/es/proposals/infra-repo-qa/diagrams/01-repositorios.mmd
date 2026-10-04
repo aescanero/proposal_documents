@@ -9,7 +9,7 @@ flowchart LR
         A1["código · manifest.yaml · overlays Helm"]
     end
     subgraph INFRA["disasterproject/infra — un proyecto Terramate"]
-        I1["registry/ · schemas/ · policy/"]
+        I1["registry/ · schemas/ (copia fijada) · policy/"]
         I2["stacks/landing-zone/"]
         I3["stacks/platforms/gcp/qa · prod"]
         I4["stacks/archetypes/*/instances/"]
@@ -18,6 +18,7 @@ flowchart LR
     REG[("Artifact Registry")]
     GCP[("GCP: disasterproject-lz · nonprod · prod")]
     D1 -. "especifica" .-> INFRA
+    DOC -- "registry/ · schemas/ en un commit fijado (DR4)" --> I1
     T1 -- "release fijada con mise" --> I5
     A1 -- "imagen y chart por digest" --> REG
     A1 -- "PR con digests (DR6)" --> I4

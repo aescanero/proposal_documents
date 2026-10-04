@@ -16,7 +16,16 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
-        with: { ref: cmdb-observed, path: observed }
+        with: { path: observed }
+      - name: The cmdb-observed branch, created empty on the first run
+        working-directory: observed
+        run: |
+          rc=0; git ls-remote --exit-code --heads origin cmdb-observed >/dev/null || rc=$?
+          case $rc in
+            0) git fetch origin cmdb-observed && git switch -c cmdb-observed FETCH_HEAD ;;
+            2) git switch --orphan cmdb-observed ;;
+            *) exit $rc ;;
+          esac
       - uses: actions/checkout@v4
         with: { path: main, sparse-checkout: schemas }
       - uses: actions/download-artifact@v4
@@ -28,7 +37,9 @@ jobs:
       - name: Validate
         run: |
           pip install --quiet check-jsonschema
-          check-jsonschema --schemafile main/schemas/cmdb-observed.schema.json "$RUNNER_TEMP"/in/*.json
+          shopt -s nullglob; files=("$RUNNER_TEMP"/in/*.json)
+          [ ${#files[@]} -gt 0 ] || { echo "::notice::no observation in this run"; exit 0; }
+          check-jsonschema --schemafile main/schemas/cmdb-observed.schema.json "${files[@]}"
 
       - name: Merge; deploy markers only move forward
         run: |
@@ -47,7 +58,11 @@ jobs:
           git diff --cached --quiet && exit 0
           git -c user.name=cmdb-bot -c user.email=cmdb-bot@users.noreply.github.com \
             commit -m "observed: run ${{ github.run_id }}"
-          for i in 1 2 3; do git pull --rebase && git push && exit 0; sleep $((i*5)); done
+          for i in 1 2 3; do
+            if git ls-remote --exit-code --heads origin cmdb-observed >/dev/null; then git pull --rebase origin cmdb-observed || exit 1; fi
+            git push origin HEAD:cmdb-observed && exit 0
+            sleep $((i*5))
+          done
           exit 1
 
   publish:
@@ -58,7 +73,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: ./.github/actions/setup
-      - run: git fetch origin cmdb-observed
+      - run: ./ci/fetch-observed.sh                # a new repository has no cmdb-observed yet
       - name: Join both halves
         run: archetypectl cmdb publish --observed origin/cmdb-observed --out dist/   # index.json, graph.jsonld
       - name: Replace the release asset

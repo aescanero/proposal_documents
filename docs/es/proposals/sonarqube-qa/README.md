@@ -438,7 +438,7 @@ Direccionamiento: una `/17` del bloque permanente `10.4.0.0/14` por resolución 
 
 | Tema | Decisión | Referencia |
 |---|---|---|
-| NEG fuera del estado de Terraform | Declarado como `data`, nombrado explícitamente | §10.2, R20 |
+| NEG fuera del estado de Terraform | Referenciado por su URL determinista; ni `resource` ni fuente `data` | §10.2, R20 |
 | VPC | **Separada**; el borde de `qa` y su NEG en la misma VPC | §4.15, R23 |
 | Cuenta de servicio de nodos | Dedicada, con `artifactregistry.reader`, logging y monitoring writer | §5.7 |
 | Workload Identity | Principal exacto por namespace y KSA | R15 |
