@@ -376,14 +376,14 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 | **Runtime parity gap** | Cloud Run and ECS Fargate have no Kubernetes admission layer, so the `policy` capability exists only where `cluster` does; serverless runtimes substitute coarser but non-evadable cloud control-plane controls (risk R37). |
 | **Resolver vs OPA division of labour** | The resolver **computes** (closure, allocation, ordering, ledger writes); OPA **asserts** (stateless invariant checks on what the resolver/generators produced) — OPA never re-resolves anything, giving defence in depth against resolver bugs. |
 | **G0 — generation integrity** | `terramate generate && git diff --exit-code` on every PR; always blocking. Prevents a hand-edit to `_main.tf` being silently reverted. |
-| **G1 — structure and composition** | `conftest test --policy policy/ --data registry/ ...` on every PR; always blocking. Enforces the `input`↔`after` ordering invariant (R2), stack-naming conventions, instance tagging, no-secret-output rule. |
+| **G1 — structure and composition** | `conftest test --all-namespaces --policy policy/ --data registry/registry.json ...` on every PR; always blocking, and failing when it evaluated zero rules. Enforces the `input`↔`after` ordering invariant (R2), the upward edge, stack-naming conventions, instance tagging, the no-secret-output rule, consumed outputs that exist (R6) and mock shapes. |
 | **G2 — static security scan** | `checkov -d . --framework terraform` on every PR; blocking on HIGH/CRITICAL. Sees the module *call*. |
-| **G3 — plan scan** | `checkov -f plan.json --framework terraform_plan` + `conftest --namespace terraform`, run before apply; blocking on HIGH/CRITICAL. Sees the module *result*, catching misconfigurations reachable only with a particular globals combination. |
+| **G3 — plan scan** | `checkov -f plan.json --framework terraform_plan` + `conftest --namespace terraform.<package>` (exact package names), run before apply; blocking on HIGH/CRITICAL. Sees the module *result*, catching misconfigurations reachable only with a particular globals combination. |
 | **Checkov** | Static/plan IaC security scanner; the "standard library" of known cloud misconfiguration checks, complementary to OPA/Rego (which encodes platform-specific rules Checkov cannot express). Config in `.checkov/gcp.yaml`, `.checkov/aws.yaml`. |
 | **conftest** | Stateless CLI policy tool consuming `registry/registry.json` as `--data`, always with `--all-namespaces`; chosen for CI policy checks instead of running an OPA server. |
 | **check-jsonschema** | CLI tool validating manifests, component files, environment bindings and pool ledgers against JSON Schemas before resolution runs. |
 | **`conftest verify`** | Runs the Rego policies' own unit tests (`policy/*_test.rego`) so a rule that never fires does not give false confidence (risk R36). |
-| **`archetypectl enrich`** | Custom tool scanning each stack for `from_stack_id`/`after` declarations, emitting `consumes[]` and `after_ids[]` fields, since the stack inventory (`ci/stacks-json.sh`) does not expose `input` blocks — kept small and standalone so the Rego stays portable and testable against fixtures. |
+| **`archetypectl enrich`** | Custom tool reading each stack's `input` blocks (`from_stack_id`, output, `mock`) into `consumes[]` and resolving `after` into `after_ids[]`, since the stack inventory (`ci/stacks-json.sh`) does not expose `input` blocks — kept small and standalone so the Rego stays portable and testable against fixtures. |
 | **`skip-check` (Checkov)** | Per-cloud config directive suppressing a specific check (e.g. `CKV_GCP_69` for an intentionally public demo cluster endpoint); every suppression requires a comment naming the reason/scope and must not leak into production config. |
 | **Self-managed Gatekeeper** | The chosen deployment model on all three clouds instead of managed add-ons, because managed alternatives are mutually exclusive with a self-managed install (AKS refuses its add-on if Gatekeeper v3 is present), restrict custom templates, and would mean three different behaviours to debug. |
 | **Gatekeeper, not Kyverno** | Chosen because the team already writes Rego for conftest — one policy language. Rules are **not** literally reusable between them, only the language and helper libraries, because Gatekeeper's input is an `AdmissionReview`, not `resolution.json`. |
@@ -552,7 +552,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 
 ---
 
-## 26. Risk register (`risk-register.md`) — 62 risks by domain (59 active)
+## 26. Risk register (`risk-register.md`) — 64 risks by domain (61 active)
 
 Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mitigation tied to a document section.
 
@@ -563,7 +563,7 @@ Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mi
 | **R3** | Mocks leak into a deployment. Mitigated by separate preview/deploy scripts, the `mock-` prefix convention, and a post-apply grep for `mock-` in outputs. |
 | **R4** | Type-mismatched mocks type-check in preview but fail at apply. Mitigated by code-review checklist and correctly-typed mocks. |
 | **R5** | A shared platform destroyed by an instance teardown via a wrong destroy-selector, taking down every tenant. Ranked #5 of top risks. Mitigated by a `protected` tag, a destroy-selector check, and a CMDB reference count. |
-| **R6** | Producer output rename breaks N consumers. Mitigated by treating outputs as a versioned contract (add new alongside old, deprecate over two releases) and using the CMDB relationship graph to find affected consumers. |
+| **R6** | Producer output rename breaks N consumers. Mitigated by treating outputs as a versioned contract (add new alongside old, deprecate over two releases), a G1 rule that fails when a consumed output is missing from its producer (`terramate.contracts`), and the CMDB relationship graph to find affected consumers. |
 | **R7** | Cross-account state read permissions missing at first setup, causing loud CI failures. Mitigated by documenting required grants and testing in the PoC. |
 | **R8** | Secret leaked through `TF_VAR_*` by sharing values instead of references. Mitigated by never sharing secret values, plus a policy/grep gate for secret patterns in outputs. |
 | **R9** | Generated code edited by hand, silently reverted by the next `terramate generate`. Mitigated by the G0 gate plus `CODEOWNERS` requiring platform-team approval on generated files. |
@@ -608,6 +608,7 @@ Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mi
 | **R55–R57** | CMDB: the sync writing to `main`; edges silently empty so the destroy guard counts 0; a secret value reaching the CMDB. See `risk-register.md` §7. |
 | **R58–R60** | Landing zone: an unrepeatable bootstrap; a project-singleton policy (Binary Authorization) written by an environment; a project-level grant where a resource-level one would do. See `risk-register.md`. |
 | **R61–R62** | Landing zone in an adopted project: state readable through project-level grants; a name already taken in a shared project. See `risk-register.md`. |
+| **R63–R64** | An IAM-administration bound out of step with its role list; orphan authorised networks in the `/32`-per-job control-plane variant. See `risk-register.md`. |
 
 **Top five risks** (ranked by likelihood × impact, mitigation not yet in place): 1) R2 (missing `after`), 2) R12 (wildcard OIDC `sub`), 3) R26 (pod range sized for too few nodes), 4) R34 (registry drift), 5) R5 (shared platform destroyed by instance teardown).
 

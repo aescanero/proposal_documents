@@ -675,7 +675,7 @@ a breaking change, provided the output names hold.
 | | What | Who applies it | Where it is specified |
 |---|---|---|---|
 | **0a** | **The landing zone exists.** The `gcp-lz-bootstrap` stack (state bucket, the `lz` key ring with `tofu-state`, the federation pool, `tf-plan-lz@`, `tf-apply-lz@`, `tf-destroy-lz@`) is applied **once per organisation** by a person, with local state, and its state migrated to the bucket; then the rest of the landing zone is applied by the pipeline | A person with `organizationAdmin` and `billing.admin`, once; then the `landing-zone` job | `landing-zone-qa` §1 |
-| **0b** | **The environment is onboarded in the landing zone.** A pull request adds the environment to `global.lz.environments`: KMS key ring and `tofu-state` key, the state prefix, `tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@` with their federation bindings, the delegated zone and `public_id`, the address block from the global pool, the Binary Authorization rule and the runtime's node SA. The same pull request adds `environments/<env>/binding.yaml`. Outside the repository, an administrator creates the GitHub Environments `<env>` and `<env>-destroy` with their reviewers and the `GCP_APPLY_SA` / `GCP_DESTROY_SA` variables | The `landing-zone` job (`tf-apply-lz@`); the GitHub Environments by a repository administrator | `landing-zone-qa` §10; `infra-repo-qa` |
+| **0b** | **The environment is onboarded in the landing zone.** A pull request adds `environments/<env>/binding.yaml`, from which the landing zone discovers the environment (no second list to keep in step): KMS key ring and `tofu-state` key, the state prefix, `tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@` with their federation bindings, the delegated zone and `public_id`, the address block from the global pool, the Binary Authorization rule and the runtime's node SA. The same pull request adds `environments/<env>/binding.yaml`. Outside the repository, an administrator creates the GitHub Environments `<env>` and `<env>-destroy` with their reviewers and branch policy — no variables: the identity is derived from the environment (`landing-zone-qa` DZ12) | The `landing-zone` job (`tf-apply-lz@`); the GitHub Environments by a repository administrator | `landing-zone-qa` §10; `infra-repo-qa` |
 
 The environment's own identity cannot do either: it does not exist before 0b, and afterwards it has no role on the landing zone. Only when both are done does the sequence below run — from `first-deploy`, a manual workflow bound to the `<env>` Environment, which writes the environment's first deploy marker (§14.2).
 
@@ -2437,13 +2437,17 @@ resource "google_service_account_iam_member" "apply" {
 
 **In the shared non-prod project**, `tf-apply-qa@` and `tf-apply-dev@` are distinct identities, but a role granted at project level reaches every environment in the project. Grant at resource level wherever the service supports it (secrets, buckets, keys, service accounts, Cloud SQL instances with IAM conditions on the name prefix); where only a project-level role exists (`roles/container.admin`, `roles/compute.networkAdmin`), accept that a non-prod apply identity can touch another non-prod environment, and rely on the per-environment state prefixes, CODEOWNERS and the environment gate. That exposure never reaches `prod`, which is a different project.
 
-**Where the identities live.** The pipeline service accounts (`tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@`) are created in the landing zone's project, not in the environment's: an environment identity then cannot edit its own IAM policy or another's. State access is per prefix, with an IAM condition on the bucket (`resource.name.startsWith("projects/_/buckets/<state-bucket>/objects/<env>/")`), so `tf-plan-qa@` reads the state of `qa`'s producers and not `dev`'s. The service accounts that receive cross-project grants — a runtime's node SA, for instance — are created by the landing zone too, so layer 0 never waits on layer 2 (`landing-zone-qa` §5, §6.3).
+**Where the identities live.** The pipeline service accounts (`tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@`) are created in the landing zone's project, not in the environment's: an environment identity then cannot edit its own IAM policy or another's. State access is per prefix, with an IAM condition on the bucket (`resource.name.startsWith("projects/_/buckets/<state-bucket>/objects/<env>/") || api.getAttribute("storage.googleapis.com/objectListPrefix", "").startsWith("<env>/")` — the second half because listing is checked against the bucket, not an object, and it keeps the listing inside the prefix), so `tf-plan-qa@` reads the state of `qa`'s producers and not `dev`'s. The service accounts that receive cross-project grants — a runtime's node SA, for instance — are created by the landing zone too, so layer 0 never waits on layer 2 (`landing-zone-qa` §5, §6.3).
+
+**Who may grant roles.** Only the landing zone's apply identity administers IAM on the environment projects, and only **bounded by role**: `resourcemanager.projectIamAdmin` with `api.getAttribute('iam.googleapis.com/modifiedGrantsByRole', []).hasOnly([...])`, ≤10 roles per binding, generated from the same `global.identities` list that `gcp-lz-identities` grants from. It can grant exactly the platform's roles — never `owner`, `editor` or IAM administration itself (`landing-zone-qa` DZ13). An unbounded `folderAdmin` or `projectIamAdmin` is an escalation path.
+
+**Federation coordinates are committed** (`ci/federation.env`), not repository variables: they are identifiers, not secrets, and a reviewed file cannot drift the way an administrator-edited variable can (`landing-zone-qa` DZ12).
 
 The `attribute.environment` claim is only present when the workflow job declares `environment:`. Binding the apply SA to that attribute means **the apply role is unreachable from a job without the environment gate**, which is what makes GitHub's required-reviewers control a real security boundary rather than a UI convenience.
 
 | Identity | Roles | Scope |
 |---|---|---|
-| `tf-plan-<env>@` | `roles/viewer`, `roles/storage.objectViewer` on the state bucket prefix | Read-only; may read producer state for outputs sharing |
+| `tf-plan-<env>@` | An enumerated read list (`compute.viewer`, `compute.networkViewer`, `container.viewer`, `dns.reader`, `iam.serviceAccountViewer`, `iam.roleViewer`, `certificatemanager.viewer`, `cloudkms.viewer`, `secretmanager.viewer`, `cloudsql.viewer`, `monitoring.viewer`, `serviceusage.serviceUsageViewer`), `roles/storage.objectViewer` on the state bucket prefix — **never `roles/viewer`**: this identity is reachable from any pull request, and `roles/viewer` reads every service's configuration | Read-only; may read producer state for outputs sharing; never a secret's payload, never a decrypter beyond its own state key |
 | `tf-apply-<env>@` | Least-privilege set per environment (`roles/container.admin`, `roles/run.admin`, `roles/compute.networkAdmin`, …) plus `roles/storage.objectAdmin` on the state prefix | Never `roles/owner`, never `roles/editor` |
 | `tf-apply-<env>@` extras | `roles/iam.serviceAccountUser` on every runtime SA it must `actAs` | Scoped per SA, not project-wide |
 | Runtime SAs (`run-*`, GKE node SA) | Workload-specific, minimal | Created by the pipeline, never assumable by it beyond `actAs` |
@@ -2653,7 +2657,7 @@ Two observations that shape multi-tenant design:
 - **GKE and EKS scope identity by namespace**, so the namespace *is* the tenancy boundary and must never be shared between instances.
 - **Cloud Run and Fargate scope identity per service or task**, which is a finer boundary requiring no cluster-level RBAC — one reason both are better defaults for shared demo environments.
 
-**GKE's pool is per project, not per cluster.** `PROJECT.svc.id.goog` is shared by every cluster in the project, and the principal names only namespace and KSA. In the shared non-prod project, `sonarqube/eso-sonarqube` in `dev` and in `qa` would be one identity. Every KSA that receives GCP IAM is therefore named `<env>-<name>` (`qa-eso-sonarqube`); Gatekeeper rule P12 rejects a ServiceAccount carrying another environment's prefix, and G1 rejects an IAM `member` without the owning environment's prefix (R54). EKS and AKS do not share this trap: their OIDC issuer is per cluster, and the trust condition or federated credential names it.
+**GKE's pool is per project, not per cluster.** `PROJECT.svc.id.goog` is shared by every cluster in the project, and the principal names only namespace and KSA. In the shared non-prod project, `sonarqube/eso-sonarqube` in `dev` and in `qa` would be one identity. Every KSA that receives GCP IAM is therefore named `<env>-<name>` (`qa-eso-sonarqube`); Gatekeeper rule P12 rejects a ServiceAccount carrying another environment's prefix, and G1 rejects an IAM `member` without the owning environment's prefix (R54). Generators build that name in one way only, from `global.ksa_prefix = "${global.env}-"`, set once in the environment's `config.tm.hcl`; a literal KSA name in `imports/generators/` is rejected by G1, because a name written by hand is the one that forgets the prefix. EKS and AKS do not share this trap: their OIDC issuer is per cluster, and the trust condition or federated credential names it.
 
 Never write a wildcard into a workload identity trust condition. `system:serviceaccount:*:*` or `POOL[*/*]` grants every pod in the cluster the role, silently defeating the entire model.
 
@@ -3098,6 +3102,55 @@ deny contains msg if {
 }
 ```
 
+**Mocks are checked against their shape, not trusted.** G0 cannot see a wrong-typed mock — it changes no generated file — so the enricher also records each `input`'s `mock` in `consumes[]`, and a rule checks the shapes the guides warn about. A provider identifier keeps its format (`vpc-mock…`, `projects/mock-project/…`, an ARN ending in `MOCK`), so the rule asks for the word `mock` anywhere rather than a `mock-` prefix; exemptions are a named list, visible in review:
+
+```rego
+package terramate.mocks
+
+import rego.v1
+
+# Values whose shape the consumer validates literally (an API version): named, never silent.
+exempt := {"template_api_version"}
+
+mocks contains [s.id, dep.output, m] if {
+    some s in input.stacks
+    some dep in s.consumes
+    not dep.output in exempt
+    some m in as_list(dep.mock)
+}
+
+as_list(x) := x if is_array(x)
+as_list(x) := [x] if is_string(x)
+
+# A mock says it is one, so a mocked value that reaches a log is recognisable.
+deny contains msg if {
+    some [id, output, m] in mocks
+    not endswith(output, "_ca")
+    not contains(lower(m), "mock")
+    msg := sprintf("stack %q: the mock of %q (%q) does not say it is a mock", [id, output, m])
+}
+
+# A *_ca mock is base64 that decodes to a mock value: the consumer calls base64decode() on it.
+deny contains msg if {
+    some [id, output, m] in mocks
+    endswith(output, "_ca")
+    not contains(lower(decoded(m)), "mock")
+    msg := sprintf("stack %q: the mock of %q is not base64 of a mock value", [id, output])
+}
+
+decoded(m) := base64.decode(m) if base64.is_valid(m)
+decoded(m) := "" if not base64.is_valid(m)
+
+# A GKE endpoint has no scheme (an EKS one does): a mock with :// hides the copy-paste bug.
+deny contains msg if {
+    some [id, output, m] in mocks
+    startswith(id, "gcp-")
+    endswith(output, "_endpoint")
+    contains(m, "://")
+    msg := sprintf("stack %q: the GKE endpoint mock of %q carries a scheme", [id, output])
+}
+```
+
 The two contract rules run over the CMDB's declared half of the pull request (`index.json`), so the inventory is the same one the destroy guard reads. The collector that writes the observed half publishes only outputs without `sensitive = true`; the secret-name rule above is what keeps a secret value from being an output in the first place.
 
 **Public names never carry the environment name** (`edge-qa` proposal, DL10). Whatever is visible without credentials uses the environment's random `network.public_id`. The rule is checked twice, because the names live in two places: G1 checks the binding, where the identifier and the public suffix are declared; G3 checks the plan, where bucket names, public DNS records and certificate domains finally appear (§13.4). The realm of the identity provider, which shows in public OIDC/SAML URLs, is a global and is guarded by an `assert` in its own archetype.
@@ -3394,12 +3447,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: jdx/mise-action@v2
-
-      - uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: tf-plan-${{ matrix.env == 'landing-zone' && 'lz' || matrix.env }}@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
+      - uses: ./.github/actions/setup              # mise + identity derived from ci/federation.env (landing-zone-qa DZ12)
+        with: { identity: tf-plan, env: "${{ matrix.env }}" }
 
       # --- plan with sharing + mocks, only this environment's stacks ---
       - name: Plan
@@ -3515,10 +3564,8 @@ jobs:
       - name: Verify generated code
         run: terramate generate --detailed-exit-code
 
-      - uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_APPLY_SA }}      # Environment variable: tf-apply-<env>@…
+      - uses: ./.github/actions/setup              # mise + identity derived from ci/federation.env (landing-zone-qa DZ12)
+        with: { identity: tf-apply, env: "${{ inputs.env }}" }
 
       - name: Apply changed stacks
         id: apply
@@ -3542,7 +3589,7 @@ jobs:
 
 Key points:
 
-- **One environment, one identity, one gate per job.** `environment: ${{ inputs.env }}` puts `environment=<env>` in the OIDC token, which is the only principal allowed to impersonate `tf-apply-<env>@` (§11.2). `GCP_APPLY_SA` is an *Environment* variable, so the same workflow text resolves to `tf-apply-qa@` in `qa` and `tf-apply-prod@` in `prod`. The single `environment: production` job of earlier drafts could not have worked: its token carried one environment and it tried to apply all of them.
+- **One environment, one identity, one gate per job.** `environment: ${{ inputs.env }}` puts `environment=<env>` in the OIDC token, which is the only principal allowed to impersonate `tf-apply-<env>@` (§11.2). `.github/actions/setup` derives the identity from the job's environment and the coordinates committed in `ci/federation.env` (`landing-zone-qa` DZ12), so the same workflow text resolves to `tf-apply-qa@` in `qa` and `tf-apply-prod@` in `prod`, and no hand-set variable can point a job at another environment's identity. The single `environment: production` job of earlier drafts could not have worked: its token carried one environment and it tried to apply all of them.
 - **The change base is the environment's last successful deploy, not `HEAD^`.** With `HEAD^`, a failed or cancelled run leaves its stacks unapplied and the next merge never sees them again; GitHub also keeps only one pending run per concurrency group and cancels the others, so under a burst of merges some commits are never deployed on their own. The marker `deployed/<env>.json` on the `cmdb-observed` branch is written only when an environment's apply fully succeeded, and `cmdb-sync` only moves it forward (higher `run`). The next run diffs from there and picks up everything since.
 - **The marker follows the apply step, not the job.** `steps.apply.outcome == 'success'` writes it even when the observation step after it fails: an observer that cannot run (a missing tool, a schema rejection) turns the job red and is reported, but does not hold the marker back. Tied to `success()`, a broken observer leaves every environment without a marker for ever, and each run re-applies everything since the first deployment.
 - **A new repository has no `cmdb-observed` branch.** `ci/fetch-observed.sh` tells "the branch does not exist yet" (`git ls-remote --exit-code` returns 2: no environment has a marker) apart from a remote that failed (any other code: an error), and `cmdb-sync` creates the branch empty on its first run. An unguarded `git fetch origin cmdb-observed` fails the very first `deploy`.
@@ -3650,11 +3697,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: jdx/mise-action@v2
-      - uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: tf-plan-${{ matrix.env == 'landing-zone' && 'lz' || matrix.env }}@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
+      - uses: ./.github/actions/setup              # mise + identity derived from ci/federation.env (landing-zone-qa DZ12)
+        with: { identity: tf-plan, env: "${{ matrix.env }}" }
       - name: Detect drift and record it
         id: drift
         run: |
@@ -3729,14 +3773,14 @@ terramate debug show metadata | jq -Rn '
 
 `debug` is a diagnostic command, not a stable interface: the script is pinned to the Terramate version in `mise.toml`, and a format change that parses nothing yields an empty array, which the script rejects rather than handing G1 an inventory with no stacks. Replace it with `list --json` when Terramate offers one that carries `after`.
 
-`archetypectl enrich` is the only custom piece: the inventory does not expose `input` blocks, so the enricher scans each stack for `from_stack_id` and `after`, producing the `consumes[]` and `after_ids[]` fields the policy compares. Keeping that extraction in one small tool, rather than in the policy, keeps the Rego portable and testable against fixtures.
+`archetypectl enrich` is the only custom piece: the inventory does not expose `input` blocks, so the enricher reads each stack's `input` blocks — `from_stack_id`, the output and the `mock` — into `consumes[]`, and resolves the inventory's `after` (paths and tag filters) into `after_ids[]`; the policies compare those fields. Keeping that extraction in one small tool, rather than in the policy, keeps the Rego portable and testable against fixtures.
 
 
 ---
 
 ## 15. Risk register
 
-The full register — 62 risks grouped by domain (59 active; R28 retired as a duplicate of R26, R38 and R39 retired with the control plane DNS endpoint), with likelihood, impact, mitigation and the section that specifies each control — is maintained in its own document, `risk-register.md`. It is reviewed at every roadmap phase gate rather than read end to end.
+The full register — 64 risks grouped by domain (61 active; R28 retired as a duplicate of R26, R38 and R39 retired with the control plane DNS endpoint), with likelihood, impact, mitigation and the section that specifies each control — is maintained in its own document, `risk-register.md`. It is reviewed at every roadmap phase gate rather than read end to end.
 
 The five to act on first:
 
@@ -3812,7 +3856,7 @@ Sequenced so that nothing blocks a real deployment until it has been observed in
 
 **2c.1 — Registry (2–3 days).** `registry/{capabilities,traits,zones,labels}.yaml`, the three generators (schema `enum`s, conftest `--data` bundle, Gatekeeper chart values), and the `registry-generate --check` gate. This comes first because everything after it consumes the registry. Retrofitting a single source once three copies exist is materially harder (R34).
 
-**2c.2 — `archetypectl enrich` (2 days).** The stack inventory (`ci/stacks-json.sh`, §14.4) does not expose `input` blocks, so the enricher scans each stack for `from_stack_id` and `after` and emits `consumes[]` and `after_ids[]`. Keep the extraction here, not in Rego, so the policies stay portable and testable against fixtures.
+**2c.2 — `archetypectl enrich` (2 days).** The stack inventory (`ci/stacks-json.sh`, §14.4) does not expose `input` blocks, so the enricher reads each stack's `input` blocks (`from_stack_id`, output, `mock`) into `consumes[]` and resolves `after` into `after_ids[]`. Keep the extraction here, not in Rego, so the policies stay portable and testable against fixtures.
 
 **2c.3 — G1 gate, advisory (3 days).** The `input`↔`after` policy plus stack-naming and secret-output rules, running **non-blocking**. Measure the false-positive rate against the existing repository before turning it on.
 

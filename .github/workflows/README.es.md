@@ -4,7 +4,7 @@
 
 | Workflow | Jobs | ¿Bloqueante hoy? |
 |---|---|---|
-| `validate.yml` | **Schemas y registry**: el JSON Schema y el YAML del registry están bien formados; `registry-generate --check` una vez que exista; manifiestos, components, bindings y ledgers validados contra `schemas/`; un directorio que existe y no contiene ningún fichero falla, porque un glob vacío no valida nada | Sí, para lo que existe |
+| `validate.yml` | **Schemas y registry**: el JSON Schema y el YAML del registry están bien formados; `registry-generate --check` una vez que exista, y hasta entonces `.github/scripts/check-registry-enums.py` (los enums de los schemas igualan al registro); manifiestos, components, bindings y ledgers validados contra `schemas/`; un directorio que existe y no contiene ningún fichero falla, porque un glob vacío no valida nada | Sí, para lo que existe |
 | | **Policy**: `conftest verify` sobre `policy/*_test.rego` | Omitido hasta que exista `policy/` (roadmap fase 2c.3) |
 
 Los pipelines de la plataforma (`preview`, `deploy`, `drift`, `destroy`) están especificados en el documento de arquitectura §14 y todavía no están escritos.

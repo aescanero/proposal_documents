@@ -18,10 +18,17 @@ jobs:
     outputs:
       envs: ${{ steps.envs.outputs.envs }}     # no productivos y landing-zone
       prod: ${{ steps.envs.outputs.prod }}     # "true" si el PR toca prod
+      federation: ${{ steps.fed.outputs.live }}   # "false" solo mientras ci/federation.env tiene el marcador (PR del bootstrap)
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }               # la detección de cambios necesita historial
       - uses: ./.github/actions/setup
+
+      - name: ¿Está viva la federación? (un estado commiteado y revisado, nunca una variable ausente)
+        id: fed
+        run: |
+          source ci/federation.env
+          if [[ "$GCP_LZ_PROJECT_NUMBER" =~ ^0+$ ]]; then echo live=false; else echo live=true; fi >> "$GITHUB_OUTPUT"
 
       - name: G0 — el código generado está al día
         run: |
@@ -58,8 +65,7 @@ jobs:
 
   plan:                                        # un job por entorno tocado, con su identidad de solo lectura
     needs: gates
-    # antes del bootstrap no hay federación: solo corren G0 y G1 (landing-zone-qa §1.2)
-    if: needs.gates.outputs.envs != '[]' && vars.GCP_WIF_PROVIDER != ''
+    if: needs.gates.outputs.envs != '[]' && needs.gates.outputs.federation == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -70,8 +76,8 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: ./.github/actions/setup
         with:
-          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service-account: tf-plan-${{ matrix.env == 'landing-zone' && 'lz' || matrix.env }}@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
+          identity: tf-plan
+          env: ${{ matrix.env }}
 
       - name: Plan con sharing y mocks, solo los stacks de este entorno
         run: terramate script run --changed --tags ${{ matrix.env }} tofu preview
@@ -94,7 +100,7 @@ jobs:
 
   plan-prod:                                   # prod: el mismo plan, con aprobación (DR7)
     needs: gates
-    if: needs.gates.outputs.prod == 'true' && vars.GCP_WIF_PROVIDER != ''
+    if: needs.gates.outputs.prod == 'true' && needs.gates.outputs.federation == 'true'
     runs-on: ubuntu-latest
     environment: prod-plan                     # tf-plan-prod@ solo es suplantable desde aquí
     steps:
@@ -102,8 +108,8 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: ./.github/actions/setup
         with:
-          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service-account: tf-plan-prod@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
+          identity: tf-plan
+          env: prod
 
       - name: Plan con sharing y mocks, solo los stacks de este entorno
         run: terramate script run --changed --tags prod tofu preview

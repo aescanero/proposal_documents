@@ -69,8 +69,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
         with:
-          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service-account: ${{ vars.GCP_DESTROY_SA }}
+          identity: tf-destroy
+          env: ${{ inputs.env }}
       - name: Destroy in reverse order, sharing on, no mocks
         run: |
           terramate run --tags "${{ needs.guards.outputs.selector }}" --reverse --enable-sharing -- \

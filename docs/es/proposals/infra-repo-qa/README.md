@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 2 · G1 con `--all-namespaces` y el paquete del registro; inventario sobre `debug show metadata`; experimento `scripts`; `ci/fetch-observed.sh`; marcador de deploy atado al paso de apply (`poc/RESULTS.md` A8) |
+| **Estado** | Propuesta · revisión 4 · coordenadas de federación commiteadas e identidades derivadas (§4.3, §5.3, `landing-zone-qa` DZ12); revisión 3: marcadores frente a puertas (§1.5); revisión 2: G1 con `--all-namespaces` y el paquete del registro; inventario sobre `debug show metadata`; experimento `scripts`; `ci/fetch-observed.sh`; marcador de deploy atado al paso de apply (`poc/RESULTS.md` A8) |
 | **Alcance** | Cómo se organiza el repositorio donde se despliega la plataforma: qué repositorios hay y qué va en cada uno, la estructura de directorios, el modelo de ramas (y por qué no hay rama `qa`), la configuración de GitHub (rulesets, Environments, variables, CODEOWNERS), los workflows y el ciclo de vida de un entorno. Incluye **plantillas** de los workflows, validadas, en [`templates/`](templates/) |
 | **Por qué ahora** | Este repositorio (`proposal_documents`) es solo documentación y propuestas. Las propuestas de `qa` describen stacks, identidades y guardas, pero ninguna dice dónde viven ni qué workflow los aplica; el workflow de deploy de la arquitectura, además, no podía aplicar `qa` (§5.1) |
 | **Base** | Arquitectura §4.11 (primer despliegue), §11.2–§11.4 (identidades del pipeline), §12.4 (destroy), §14 (CI/CD); `landing-zone-qa` §1, §5, §10; `cmdb-qa` §2–§6; `developer-guide.md` §1, §3; `poc/RESULTS.es.md`. No se repite lo que ya está allí |
@@ -75,6 +75,20 @@ Este repositorio es la especificación normativa y lo sigue siendo: `registry/` 
 
 Un cambio del registro se hace **primero aquí**, por PR; subir el pin en `infra` es un segundo PR (`spec-sync.sh --update`) cuyo diff muestra exactamente qué capacidades, traits o campos de esquema cambiaron. Los schemas se copian sin anotar: JSON Schema no admite comentarios, y un `$comment` rompería la comprobación de igualdad exacta. La procedencia vive en el lock.
 
+
+### 1.5 Marcadores de posición para herramientas que aún no existen
+
+`archetypectl` y `registry-generate` llegan en la fase 2c del roadmap; `infra` empieza antes. Dos clases de marcador, tratadas de forma opuesta:
+
+> **Un marcador de datos se marca y es inerte; un marcador de una puerta se implementa — una puerta sin implementar es una puerta desactivada.**
+
+| Clase | Ejemplo | Tratamiento |
+|---|---|---|
+| Datos que escribirá una herramienta | `binding.tm.hcl` antes de `archetypectl resolve`; globals de plataforma escritos a mano en `config.tm.hcl` | Escritos a mano, **sin** el prefijo `_` (G0 no debe reclamarlos), y marcados de cuatro formas independientes para que ninguna omisión aislada los haga pasar por generados: un banner que nombra la herramienta, la fase del roadmap y qué cambiar cuando llegue; `globals "resolver" { provenance = "hand-written" }`; un `assert` en `imports/contracts/guards.tm.hcl` que hace fallar `terramate generate` cuando un stack no tiene procedencia; una entrada en `PLACEHOLDERS.md`, que un paso de CI lista en `$GITHUB_STEP_SUMMARY` en cada PR |
+| Una puerta que ejecutará una herramienta | `registry-generate --check`, `archetypectl cmdb check`, `archetypectl enrich` | **Se implementa ya**, como scripts pequeños con las mismas entradas y el mismo fallo: la comparación provisional de enums (`.github/scripts/check-registry-enums.py` de este repositorio), un extractor que alimenta a la vez la regla de R2 y las aristas de la CMDB (R56). Un paso que imprime un aviso y pasa es el fallo de `CLAUDE.md`, "A gate that cannot run" |
+
+Cuando llega la herramienta, el banner del marcador dice qué borrar; el script de la puerta se sustituye por el `--check` de la herramienta, y los dos se ejecutan juntos durante un PR para demostrar que coinciden.
+
 ---
 
 ## 2. Estructura de `disasterproject/infra`
@@ -85,6 +99,7 @@ disasterproject/infra/
 ├── config.tm.hcl                    globals de la organización (dominio, región, proyecto lz)
 ├── .mise.toml                       terramate, tofu, checkov, conftest, platform-tools
 ├── spec.lock.json                   pin de registry/ y schemas/: commit de origen + sha256 por fichero (DR4)
+├── PLACEHOLDERS.md                 ficheros escritos a mano que generará una herramienta; listados en cada PR (§1.5)
 ├── registry/                        COPIA del registro de la especificación, nunca se edita aquí
 ├── schemas/                         COPIA de los schemas de la especificación, nunca se edita aquí
 ├── environments/
@@ -112,7 +127,7 @@ disasterproject/infra/
 ├── charts/policy-gatekeeper/        ConstraintTemplates y valores generados del registro
 ├── cmdb-data/                       mitad declarada de la CMDB (cmdb-qa §3); la observada, en su rama
 ├── images/third-party.yaml          imágenes de terceros que se copian (landing-zone-qa §6.2)
-├── ci/                              g1.sh, changed-envs.sh, stacks-json.sh, fetch-observed.sh, spec-sync.sh
+├── ci/                              g1.sh, changed-envs.sh, stacks-json.sh, fetch-observed.sh, spec-sync.sh, federation.env, check-federation.sh
 ├── .gitattributes                   _*.tf linguist-generated: el diff se pliega, así que una edición a mano destaca
 ├── docs/runbooks/                   lz-bootstrap.md, env-onboarding.md, break-glass.md
 └── .github/
@@ -188,19 +203,19 @@ Lo que una rama `qa` pretendía dar — que un cambio pase por `qa` antes de `pr
 
 ### 4.3 GitHub Environments (DR5)
 
-| Environment | Lo usa | Revisores | Ramas | Variables | Identidad que habilita |
-|---|---|---|---|---|---|
-| `landing-zone` | `deploy`, `first-deploy` | Plataforma **y** seguridad | `main` | `GCP_APPLY_SA` | `tf-apply-lz@` |
-| `landing-zone-destroy` | Ninguno previsto | Otro grupo | `main` | `GCP_DESTROY_SA` | `tf-destroy-lz@` |
-| `qa` | `deploy`, `first-deploy` | Ninguno (automático) o plataforma | `main` | `GCP_APPLY_SA` | `tf-apply-qa@` |
-| `qa-destroy` | `destroy` | Plataforma | `main` | `GCP_DESTROY_SA` | `tf-destroy-qa@` |
-| `prod` | `deploy`, `first-deploy` | `prod-approvers`; espera de 5 min | `main` | `GCP_APPLY_SA` | `tf-apply-prod@` |
-| `prod-destroy` | `destroy` | `prod-approvers` y seguridad | `main` | `GCP_DESTROY_SA` | `tf-destroy-prod@` |
-| `prod-plan` | `preview` de `prod` (DR7) | `prod-approvers` | Todas | — | `tf-plan-prod@` |
-| `prod-drift` | `drift` de `prod` (DR7) | Ninguno | Solo `main` | — | `tf-plan-prod@` |
-| `image-mirror` | `image-mirror` | Ninguno | `main` | — | `image-mirror@` |
+| Environment | Lo usa | Revisores | Ramas | Identidad que habilita |
+|---|---|---|---|---|
+| `landing-zone` | `deploy`, `first-deploy` | Plataforma **y** seguridad | `main` | `tf-apply-lz@` |
+| `landing-zone-destroy` | Ninguno previsto | Otro grupo | `main` | `tf-destroy-lz@` |
+| `qa` | `deploy`, `first-deploy` | Ninguno (automático) o plataforma | `main` | `tf-apply-qa@` |
+| `qa-destroy` | `destroy` | Plataforma | `main` | `tf-destroy-qa@` |
+| `prod` | `deploy`, `first-deploy` | `prod-approvers`; espera de 5 min | `main` | `tf-apply-prod@` |
+| `prod-destroy` | `destroy` | `prod-approvers` y seguridad | `main` | `tf-destroy-prod@` |
+| `prod-plan` | `preview` de `prod` (DR7) | `prod-approvers` | Todas | `tf-plan-prod@` |
+| `prod-drift` | `drift` de `prod` (DR7) | Ninguno | Solo `main` | `tf-plan-prod@` |
+| `image-mirror` | `image-mirror` | Ninguno | `main` | `image-mirror@` |
 
-**Sin secretos.** Todo acceso a GCP es federado; las variables no son sensibles. Las variables de repositorio son `GCP_WIF_PROVIDER`, `GCP_LZ_PROJECT` y `DRIFT_ENVS` (`["landing-zone","qa"]`; `prod` tiene su propio job).
+**Sin secretos, y sin variables de identidad.** Todo acceso a GCP es federado. Las coordenadas de la federación están commiteadas en `ci/federation.env` (seguridad como CODEOWNER) y `.github/actions/setup` deriva `tf-<rol>-<env>@` del entorno del job, que debe ser un directorio de `environments/` (`landing-zone-qa` DZ12); `ci/check-federation.sh` en G1 falla si un workflow lee `vars.GCP_*`. Las únicas variables de repositorio que quedan son interruptores operativos, no identidad: `DRIFT_ENVS` (`["landing-zone","qa"]`) y `PROD_ENABLED`.
 
 Los Environments se crean a mano en el alta de cada entorno (§6.1); son la única pieza de la configuración que no está en el repositorio. Un job semanal los compara con esta tabla (RR3).
 
@@ -243,7 +258,7 @@ Lo escribe `apply-env` solo si el paso de apply terminó bien, pase lo que pase 
 
 ### 5.3 Antes del bootstrap
 
-Mientras no exista `GCP_WIF_PROVIDER`, los jobs de plan se saltan (`if: vars.GCP_WIF_PROVIDER != ''`) y la preview solo ejecuta G0 y G1. Es lo que permite fusionar el PR del bootstrap antes de que haya federación (`landing-zone-qa` §1.2).
+Mientras `ci/federation.env` tenga el número de proyecto de marcador, los jobs de plan se saltan y la preview solo ejecuta G0 y G1: es lo que permite fusionar el PR del bootstrap antes de que haya federación (`landing-zone-qa` §1.2). La condición es un estado commiteado y revisado, no una variable ausente: en cuanto un PR escribe el número real, todo job de plan debe autenticarse, y uno que no puede hace fallar el check en lugar de saltarse.
 
 ### 5.4 Plantillas y cómo se validaron
 
@@ -271,8 +286,8 @@ Es el paso 0 de la arquitectura §4.11, en orden:
 | # | Qué | Dónde | Quién |
 |---|---|---|---|
 | 1 | Solo la primera vez en la organización: bootstrap de la landing zone | `landing-zone-qa` §1 (`docs/runbooks/lz-bootstrap.md`) | Cuenta *break-glass* |
-| 2 | PR de alta: el entorno en `global.lz.environments`, `environments/<env>/binding.yaml`, el entorno en `DRIFT_ENVS` y en las opciones de `first-deploy` y `destroy` | `infra` | Plataforma; lo aplica `deploy` con `tf-apply-lz@` |
-| 3 | GitHub Environments `<env>` y `<env>-destroy`, con revisores y `GCP_APPLY_SA` / `GCP_DESTROY_SA` | Ajustes del repositorio | Administrador del repositorio |
+| 2 | PR de alta: `environments/<env>/binding.yaml` (la landing zone lo descubre en `global.lz.environments`; lo revisan plataforma y seguridad como CODEOWNERS), el entorno en `DRIFT_ENVS` y en las opciones de `first-deploy` y `destroy` | `infra` | Plataforma; lo aplica `deploy` con `tf-apply-lz@` |
+| 3 | GitHub Environments `<env>` y `<env>-destroy`, con revisores y política de ramas; sin variables (DZ12) | Ajustes del repositorio | Administrador del repositorio |
 | 4 | PR con los stacks del entorno (`stacks/platforms/gcp/<env>/…`) | `infra` | Plataforma; su preview planifica con `tf-plan-<env>@`; `deploy` lo ignora (sin marcador) |
 | 5 | `first-deploy` con `env=<env>`: apply por capas y primer marcador | Actions, manual | Revisores del Environment |
 | 6 | Desde aquí, cada cambio es un PR y lo aplica `deploy` | — | — |
@@ -333,7 +348,7 @@ Con A, la promoción que DG §3 y §5 describen no cambia — `prod` despliega e
 |---|---|---|---|---|
 | RR1 | **Las identidades de plan son alcanzables por cualquiera con escritura**: un workflow de `pull_request` ejecuta el código del PR, que puede pedir un token de `tf-plan-<env>@` y leer el estado de ese entorno | Media | Media en no producción; alta en `prod` | Identidades de solo lectura; nunca secretos en el estado (solo referencias, `CLAUDE.md`); `prod` solo con aprobación (`prod-plan`, DR7) |
 | RR2 | **Marcador de deploy perdido o reescrito** | Baja | Alta — `deploy` no vería cambios, o vería todos | Ruleset de `cmdb-observed` sin force-push ni borrado; `changed-envs.sh` falla si el marcador no está en `main`; un entorno sin marcador no se despliega |
-| RR3 | **Environments configurados a mano derivan** de esta tabla (revisores quitados, variable equivocada) | Media | Alta — un apply sin aprobación, o con la identidad de otro entorno | La identidad no depende de la variable sino del claim: una `GCP_APPLY_SA` equivocada falla en la federación. Job semanal que compara los Environments de la API con §4.3 |
+| RR3 | **Environments configurados a mano derivan** de esta tabla (revisores quitados, política de ramas relajada) | Media | Alta — un apply sin aprobación | La identidad depende del claim, y su nombre se deriva de las coordenadas commiteadas y del directorio del entorno, así que ningún valor puesto a mano puede apuntar un job a la identidad de otro entorno. Job semanal que compara los Environments de la API con §4.3 |
 | RR4 | **Lista de entornos repetida** en `DRIFT_ENVS` y en las opciones de `first-deploy` y `destroy` | Media | Baja — un entorno sin drift o sin destroy | Una regla de G1 compara esas listas con `environments/*` |
 | RR5 | **Acción de terceros comprometida** con `id-token: write` | Baja | Crítica | Lista permitida y SHA fijado (DR8); `id-token: write` solo en los jobs que lo usan |
 

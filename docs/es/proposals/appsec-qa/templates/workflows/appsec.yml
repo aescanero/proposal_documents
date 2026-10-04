@@ -92,10 +92,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@v2
-      - uses: google-github-actions/auth@v2
+      - uses: google-github-actions/auth@v2    # coordenadas commiteadas aquí, nunca las variables del llamante (landing-zone-qa DZ12)
         with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.IMAGE_SCAN_SA }}                       # image-scan@: solo lectura
+          workload_identity_provider: projects/000000000000/locations/global/workloadIdentityPools/gh-disasterproject-infra/providers/github-apps   # proveedor para repositorios de aplicación: owner id + lista permitida (landing-zone-qa §5.1)
+          service_account: image-scan@disasterproject-lz.iam.gserviceaccount.com   # solo lectura, solo el repositorio apps
       - name: Trivy image
         env:
           TRIVY_DB_REPOSITORY: ${{ vars.TRIVY_DB_REPOSITORY }}

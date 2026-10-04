@@ -6,7 +6,7 @@
 |---|---|
 | **Scope** | Every identified failure mode across generation, resolution, identity, edge, policy and multi-tenancy |
 | **Section references** | `§n` refers to the architecture document unless prefixed `AM §n` (archetype model) |
-| **Identifiers** | R1–R62. R28 is **retired** (duplicate of R26), and R38 and R39 are retired with the control plane DNS endpoint (`landing-zone-qa` DZ4); retired numbers are not reused |
+| **Identifiers** | R1–R64. R28 is **retired** (duplicate of R26), and R38 and R39 are retired with the control plane DNS endpoint (`landing-zone-qa` DZ4); retired numbers are not reused |
 | **Review cadence** | At each roadmap phase gate, and whenever a pinned tool version changes |
 
 Risks are grouped by domain rather than numbered order, because that is how they are reviewed. The original R-numbers are stable identifiers and must not be reused if a risk is retired.
@@ -55,6 +55,7 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R54 | **Workload Identity sameness in the shared non-prod project**: one pool per GCP project, so the same namespace and KSA in two non-prod clusters are one GCP identity | High unless KSAs are prefixed | High — one non-prod environment reads another's secrets, buckets and databases | Every KSA with GCP IAM named `<env>-<name>`; Gatekeeper P12 rejects another environment's prefix; G1 checks every IAM `member`. Residual: a cluster-admin of one non-prod environment can bypass admission — accepted for non-prod only; `prod` never shares a project (`CLAUDE.md`) |
 | R60 | **A project-level grant where a resource-level one would do**: in the shared non-prod project, a role on the project reaches every environment in it | Medium | High — an environment identity reads or writes another environment's resources | Grants on keys, repositories, zones and SAs per resource; the landing zone creates the SAs that receive cross-project grants; a G3 rule on landing zone IAM (`landing-zone-qa` §6.3, §11.1) |
 | R61 | **State readable through project-level grants when layer 0 adopts an existing project**: identities that already hold `owner`, `editor` or `storage.admin` on the project read and write every state object | High in an adopted project | Critical — every environment's state, the landing zone's included, readable and writable outside the pipeline | Narrowed to resource level before the bootstrap stores state; state per prefix and keys per key; DATA_READ audit on `storage.googleapis.com` (`landing-zone-qa` §1.5, RZ6) |
+| R63 | **The IAM-administration bound out of step with the roles it guards**: the landing zone's apply identity administers project IAM bounded to a role list; a role added without updating the bound, or a privileged role slipped into the list | Medium | High — a 403 (safe) in the first case; an escalation path in the second | One `global.identities` list read by the grantor and by the bound; module validations refuse `owner`, `editor`, IAM administration and token-creator roles in the grantable list; the bootstrap change is reviewed by security (`landing-zone-qa` DZ13, RZ8) |
 
 ## 3. Networking and address planning
 
@@ -83,7 +84,7 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|---|
 | R5 | **Shared platform destroyed by an instance teardown** | Low with guards, catastrophic without | Critical | `protected` tag + destroy-selector check + CMDB reference count by edges, not by name (§12.4); R56 |
-| R6 | **Producer output rename breaks N consumers** | Medium | High on shared platforms | Treat outputs as a versioned contract; add new outputs alongside old, deprecate over two releases; the CMDB relationship graph tells you who is affected |
+| R6 | **Producer output rename breaks N consumers** | Medium | High on shared platforms | Treat outputs as a versioned contract; add new outputs alongside old, deprecate over two releases; a G1 rule fails the PR when a consumed output is missing from its producer and names the consumer (§13.3, `terramate.contracts`); the CMDB relationship graph tells you who is affected |
 | R11 | **Cluster rebuild invalidates every IRSA/WI binding on a shared platform** | Low | High | Treat cluster replacement as a fleet event; maintain the consumer list in the CMDB; rehearse in an ephemeral environment |
 | R13 | **Shared task execution role on a multi-tenant ECS cluster** | High by default | High — cross-tenant secret exposure | Per-instance execution role scoped to that instance's secret ARNs (§8.4) |
 | R14 | **Cloud Run service deployed with `ingress = ALL`** | Medium | High — bypasses Cloud Armor, WAF and access logs | Globals default + assertion + org policy `constraints/run.allowedIngress` (§7.2) |
@@ -115,6 +116,7 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R57 | **A secret value reaches the CMDB**: an output carrying one is not marked `sensitive` and ends up in the observed half and the read model | Medium | High — a secret in a file every repository reader can fetch | The G1 secret-name rule (§13.3); the collector drops `sensitive` outputs; the read model is a private release asset, never public Pages (AM §11.2) |
 | R58 | **An unrepeatable landing zone bootstrap**: nobody remembers how the organisation was started when it has to be rebuilt | Medium | High — the platform cannot be recreated from the repository | The bootstrap is a stack in the repository with a runbook, applied once by hand and then managed with remote state (`landing-zone-qa` §1) |
 | R62 | **A name already taken in a shared project**: the plan says `create` because the resource is not in our state, and the API answers `409` thirty resources later | Medium in a shared or adopted project | High — the landing zone or an environment half applied | A preflight that checks every name before the first `apply`; names that carry the repository or the environment; never `import` a resource we did not create (`landing-zone-qa` §1.3, RZ7) |
+| R64 | **Orphan authorised networks** in the control-plane variant that opens a `/32` per job: a runner that dies before its cleanup leaves an IP from the provider's shared pool authorised on the API server | Medium where the variant is used | Medium — IAM and RBAC still guard the endpoint; the network barrier does not | Scheduled removal of stale `gha-*` entries; alert on authorised-network changes outside the pipeline; a cap on entries; the default (DNS endpoint, IAM only) or a self-hosted runner in the VPC avoids it (`landing-zone-qa` §3.2, DZ16) |
 
 ---
 

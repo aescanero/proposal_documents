@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 4 · DZ4, DZ5 and DZ6 approved and applied (§13); §1 expanded into the bootstrap runbook, new DZ8; revision 4: preflight, DATA_READ audit, the adopted-project variant (§1.5), minimum layer-0 set (§15.1), DZ9–DZ11 |
+| **Status** | Proposal · revision 5 · security review: bounded IAM administration, enumerated plan roles, the state listing condition, the migration fallback only in the environment (measured, `poc/RESULTS.md` A9), committed federation coordinates, the control-plane variant (§3.2), DZ12–DZ16; revision 4: DZ4, DZ5 and DZ6 approved and applied (§13); §1 expanded into the bootstrap runbook, new DZ8; revision 4: preflight, DATA_READ audit, the adopted-project variant (§1.5), minimum layer-0 set (§15.1), DZ9–DZ11 |
 | **Scope** | What layer 0 has to provide for `qa` to start: the landing zone's own bootstrap, projects and folders, org policies, the non-prod project's APIs, Cloud KMS keys, Artifact Registry, GitHub Actions federation and pipeline identities, the state bucket, the parent DNS zone and the delegated zone, the public identifier, the global address pool, Binary Authorization, budgets. `hub` and `prod` only where they change something |
 | **Why now** | Every `qa` proposal leaves it requirements (§0.1) and none describes it. It is the first thing applied and the only thing bootstrapped by hand |
 | **Basis** | S1 §4.13 (control plane access), §4.14 (KMS), §4.15 (separate VPC); architecture §11.2 (pipeline identity), §11.4 (segregation), §11.5 (state); AM §3 (layers), §7 (binding), §9.2 (global pool). What is already there is not repeated |
@@ -60,11 +60,11 @@ Source: [`diagrams/02-arranque.mmd`](diagrams/02-arranque.mmd)
 
 | Step | Who | What | State |
 |---|---|---|---|
-| 1 | Normal pull request review | The `gcp-lz-bootstrap` stack's code lands on `main` in its final form: `gcs` backend, encryption with `lz/tofu-state` plus an unencrypted *fallback* for the migration | — |
+| 1 | Normal pull request review | The `gcp-lz-bootstrap` stack's code lands on `main` in its final form: `gcs` backend, encryption with `lz/tofu-state`, **no plaintext fallback and no variable to fill in**: the federation coordinates are committed in `ci/federation.env` (DZ12) | — |
 | 2 | The *break-glass* account, from a workstation | `tofu apply` of the stack with a temporary local backend, unencrypted: project, bucket, key ring, federation, the landing zone's identities | **Local**, unencrypted: there is nowhere to keep it yet |
-| 3 | The same account | Restores the generated backend and runs `tofu init -migrate-state` to the bucket; the state is written encrypted | In the bucket, encrypted |
-| 4 | Normal pull request review | Removes the *fallback* and enforces encryption (`enforced = true`) | In the bucket, encrypted |
-| 5 | Repository administrator | Repository variables and the GitHub Environments `landing-zone`, `landing-zone-destroy` | — |
+| 3 | The same account | Restores the generated backend and runs `tofu init -migrate-state` with the plaintext fallback **only in `TF_ENCRYPTION`**, never on disk (DZ15); `tofu plan` without it shows no changes | In the bucket, encrypted |
+| 4 | Normal pull request review | One line: `enforced = true` on `state` and `plan`. It cannot ship in step 1: it forbids even a fallback injected through the environment (`poc/RESULTS.md` A9c–d) | In the bucket, encrypted |
+| 5 | Repository administrator | The GitHub Environments `landing-zone`, `landing-zone-destroy` and their reviewers. **No variables**: the identities are derived from the committed coordinates (DZ12) | — |
 | 6 | Pipeline, `tf-apply-lz@` | The rest of the `gcp-lz-*` stacks (§2–§10): the first time with the manual `first-deploy` workflow for `landing-zone`, which writes its deploy marker; afterwards through pull requests (`infra-repo-qa` §6) | In the bucket, encrypted |
 
 The procedure for steps 2 and 3 is kept in the deployment repository as `docs/runbooks/lz-bootstrap.md` (`infra-repo-qa` §2), because the next time it is needed will be to rebuild the organisation and nobody will remember it (RZ1). This section is that runbook.
@@ -82,9 +82,10 @@ The procedure for steps 2 and 3 is kept in the deployment repository as `docs/ru
 | Key ring and key | `lz` / `tofu-state` | `europe-west1`; 90-day rotation; `prevent_destroy`. Environment key rings are created by `gcp-lz-kms` (§4) |
 | Federation pool and provider | `gh-disasterproject-infra` / `github-oidc` | `attribute_condition` on the repository **and** the numeric `repository_owner_id` (architecture §11.2); mapping of `repository`, `environment` and `ref` |
 | Identities | `tf-plan-lz@`, `tf-apply-lz@`, `tf-destroy-lz@` | In `disasterproject-lz`. `tf-plan-lz@` ← `attribute.repository/disasterproject/infra`; `tf-apply-lz@` ← `attribute.environment/landing-zone`; `tf-destroy-lz@` ← `attribute.environment/landing-zone-destroy` |
-| Grants to `tf-apply-lz@` | Organisation: `resourcemanager.folderAdmin`, `resourcemanager.projectCreator`, `orgpolicy.policyAdmin`, `iam.organizationRoleAdmin`; billing account: `billing.user`; `disasterproject-lz`: `cloudkms.admin`, `artifactregistry.admin`, `dns.admin`, `iam.serviceAccountAdmin`; bucket: `storage.admin` | `storage.admin` on the bucket, not the project: it is what lets it set the per-prefix conditions on the environment identities (§5.1) |
-| Grants to `tf-plan-lz@` | Organisation: `browser`, `orgpolicy.policyViewer`, `iam.securityReviewer`; `disasterproject-lz`: `viewer`; bucket: read on the `lz/` prefix | Read-only, for the landing zone's preview and drift |
+| Grants to `tf-apply-lz@` | Organisation: `resourcemanager.folderCreator` (not `folderAdmin`, which carries `setIamPolicy` on every project in the folder), `resourcemanager.projectCreator`, `orgpolicy.policyAdmin`, `iam.organizationRoleAdmin`; billing account: `billing.user`; `disasterproject-lz`: `cloudkms.admin`, `artifactregistry.admin`, `dns.admin`, `iam.serviceAccountAdmin`; bucket: `storage.admin` | `storage.admin` on the bucket, not the project: it is what lets it set the per-prefix conditions on the environment identities (§5.1). On each environment project, `resourcemanager.projectIamAdmin` **bounded by role** (DZ13): one binding per chunk of ≤10 roles of `global.identities`, each with `api.getAttribute('iam.googleapis.com/modifiedGrantsByRole', []).hasOnly([...])`. It can grant exactly the roles the platform's identities hold and nothing else — not `owner`, not `editor`, not itself |
+| Grants to `tf-plan-lz@` | Organisation: `browser`, `orgpolicy.policyViewer`, `iam.securityReviewer`; `disasterproject-lz`: the enumerated read list of §5.1, **never `roles/viewer`** (DZ14); bucket: read on the `lz/` prefix with the listing half of the condition (§5.1) | Read-only, for the landing zone's preview and drift |
 | Grants on `tofu-state` | `cryptoKeyEncrypterDecrypter` to the three `lz` identities | Per key, never per key ring |
+| Module validations | — | Refused at plan time: `owner`, `editor`, `resourcemanager.projectIamAdmin`, `iam.securityAdmin`, `iam.serviceAccountTokenCreator`, `iam.workloadIdentityPoolAdmin` or any `resourcemanager.*` in the grantable list; a pool id starting with `gcp-` (reserved); a pool `display_name` over 32 bytes; a state bucket name over 63 characters. Each is an API limit or an escalation path, and each fails the apply halfway if not caught here |
 
 The environment identities (`tf-*-qa@`) are **not** the bootstrap's: `gcp-lz-identities` creates them when the environment is onboarded (§10).
 
@@ -116,13 +117,8 @@ terraform {
     method "aes_gcm" "lz" {
       keys = key_provider.gcp_kms.lz
     }
-    method "unencrypted" "migrate" {}   # only until step 4
-
     state {
-      method = method.aes_gcm.lz
-      fallback {                        # reads the plaintext state of step 2; step 4 removes it
-        method = method.unencrypted.migrate
-      }
+      method = method.aes_gcm.lz       # no fallback here: step 3 injects it through TF_ENCRYPTION
     }
     plan {
       method = method.aes_gcm.lz
@@ -137,11 +133,11 @@ terraform {
 
 | | |
 |---|---|
-| **Account** | The *break-glass* account (§5.3), not a day-to-day account: `organizationAdmin` on the organisation and `billing.admin` on the billing account. A physical security key |
+| **Account** | The *break-glass* account (§5.3) — or a just-in-time elevation that grants those roles only for the run, approved and alerted — never a day-to-day account with standing `owner`: `organizationAdmin` on the organisation and `billing.admin` on the billing account. A physical security key |
 | **Temporary roles** | `organizationAdmin` does not create projects by itself: the account grants itself `resourcemanager.projectCreator` on the organisation before step 2 and removes it at the end. Creating the project makes it `owner` of `disasterproject-lz`, which is removed too |
 | **Workstation** | A clone of `disasterproject/infra` at step 1's commit on `main`; `mise install` (pinned `tofu` and `terramate`); `gcloud` |
 | **Data** | The organisation's numeric id, the billing account id, the GitHub organisation's numeric `repository_owner_id`. They go in the stack's `globals`, reviewed in step 1's pull request |
-| **Step 1 done** | The bootstrap pull request is merged. Its preview could plan nothing — there is no federation yet — and only G0 and G1 passed: the plan jobs are skipped while `GCP_WIF_PROVIDER` does not exist (`infra-repo-qa` §5) |
+| **Step 1 done** | The bootstrap pull request is merged. Its preview ran G0 and G1 only: `ci/federation.env` still holds the placeholder project number, a committed and reviewed state, so the plan jobs are skipped. The pull request after the bootstrap writes the real number; from then on a plan job that cannot authenticate fails instead of being skipped (`infra-repo-qa` §5.3) |
 
 ### 1.3 Step by step
 
@@ -183,32 +179,30 @@ tofu apply                                 # review the plan: ~30 resources, all
 # --- 3. Migration to the bucket, encrypted ------------------------------------
 rm _backend_local.tf
 mv _backend.tf.final _backend.tf
-tofu init -migrate-state                   # "Do you want to copy existing state to the new backend?" → yes
-tofu plan                                  # "No changes." — reads the state from the bucket, encrypted
+TF_ENCRYPTION='
+method "unencrypted" "migrate" {}
+state {
+  method = method.aes_gcm.lz
+  fallback { method = method.unencrypted.migrate }
+}' tofu init -migrate-state -force-copy     # the fallback lives only in this process (A9b)
+tofu plan                                  # without TF_ENCRYPTION: "No changes." — reads the bucket, encrypted
 gcloud storage cat gs://disasterproject-tfstate-gcp/lz/bootstrap/default.tfstate | head -c 300
                                            # must show "encrypted_data", not resources in plaintext
 shred -u terraform.tfstate*               # plaintext state: must not survive
 git status --porcelain                     # empty: nothing from step 2 is left in the tree
 
-# --- outputs for step 5 -------------------------------------------------------
-tofu output -raw workload_identity_provider
-tofu output -raw lz_project_id
+# --- the committed coordinates match what was created ---------------------------
+diff <(tofu output -json federation | jq -r 'to_entries[] | "\(.key)=\(.value)"' | sort) \
+     <(sed 's/ *#.*//; /^$/d' ../../../../ci/federation.env | sort)
 ```
 
-After step 3, a pull request (step 4) changes the mixin for this stack: it removes `method "unencrypted" "migrate"` and the `fallback` block, and adds `enforced = true` to the `state` block. From then on OpenTofu refuses to write plaintext state. The *break-glass* account checks with `tofu plan` that it still reads it.
+After step 3, a pull request (step 4) adds `enforced = true` to the `state` and `plan` blocks of this stack's mixin — one line; there is no fallback in the code to remove. From then on OpenTofu refuses any unencrypted method, including one injected through `TF_ENCRYPTION` later (`poc/RESULTS.md` A9e).
 
-**Step 5, in GitHub** (repository administrator, `infra-repo-qa` §5):
-
-| Where | Name | Value |
-|---|---|---|
-| Repository variable | `GCP_WIF_PROVIDER` | The `workload_identity_provider` output |
-| Repository variable | `GCP_LZ_PROJECT` | `disasterproject-lz` |
-| Environment `landing-zone` | Reviewers; variable `GCP_APPLY_SA` | Platform and security teams; `tf-apply-lz@disasterproject-lz.iam.gserviceaccount.com` |
-| Environment `landing-zone-destroy` | Reviewers; variable `GCP_DESTROY_SA` | A different approver group; `tf-destroy-lz@…` |
+**Step 5, in GitHub** (repository administrator, `infra-repo-qa` §5): the Environments `landing-zone` (platform and security reviewers, `main` only) and `landing-zone-destroy` (a different approver group). Nothing else: the workflows read `ci/federation.env` and derive `tf-<role>-<env>@` (DZ12, §5.1).
 
 **Closing.** The account removes its `projectCreator` and its `owner` on `disasterproject-lz`; it keeps `organizationAdmin` and is sealed again, with an alert on every sign-in (§5.3). The first pull request that touches `gcp-lz-org` checks the rest: preview with `tf-plan-lz@`, apply with `tf-apply-lz@` from the `landing-zone` Environment (VZ1, VZ3).
 
-> **Verify in VZ1.** That `tofu init -migrate-state` with the `fallback` block reads the local plaintext state and writes the remote one encrypted in a single operation. If this OpenTofu version does not, the known alternative is to migrate first without encryption (step 2's `_backend.tf` with a `gcs` backend and no `encryption` block) and encrypt afterwards with the `fallback` and a `tofu apply -refresh-only`. The result is the same; it is two steps instead of one.
+> **Measured (`poc/RESULTS.md` A9, OpenTofu 1.10.6).** A plaintext state cannot be migrated into an encrypted backend without a fallback (A9a). With the fallback only in `TF_ENCRYPTION` it migrates, and the committed configuration alone plans no changes (A9b). `enforced = true` forbids even that injected fallback and the environment cannot relax it (A9c–d), which is why it ships in step 4, not step 1. VZ1 still confirms it against GCS and KMS.
 
 Steps 1b and 2 run against a project the bootstrap creates, so in the reference shape only the bucket name — global across Google Cloud — can collide. In an adopted project (§1.5) every line of the preflight matters, and a `TAKEN` stops the run: our names change, never theirs.
 
@@ -241,6 +235,9 @@ The reference shape gives layer 0 its own project, created by the bootstrap. Whe
 | Separation between the landing zone and the environments | The project boundary | Only two controls carry it: state access conditioned on the environment's **object prefix**, and KMS access on its **own key** |
 | Identities already in the project | None | Any `owner`, `editor` or `storage.admin` granted at **project** level reads and writes every state object, the landing zone's included. Narrowing them to resource level is a **prerequisite** of step 2, not hygiene (RZ6) |
 | `tf-apply-lz@` | In a project nobody else uses | In a project several environments share: a bigger target. The break-glass alerts of §5.3 also cover changes to its IAM policy |
+| Environment identities | Roles on **their own** resources, or project-level roles in a project only they use | If they get project-level roles in the shared project, `tf-apply-qa@` can change `dev`'s cluster, network, secrets and databases: **lateral movement** between environments. Not accepted as design: IAM conditions on `resource.name` by environment prefix where the service supports them (Secret Manager, KMS, Storage, Compute — verify each), and a G3 alert on any change outside the identity's prefix |
+| Binary Authorization policy | Created by `gcp-lz-binauthz` | It may **already exist** with other clusters' rules. The first write reads it and imports it in a reviewed pull request — the one exception to "never import what we did not create", because writing it from scratch erases those rules (§8) |
+| `cloudkms.admin` and `owner` held by people | Nobody outside the landing zone | People with `owner` on the shared project can destroy key versions and make every state unreadable. List them, alert on `DestroyCryptoKeyVersion`, and set `cloudkms.minimumDestroyScheduledDuration` where the organisation allows it |
 
 Every entry is a consequence stated up front rather than discovered on the first `apply`. None of them arises in the reference shape.
 
@@ -296,8 +293,9 @@ S1 §4.13 decided to open the control plane's authorised networks through an int
 | **A. Control plane DNS endpoint** (recommended) | GKE exposes the API server on a DNS name controlled **by IAM only**, with no IP lists. The `access` service, the orphan-IP reconciler and the race between jobs of S1 §4.13 all disappear | Reopens S1 §4.13, which already noted this alternative. The `kubernetes`/`helm` providers and `kubectl` must be verified against that endpoint from a hosted runner **(VZ5)** |
 | B. A policy exception on `nonprod` | `run.allowedIngress` also admits `all` on the folder | Any Cloud Run service in the project can publish itself without a load balancer or Cloud Armor: R14 comes back for all of them |
 | C. A load balancer in front of `access` | A GLB with a serverless backend | A load balancer, a certificate and a Cloud Armor policy for a function that opens and closes an IP |
+| D. A `/32` per job (variant, only where the organisation forbids any Kubernetes endpoint reachable from the internet) | Public IP endpoint with authorised networks always on; each apply or destroy job adds its runner's IP as `gha-<run_id>-<attempt>` and removes **its own** entry with `if: always()` | The IP belongs to the hosting provider's **shared** runner pool: other tenants of that IP reach the endpoint during the window (IAM and RBAC still guard it). A runner that dies leaves its entry. The apply identity needs `container.clusters.update`. `preview` and `drift` cannot plan the stacks that talk to the API server, because a plan identity reachable from any PR must not open the network. Mandatory controls: a scheduled job that removes `gha-*` entries older than the longest job; an alert on any change to authorised networks made outside the pipeline; a cap on entries. The way out is a self-hosted runner in the VPC with the private endpoint |
 
-**Decision (DZ4, approved):** A. It resolves the clash and also removes the most fragile part of S1 §4.13, which is revised; R38 and R39 are retired.
+**Decision (DZ4, approved):** A. It resolves the clash and also removes the most fragile part of S1 §4.13, which is revised; R38 and R39 are retired. **D is a documented variant (DZ16)**, not an alternative default: it is chosen only when the organisation forbids A, with its controls, and it brings back R64.
 
 ---
 
@@ -325,7 +323,7 @@ All in `disasterproject-lz`, not in the environment's project: so a `qa` identit
 
 | Identity | Principal that uses it (federation) | Permissions, on `disasterproject-nonprod` unless stated |
 |---|---|---|
-| `tf-plan-qa@` | `attribute.repository/disasterproject/infra` (any branch) | `roles/viewer`; read of the state bucket's `qa/` prefix; `qa`'s `tofu-state` |
+| `tf-plan-qa@` | `attribute.repository/disasterproject/infra` (any branch) | An **enumerated** read list — `compute.viewer`, `compute.networkViewer`, `container.viewer`, `dns.reader`, `iam.serviceAccountViewer`, `iam.roleViewer`, `certificatemanager.viewer`, `cloudkms.viewer`, `secretmanager.viewer` (metadata only), `cloudsql.viewer`, `monitoring.viewer`, `serviceusage.serviceUsageViewer` — **never `roles/viewer`** (DZ14): this identity is reachable from any pull request, and `roles/viewer` reads every service's configuration. Never `secretmanager.secretAccessor`, never `cryptoKeyDecrypter` beyond its own `tofu-state`. Read of the state bucket's `qa/` prefix; `qa`'s `tofu-state` |
 | `tf-apply-qa@` | `attribute.environment/qa` (only with the GitHub Environment `qa`) | The roles of architecture §11.2; write on the `qa/` prefix; `dns.admin` **on `qa`'s zone**; `qa`'s `tofu-state` |
 | `tf-destroy-qa@` | `attribute.environment/qa-destroy` (an Environment with another approver group) | Like `tf-apply-qa@`, plus the `delete`s it does not have (architecture §11.4) |
 | `tf-plan-lz@` | `attribute.repository/disasterproject/infra` | Read on the organisation and the `lz/` prefix; the landing zone's preview and drift (§1.1) |
@@ -334,8 +332,17 @@ All in `disasterproject-lz`, not in the environment's project: so a `qa` identit
 | `cmdb-reader@` | Reconciliation job (`cmdb-qa` §7) | `cloudasset.viewer` on `disasterproject-nonprod` |
 | `image-mirror@` | Image copy workflow (§6.2) | `artifactregistry.writer` on the `third-party` repository |
 | `image-build@` | Build workflow | `artifactregistry.writer` on `apps`; `signerVerifier` on `cosign` |
+| `image-scan@` | Application repositories, through `github-apps` (below) | `artifactregistry.reader` on the `apps` repository; nothing else |
 
-**State bucket.** `disasterproject-tfstate-gcp`, one prefix per environment (`qa/`, `dev/`…). Permissions carry an IAM condition on the prefix: `resource.name.startsWith("projects/_/buckets/disasterproject-tfstate-gcp/objects/qa/")`. `tf-plan-qa@` can read the state of producers in its own environment for outputs sharing; not another environment's. Versioning on, with 30-day retention for previous versions: an `apply` that corrupts state is recovered from the previous version.
+**State bucket.** `disasterproject-tfstate-gcp`, one prefix per environment (`qa/`, `dev/`…). Permissions carry an IAM condition on the prefix: `resource.name.startsWith("projects/_/buckets/disasterproject-tfstate-gcp/objects/qa/") || api.getAttribute("storage.googleapis.com/objectListPrefix", "").startsWith("qa/")`. The second half is not a widening: `storage.objects.list` is checked against the bucket, not an object, so without it the first plan cannot list its own prefix, and with it the listing stays inside the prefix. `tf-plan-qa@` can read the state of producers in its own environment for outputs sharing; not another environment's. Versioning on, with 30-day retention for previous versions: an `apply` that corrupts state is recovered from the previous version.
+
+**One list of roles, read twice.** The roles of every pipeline and node identity live once, in `global.identities` (apply, plan, node). `gcp-lz-identities` grants them, and the bound on `tf-apply-lz@`'s IAM administration (DZ13) is generated from the same list: a role added to one place and not the other fails with a 403, by design, instead of drifting. Roles for log-based alerts are the custom `logNotificationRuleEditor` (`logging.notificationRules.*`), never `logging.configWriter`, which also creates **sinks** — a channel to export every log.
+
+**Committed federation coordinates (DZ12).** The pool, the provider, the landing zone project and its number live in `ci/federation.env`, reviewed by security (CODEOWNERS); the workflows derive `tf-<role>-<env>@` from the job's GitHub Environment. They are identifiers, not secrets: what grants access is each identity's binding to `attribute.environment/<env>`, and a GitHub Environment's protection is what produces that claim. Variables would hold the same values, editable without review or trace. G1 fails if a workflow reads `vars.GCP_*`, if the file and the modules disagree, or if an `env` used for an identity is not a directory of `environments/`.
+
+**Application repositories federate through a second provider.** `github-oidc` admits only `disasterproject/infra` (repository and owner id). Application repositories use `github-apps` in the same pool: `attribute_condition` on `repository_owner_id` **and** `assertion.repository` in an allowlist generated from `teams.yaml`. Its only bindings are `image-scan@` (read `apps`) and `image-build@`, the latter per repository (`attribute.repository/<org>/<app>`). Never a pipeline identity: an application repository can never impersonate a `tf-*@`, and a G1 rule fails on any `tf-*@` binding that names `github-apps`.
+
+**Environments are discovered** from `environments/*/binding.yaml`, not listed: a new environment gets its key ring, zone and identities at the landing zone's next apply. That apply goes through the `landing-zone` Environment with reviewers, and `/environments/` has platform and security as CODEOWNERS: adding a file is creating identities.
 
 ### 5.2 Who applies the landing zone
 
@@ -343,7 +350,7 @@ Only `tf-apply-lz@`, from a GitHub Environment `landing-zone` with reviewers fro
 
 ### 5.3 Break-glass
 
-A personal account with `organizationAdmin`, not used day to day, with an alert on every sign-in (the landing zone's layer 1b). It is the one that ran the bootstrap, the only one that can redo it and the only one that applies changes to `gcp-lz-bootstrap` (DZ8). Outside those moments it holds no `projectCreator` and no `owner` on any project (§1.3).
+A personal account with `organizationAdmin`, not used day to day, with an alert on every sign-in (the landing zone's layer 1b). It is the one that ran the bootstrap, the only one that can redo it and the only one that applies changes to `gcp-lz-bootstrap` (DZ8). Outside those moments it holds no `projectCreator` and no `owner` on any project (§1.3). **Without such an account**, a just-in-time elevation (Privileged Access Manager or equivalent) is acceptable: `owner` granted for the run only, with approval and an alert. A day-to-day account holding standing `owner` is not: its session or token is the federation and every state.
 
 ---
 
@@ -384,7 +391,7 @@ The landing zone grants `artifactregistry.reader` to `qa`'s node SA and `cryptoK
 | Parent zone | `disasterproject.com`, in `disasterproject-lz`, with DNSSEC. The domain registrar registers it; the `DS` at the registrar is updated by hand on every key change (RL4) |
 | Public identifier | A `random_string` of 7 lowercase letters (no digits or uppercase), one per environment, generated by `gcp-lz-environments` (`edge-qa` DL10). If it contains an environment word, G1 rejects the binding and it is regenerated (`taint`) |
 | Environment zone | `<public_id>.disasterproject.com`, created in `disasterproject-nonprod` with DNSSEC and NSEC3; the resource is named `qa-public`. The landing zone writes the child's `NS` and `DS` into the parent (DL2) |
-| Permission | `roles/dns.admin` for `tf-apply-qa@` **on that zone**, not on the project |
+| Permission | `roles/dns.admin` for `tf-apply-qa@` **on that zone**, not on the project. Project-level `dns.admin` would let an environment write the apex and the other environments' zones: subdomain takeover, changing their `CAA`, DNS-01 certificates for their names. A G3 rule rejects any project-level `roles/dns.admin` for an environment identity |
 | How it reaches the binding | The landing zone publishes `public_id`, `public_zone` and `dns_suffix` as outputs; the PR that onboards the environment copies them into the binding (`network.public_id`, `dns_zone`, `dns_suffix`), and G1 checks the binding (architecture §13.3). From then on they are deterministic globals: nobody reads them through outputs sharing |
 
 **The identifier does not rotate** (`edge-qa` DL10). A `destroy` or an accidental `taint` of the `random_string` would change every public name of the environment: `prevent_destroy` and `lifecycle { ignore_changes = all }` on it.
@@ -399,6 +406,8 @@ The Binary Authorization policy is **one per project** (`google_binary_authoriza
 |---|---|
 | Each `gke` stack (what `gke-qa` §3 suggests) | Every `apply` rewrites the whole policy with **its** rule: the last environment erases the others' rules. With no error, and the affected cluster falls back to the default rule |
 | **The landing zone** (recommended, DZ6) | `gcp-lz-binauthz` generates one rule per cluster from the bindings of the project's environments (cluster names are deterministic). A new environment is a change to the landing zone, reviewed |
+
+**The first write reads the policy.** In a project that already has clusters, the policy may already exist with their rules: `gcp-lz-binauthz` imports it in a reviewed pull request before its first apply, and its plan shows every existing rule it keeps.
 
 The project's default rule is **deny**: a cluster without its own rule admits no pods, which is a visible failure instead of a silent one. On `qa`: an admission list of the `apps` and `third-party` repositories, attestation in *dry-run* (`gke-qa` DN10).
 
@@ -423,7 +432,7 @@ The project's default rule is **deny**: a cluster without its own rule admits no
 | `qa` | `10.4.128.0/17`, assigned by the PR that onboards the environment |
 | Reservations | The hub's and the landing zone's ranges, fixed, not claimed (AM §9.2: a claim would create a bootstrap cycle) |
 
-**Onboarding a non-production environment** — what the landing zone does, in a single PR:
+**Onboarding a non-production environment** — what the landing zone does, in a single PR that adds `environments/<env>/binding.yaml` (the landing zone discovers environments from that directory, §5.1):
 
 1. Assigns the `/17` in the global ledger.
 2. Generates the public identifier and creates the delegated zone (§7).
@@ -453,6 +462,9 @@ assert {
 |---|---|
 | G3: landing zone IAM at resource level | No `google_project_iam_member` grants an environment identity a role on `disasterproject-lz`; grants on keys, repositories and zones are per resource |
 | G3: Binary Authorization | The plan of `gcp-lz-binauthz` has one rule per cluster declared in the project's bindings, and the default rule is `ALWAYS_DENY` |
+| G3: no project-level `dns.admin` | No `google_project_iam_member` grants `roles/dns.admin` to an environment identity; DNS writes are per zone |
+| G3: plan identities enumerated | No `tf-plan-*@` holds `roles/viewer`, `roles/editor`, `secretmanager.secretAccessor` or a decrypter outside its own state key |
+| G1: federation coordinates | `ci/check-federation.sh`: no workflow reads `vars.GCP_*`; `ci/federation.env` matches the bootstrap module; every `env` that names an identity is a directory of `environments/` |
 
 ### 11.2 Execution
 
@@ -473,6 +485,8 @@ assert {
 | RZ5 | **Loss of the state key** | Low | Critical — state unreadable, unrecoverable (S1 §4.14) | No `cloudkms.admin` outside the landing zone; a 30-day minimum to destroy a version |
 | RZ6 | **State readable through project-level grants** in an adopted project (§1.5): pre-existing identities with `owner`, `editor` or `storage.admin` on the project | High in an adopted project | Critical — every environment's state, the landing zone's included, readable and writable outside the pipeline | Narrow them to resource level before step 2; state and keys granted per prefix and per key; DATA_READ audit (§1.1) shows who read what |
 | RZ7 | **Name collision in an adopted project**: the bucket, the pool, a key ring or an SA already exists under our name | Medium in an adopted project | High — `409` halfway through the bootstrap, a landing zone half applied | Preflight (§1.3, 1b); names that carry the repository (`gh-disasterproject-infra`); never `import` a resource we did not create |
+| RZ8 | **The IAM-administration bound out of step with the roles it guards**: a role added to `global.identities` without updating the bound, or a privileged role slipped into the list | Medium | High — a 403 (safe) in the first case; an escalation path in the second | One list read by both (§5.1); module validations refuse privileged roles (§1.1); the bootstrap change is reviewed by security |
+| RZ9 | **Orphan authorised networks** in the `/32` variant (§3.2, D): a runner that dies leaves its IP from a shared pool authorised | Medium in the variant | Medium — IAM and RBAC still guard the endpoint, the network barrier does not | Scheduled cleanup of stale `gha-*` entries, an alert on changes outside the pipeline, a cap; the way out is a self-hosted runner in the VPC |
 
 ### 11.4 Verifications
 
@@ -485,6 +499,7 @@ assert {
 | VZ5 | Control plane DNS endpoint (DZ4) | `helm`, `kubernetes` and `kubectl` work from a hosted runner with IAM only; no authorised networks |
 | VZ6 | Org policies | `run.allowedIngress` rejects a service with `ingress=all`; `compute.restrictVpcPeering` admits the PSA connection (= VW5) |
 | VZ7 | Preflight and audit (§1.3, §1.5) | The preflight prints no `TAKEN`; a read of `lz/` by `tf-plan-qa@` is refused and appears in the DATA_READ audit; in an adopted project, no principal outside §5.1 holds a project-level storage role |
+| VZ8 | Negative tests of identity | `tf-apply-lz@` cannot grant `roles/owner` (403 from the bound); `tf-plan-qa@` cannot read a secret's payload nor `dev/` objects; a job without `environment: qa` cannot impersonate `tf-apply-qa@`; a workflow that reads `vars.GCP_WIF_PROVIDER` fails G1 |
 
 ---
 
@@ -529,6 +544,11 @@ assert {
 | DZ9 | Federation pool id | **Proposed** | One per repository, `gh-disasterproject-infra`: pool ids are per project and a deleted pool keeps its id for 30 days | A generic `github-pool`, which collides with any other pool in the same project |
 | DZ10 | Project for layer 0 when one cannot be created | **Proposed** | Adopt the non-production project with the consequences of §1.5 stated up front | Wait for `billing.user`; layer 0 in an environment's own project |
 | DZ11 | Who read the state | **Proposed** | DATA_READ audit logs on `storage.googleapis.com` | GCS bucket access logging: impossible under `iam.allowedPolicyMemberDomains`, and inert without its grant |
+| DZ12 | Federation coordinates | **Proposed** | Committed in `ci/federation.env`, security as CODEOWNER; identities derived from the job's GitHub Environment; G1 forbids `vars.GCP_*` | Repository and Environment variables: the same values, editable without review |
+| DZ13 | `tf-apply-lz@`'s IAM administration | **Proposed** | `projectIamAdmin` bounded with `modifiedGrantsByRole` to `global.identities`, ≤10 roles per binding; `folderCreator` instead of `folderAdmin` | Unbounded `folderAdmin` or `projectIamAdmin`: an escalation path |
+| DZ14 | Plan identities | **Proposed** | An enumerated read list, never `roles/viewer`, for every `tf-plan-*@` | `roles/viewer`: reads every service's configuration from any PR |
+| DZ15 | The migration fallback | **Proposed** — measured (A9) | Only in `TF_ENCRYPTION` during step 3; `enforced = true` in step 4 | A fallback in the committed code until a later PR removes it |
+| DZ16 | Control-plane access where A is forbidden | **Proposed** — variant | D, the `/32` per job, with its four controls (§3.2) | A policy exception (B) or an intermediary (C) |
 
 ---
 
@@ -557,4 +577,4 @@ The phases above build the whole landing zone. A new environment does not wait f
 | Layer 2b and above (pods) | `registry` | Images by digest from the mirror (§6.2) |
 | Not on the path | `org`, `projects` (in an adopted project, §1.5), budgets | Budgets are recommended, not blocking |
 
-The usual sequence for a new environment: bootstrap (by hand) → repository variables (step 5) → `first-deploy` of `landing-zone` with `kms`, `identities`, `dns`, `binauthz`, `registry` → `first-deploy` of the environment.
+The usual sequence for a new environment: bootstrap (by hand) → the real project number in `ci/federation.env` and the GitHub Environments (step 5) → `first-deploy` of `landing-zone` with `kms`, `identities`, `dns`, `binauthz`, `registry` → `first-deploy` of the environment.

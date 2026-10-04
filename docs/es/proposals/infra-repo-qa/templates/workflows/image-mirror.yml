@@ -19,14 +19,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
+        id: setup
         with:
-          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service-account: image-mirror@${{ vars.GCP_LZ_PROJECT }}.iam.gserviceaccount.com
+          identity: image-mirror
+          env: ""
       - run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
 
       - name: Copiar por digest y comprobarlo
         env:
-          DEST: europe-west1-docker.pkg.dev/${{ vars.GCP_LZ_PROJECT }}/third-party
+          DEST: europe-west1-docker.pkg.dev/${{ steps.setup.outputs.project }}/third-party
         run: |
           # images/third-party.yaml: [{source: quay.io/jetstack/cert-manager-controller, tag: v1.16.2, digest: "sha256:…"}]
           yq -o=json '.[]' images/third-party.yaml | jq -c . | while read -r img; do

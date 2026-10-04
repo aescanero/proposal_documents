@@ -25,8 +25,8 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: ./.github/actions/setup
         with:
-          workload-identity-provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service-account: ${{ vars.GCP_APPLY_SA }}   # Environment variable: tf-apply-<env>@…
+          identity: tf-apply
+          env: ${{ inputs.env }}
 
       - name: Generated code is current
         run: terramate generate --detailed-exit-code

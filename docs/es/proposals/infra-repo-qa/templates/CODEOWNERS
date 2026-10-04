@@ -7,6 +7,7 @@
 
 # lo que decide qué se permite y qué se genera
 /registry/                          @disasterproject/platform @disasterproject/security
+/environments/                      @disasterproject/platform @disasterproject/security   # un binding nuevo crea identidades, un key ring y una zona en el siguiente apply de la landing zone
 /schemas/                           @disasterproject/platform
 /policy/                            @disasterproject/security
 /imports/                           @disasterproject/platform

@@ -36,15 +36,16 @@ jobs:
             echo "ok  $f"
           done
 
-      # Once registry-generate exists (roadmap phase 2c.1), this becomes blocking
-      # and replaces the two checks above. Schemas are GENERATED from registry/:
-      # a hand-edited enum is a bug. See CLAUDE.md, "The registry is load-bearing".
+      # Schemas are GENERATED from registry/: a hand-edited enum is a bug (CLAUDE.md,
+      # "The registry is load-bearing"). Blocking either way: registry-generate --check
+      # once it exists (roadmap phase 2c.1); until then the enum comparison below.
+      # A step that only printed a notice would be a gate that cannot run.
       - name: Registry is the source of truth
         run: |
           if command -v registry-generate >/dev/null 2>&1; then
             registry-generate --check
           else
-            echo "::notice::registry-generate not yet implemented (roadmap phase 2c.1)"
+            python .github/scripts/check-registry-enums.py
           fi
 
       - name: Validate manifests

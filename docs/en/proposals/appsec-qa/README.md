@@ -380,7 +380,7 @@ Open question **QA1**: Entra test users for authenticated DAST (§4.4), with the
 | `edge-qa` §3 | Priority-800 rule: `allow` from the environment's NAT IPs to its hostnames; `file` field exclusions on DefectDojo's import paths | Proposed (DA7) |
 | `gke-qa` §4 | `GcsFuseCsiDriver` addon | Proposed (DA5) |
 | `infra-repo-qa` §5 | Workflows `appsec-infra.yml`, `appsec-deployed.yml` and `dast-active.yml`; Environment `qa-dast`; `image-mirror` also copies `trivy-db` and `trivy-java-db` | Proposed |
-| `landing-zone-qa` §6.2 | DefectDojo, ZAP, Nuclei and A.I.G images in `images/third-party.yaml`; read-only identity `image-scan@` | Proposed |
+| `landing-zone-qa` §5.1, §6.2 | DefectDojo, ZAP, Nuclei and A.I.G images in `images/third-party.yaml`; read-only identity `image-scan@`, reached by application repositories through the `github-apps` provider — `github-oidc` admits only `infra` | Proposed |
 
 ---
 
