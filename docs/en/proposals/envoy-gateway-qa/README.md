@@ -259,7 +259,7 @@ Source: [`diagrams/05-despliegue.mmd`](diagrams/05-despliegue.mmd)
 | Service | `type: ClusterIP` with `cloud.google.com/neg: '{"exposed_ports":{"8080":{"name":"eg-qa-neg"}}}'` | No load balancer per Service; deterministic NEG name (§10.2) |
 | Replicas | HPA **3–6**, CPU at 70 % | Zonal NEG: ≥ 1 pod per `europe-west1` zone (b, c, d); assert `minReplicas ≥ zones` (§10.2, RG3) |
 | Spread | `topologySpreadConstraints` by `topology.kubernetes.io/zone`, `maxSkew: 1`, `DoNotSchedule`; by node, `ScheduleAnyway` | A zone without pods leaves its NEG empty |
-| Node pool | The general one, not `sonar` | The `sonar` pool is single-zone and tainted (S1 §4.1) |
+| Node pool | `system`: Envoy is layer 3 | The generator sets the selector and the toleration (GKE proposal §5.3, DN11) |
 | `PodDisruptionBudget` | `minAvailable: 2` | A node upgrade does not leave a zone without Envoy |
 | Rollout | `maxUnavailable: 0`, `maxSurge: 1`, `minReadySeconds: 30` | The new pod takes time to show as healthy in the GLB. With a standalone NEG there is no *readiness gate* to wait for that **(verify, VG3)**, so a fast rollout leaves the GLB with no healthy backends for a few seconds (RG4) |
 | Draining | `shutdown.drainTimeout: 60s`; `terminationGracePeriodSeconds: 90`; `connection_draining_timeout_sec: 60` on the backend service | The GLB stops sending before Envoy closes |

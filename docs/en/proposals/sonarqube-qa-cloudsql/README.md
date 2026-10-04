@@ -21,7 +21,7 @@ Nothing in this document reopens a `CLAUDE.md` decision. It does reopen **D2** o
 
 | Changes | Does not change |
 |---|---|
-| `qa` binding: `database-platform` → `postgres-cloudsql`, the global provider, as in `demos` (AM §7) | Runtime, `sonar` node pool, sysctl, PSS `restricted` (S1 §4.1–4.2) |
+| `qa` binding: `database-platform` → `postgres-cloudsql`, the global provider, as in `demos` (AM §7) | Runtime, `apps` node pool, sysctl, PSS `restricted` (S1 §4.1–4.2) |
 | `data-tenant` stack (CNPG) → `data` stack (Cloud SQL), generator `gen_data.tm.hcl` GCP branch | SAML authentication, Keycloak as Entra ID broker (S1 §4.6) |
 | SonarQube pod: **Cloud SQL Auth Proxy** sidecar; JDBC to `127.0.0.1` | Publishing, Gateway, GLB, Cloud Armor (S1 §4.5) |
 | The version of secret `qa-sonarqube-db` is written by `data`, not `secrets` (§5) | Other secrets and their ESO + Secret Manager model (S1 §4.3) |
@@ -38,7 +38,7 @@ Nothing in this document reopens a `CLAUDE.md` decision. It does reopen **D2** o
 |---|---|---|
 | Operations | Operator, barman-cloud plugin, PVCs, operator and PostgreSQL upgrades owned by the platform | Managed. Patching and maintenance by Google, inside a fixed window |
 | "OSS for data" requirement | Met | **Dropped for data.** The S1 §3.3 principle "everything that runs in the cluster is OSS" still holds: Cloud SQL does not run in the cluster; it joins the "what stays in GCP" list next to KMS, Secret Manager and GCS |
-| Availability | 2 instances (primary + synchronous replica) in the cluster | `ZONAL`, in the zone of the `sonar` node pool (DC3). SonarQube is already zonal (R53); a regional database does not raise the availability of the whole |
+| Availability | 2 instances (primary + synchronous replica) in the cluster | `ZONAL`, in the zone of SonarQube's PVC (DC3). SonarQube is already zonal (R53); a regional database does not raise the availability of the whole |
 | PITR window | 14 days (WAL in GCS, §12.6) | **7 days**: the maximum `transaction_log_retention_days` on Enterprise edition. 14 daily backups retained (RC7) |
 | Backups and deletion | In a bucket that outlives the `Cluster` | Tied to the instance: **deleted with it** except the final backup (RC1) |
 | Restore | New `Cluster` with `bootstrap.recovery` | **In-place** restore of a backup (upgrade rollback) or **clone** to a new instance (PITR) (§7) |
@@ -46,7 +46,7 @@ Nothing in this document reopens a `CLAUDE.md` decision. It does reopen **D2** o
 | Network | Service inside the namespace | Private IP in the PSA range + Auth Proxy; egress by `ipBlock` (§6) |
 | Portability | The `data-tenant` path works the same on `eks` and `aks` | The `data` path has only a GCP branch; an `eks`/`aks` binding without `database-platform` fails at `generate` until its branches exist (§9.3) |
 | Cost | Consumes cluster capacity: 2 × (2 vCPU, 8 GiB) + 2 × 100 GiB of disk | Instance billed 24 × 7: vCPU, memory, SSD and backup storage beyond the disk size. **Compare with the pricing calculator before closing DC1**; no figure is given here |
-| Cluster capacity | The `general` node pool needs room for 2 pods of 8 GiB | That room is freed; the proxy adds ≈ 128 MiB to the SonarQube pod |
+| Cluster capacity | The `apps` node pool needs room for 2 pods of 8 GiB | That room is freed; the proxy adds ≈ 128 MiB to the SonarQube pod |
 
 **Recommendation.** Cloud SQL if the team prefers not to operate PostgreSQL and accepts two things: dropping the OSS requirement for data, and a 7-day PITR window in `qa`. If either is unacceptable, the base (CNPG) remains valid, and the archetype supports both without changes (§0).
 
@@ -96,7 +96,7 @@ Source: [`diagrams/02-orden-despliegue.mmd`](diagrams/02-orden-despliegue.mmd)
 | Edition | `ENTERPRISE` | Enterprise Plus (99.99 %, near-zero-downtime maintenance, PITR up to 35 days) is not justified in `qa` (DC2) |
 | Version | `POSTGRES_<major>`: the highest supported by the pinned SonarQube version **(verify against SonarQube's matrix)** | As with the CNPG image in S2 §5.3 |
 | Tier | `db-custom-2-8192` (2 vCPU, 8 GB) | The same per-instance size as the base (S1 §4.12) |
-| Availability | `ZONAL`, `location_preference.zone` = zone of the `sonar` node pool | DC3. Same zone: minimal latency and no new failure mode |
+| Availability | `ZONAL`, `location_preference.zone` = zone of SonarQube's PVC | DC3. Same zone: minimal latency and no new failure mode |
 | Disk | SSD, 100 GB, `disk_autoresize = true`, `disk_autoresize_limit = 500` | The disk grows on its own but **never shrinks**; the limit stops a write loop from taking it to the product maximum |
 | Network | `ipv4_enabled = false`, `private_network` = `qa` VPC, `allocated_ip_range = "qa-psa"` | No public IP. Plus org policy `constraints/sql.restrictPublicIp` on the project (architecture §7.4) |
 | TLS | `ssl_mode = "ENCRYPTED_ONLY"` | Rejects unencrypted direct connections; the proxy always encrypts |
@@ -535,7 +535,7 @@ globals "db" {
   version           = "POSTGRES_17"        # verify against SonarQube's matrix
   tier              = "db-custom-2-8192"
   availability_type = "ZONAL"
-  zone              = "europe-west1-b"     # = zone of the sonar node pool
+  zone              = "europe-west1-b"     # = zone of SonarQube's PVC
   disk_gib          = 100
   disk_limit_gib    = 500
   retained_backups  = 14                   # §12.6, qa column
@@ -672,7 +672,7 @@ Source: [`diagrams/07-upgrade.mmd`](diagrams/07-upgrade.mmd)
 |---|---|---|---|---|
 | DC1 | SonarQube's PostgreSQL engine in `qa` | **Consequence** of the `postgres-cloudsql` proposal (DQ2) | Cloud SQL, global provider `postgres-cloudsql` | CNPG, with `postgres-operator` as the global provider |
 | DC2 | Edition | Proposed | Enterprise | Enterprise Plus: 35-day PITR and near-zero-downtime maintenance, more expensive |
-| DC3 | Availability | Proposed | `ZONAL` in the `sonar` zone | `REGIONAL`, only together with the HA disk of S1 §4.1 |
+| DC3 | Availability | Proposed | `ZONAL` in the zone of SonarQube's PVC | `REGIONAL`, only together with the HA disk of S1 §4.1 |
 | DC4 | Connection | Proposed | Auth Proxy as a native sidecar | Direct private IP with `verify-ca`; Java Connector |
 | DC5 | Application authentication | Proposed | Password (in Secret Manager) + proxy IAM authorisation | IAM database authentication, with a GCP service account |
 | DC6 | PostgreSQL alerts | Proposed | Cloud Monitoring from the `data` stack | `stackdriver-exporter` into Prometheus |

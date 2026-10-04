@@ -96,7 +96,7 @@ Todo se construye de cero. **Registro** indica si la capability existe en `regis
 | 1 | `network` | **VPC propia** de `qa`, subredes, Cloud NAT, **Private Google Access** | cloud | Nodos, pods, acceso a APIs de Google sin internet | ✓ |
 | 1 | `env-edge` | Backend service + URL map + proxy + forwarding rule **del propio entorno**, con el NEG en la VPC de `qa` | cloud | Entrada hacia el NEG del Gateway | ✓ |
 | 1b | `cloud-observability` | Cloud Logging **reducido** a auditoría y plano de control de GKE, con alertas basadas en logs | cloud | Alertas de acceso a secretos, accesos al cluster y KMS (§4.7) | ✓ |
-| 2 | `cluster` | **GKE Standard** regional, node pools `general` y `sonar` | cloud | Donde corre; `sonar` aporta el sysctl | ✓ (+ trait) |
+| 2 | `cluster` | **GKE Standard** regional, node pools `system` y `apps` (GKE DN11) | cloud | Donde corre; `apps` aporta el sysctl | ✓ (+ trait) |
 | 2b | `policy` | **OPA Gatekeeper** | Apache-2.0 | PSS `restricted`, etiquetas, registros permitidos | ✓ |
 | 3 | `ingress` | **Envoy Gateway** (`gateway-envoy-gke`) | Apache-2.0 | `HTTPRoute`, políticas de tráfico | ✓ |
 | 3 | `certs` | **cert-manager** con **CA interna** (`ClusterIssuer` CA) | Apache-2.0 | TLS y mTLS dentro del cluster (Keycloak, webhooks, xDS de Envoy). Sin ACME: el certificado público lo da Certificate Manager | ✓ |
@@ -119,7 +119,7 @@ Herramientas de plataforma sin cambios: Terramate, OpenTofu, conftest, Checkov.
 
 ## 4. Dependencias por dominio
 
-### 4.1 Runtime: GKE Standard y node pool `sonar`
+### 4.1 Runtime: GKE Standard y node pool `apps`
 
 | Elemento | Propuesta | Motivo |
 |---|---|---|
@@ -127,9 +127,8 @@ Herramientas de plataforma sin cambios: Terramate, OpenTofu, conftest, Checkov.
 | Logs y métricas del sistema | `logging_config`: solo `SYSTEM_COMPONENTS`; `monitoring_config`: `SYSTEM_COMPONENTS` y `managed_prometheus.enabled = false` | Logs de cargas de trabajo solo en Loki y sin doble recogida de métricas (propuesta de monitorización §1) |
 | Gateway API de GKE | `gateway_api_config { channel = "CHANNEL_DISABLED" }` | Los CRDs los instala el arquetipo `gateway` en el canal estándar. Con el de GKE, GKE los gestiona y fija su versión, y aparecen las `GatewayClass` `gke-l7-*`, que crean balanceadores sin Cloud Armor (propuesta de Envoy Gateway §3) |
 | Pods por nodo | 64 (default de plataforma) | No aplica la pregunta abierta de Autopilot |
-| Node pool `sonar` | 1 nodo **n2-standard-8** (8 vCPU, 32 GB) en **una zona**, taint `dedicated=sonar:NoSchedule` | Aísla sysctl y presión de memoria. Zona única porque el PVC es zonal |
-| Node pool `kafka` | 3 × **n2-standard-4** (4 vCPU, 16 GB), uno por zona, taint `dedicated=kafka:NoSchedule` | Kafka vive de la caché de páginas del sistema y reparte sus réplicas por zona (propuesta de Kafka §2.1) |
-| Sysctl | `node_config.linux_node_config.sysctls = { "vm.max_map_count" = "524288" }` | Elimina el init container privilegiado |
+| Node pools | Dos en todo cluster: **`system`** (capas 2b y 3, con taint) y **`apps`** (capas 4 y 5, sin taint), **n2-standard-16** en tres zonas (propuesta de GKE §5, DN11) | SonarQube va a `apps` sin selector ni tolerancia. Su pod sigue siendo zonal por el PVC: el planificador lo coloca en un nodo de `apps` de la zona del disco |
+| Sysctl | `node_config.linux_node_config.sysctls = { "vm.max_map_count" = "524288" }` en todo el pool `apps` | Elimina el init container privilegiado; en el resto de cargas de `apps` no cambia nada |
 | `fs.file-max` | Sin acción: el kernel lo dimensiona con la RAM y en 32 GB supera 131072 de sobra | Verificar en V1 |
 | StorageClass | El global `storage_class` del contrato `cluster`: `standard-rwo` (`pd-balanced`, `WaitForFirstConsumer`, `allowVolumeExpansion: true`) | La serie N2 no admite Hyperdisk Balanced; `pd-balanced` da 3000 IOPS de base más 6 por GiB (propuesta de GKE §6, DN3) |
 | Acceso del pipeline al plano de control | Endpoint DNS del plano de control, solo IAM; endpoint IP público desactivado | Landing zone DZ4 (§4.13); cubre R18 |
@@ -138,7 +137,7 @@ Herramientas de plataforma sin cambios: Terramate, OpenTofu, conftest, Checkov.
 
 **Plan B** si V1 falla: `SONAR_SEARCH_JAVAADDITIONALOPTS=-Dnode.store.allow_mmap=false`, a costa de rendimiento de ES. Con 200 proyectos habría que medirlo antes de aceptarlo.
 
-**Zona única.** Si cae la zona, SonarQube queda caído hasta que vuelva. Para `qa` se acepta. La alternativa es `pd-balanced` regional (`replication-type: regional-pd`, réplica síncrona entre dos zonas) con el node pool en esas dos zonas: RTO de minutos ante caída de zona, a costa del doble de coste de disco.
+**Zona única.** Si cae la zona, SonarQube queda caído hasta que vuelva. Para `qa` se acepta. La alternativa es `pd-balanced` regional (`replication-type: regional-pd`, réplica síncrona entre dos zonas) con `apps` ya presente en esas zonas: RTO de minutos ante caída de zona, a costa del doble de coste de disco.
 
 ### 4.2 Política de admisión (capa 2b)
 
@@ -341,8 +340,7 @@ Estimación confirmada: mediana de 50 k líneas por proyecto, ≈ 10 M líneas e
 
 | Recurso | Valor inicial | Base |
 |---|---|---|
-| Node pool `sonar` | 1 × n2-standard-8 (8 vCPU, 32 GB) | Contenedor de 12 GiB + page cache para ES |
-| Node pool `kafka` | 3 × n2-standard-4 (4 vCPU, 16 GB), uno por zona | Heap de 4 GiB por broker, límite de 12 GiB; el resto, caché de páginas (propuesta de Kafka §2.1) |
+| Node pool | `apps`, compartido con el resto de capas 4 y 5: n2-standard-16, 1–3 por zona (propuesta de GKE §5.2) | Contenedor de 12 GiB + page cache para ES, reservados por `requests` |
 | Pod SonarQube | request 4 vCPU / 12 GiB, limit 12 GiB, **sin límite de CPU** | Con `limits.cpu` bajo, las JVM eligen SerialGC y el CE se ralentiza (DG §8.3) |
 | Heaps | web `-Xmx2g`, CE `-Xmx3g`, search `-Xmx3g` | Σ 8 GiB + ≈ 1,5 GiB non-heap + margen = 12 GiB. **Nunca** heap = límite |
 | PVC de ES | 50 GiB `standard-rwo` (`pd-balanced`), ≈ 3300 IOPS | Expandible |
@@ -595,27 +593,21 @@ network:
   dns_zone: qa-public
   dns_suffix: tqbvzkr.disasterproject.com
 cluster:
-  max_nodes: 32                     # techo, no tamaño: 13 nodos + surge (propuesta de GKE §5.3)
+  max_nodes: 32                     # techo, no tamaño: 15 nodos + surge (propuesta de GKE §5.3)
   max_pods_per_node: 64
-  node_pools:                       # del entorno, no de los arquetipos (propuesta de GKE §5.3)
-    - name: general
+  node_pools:                       # del entorno, no de los arquetipos; dos pools (propuesta de GKE §5, DN11)
+    - name: system
       machine_type: n2-standard-8
+      zones: [europe-west1-b, europe-west1-c, europe-west1-d]
+      autoscaling: { min_per_zone: 1, max_per_zone: 2 }
+      taint: components.gke.io/gke-managed-components=true:NoSchedule
+      owners: [policy-gatekeeper, cert-manager, secrets-eso-gsm, monitoring-oss, gateway-envoy-gke]
+    - name: apps
+      machine_type: n2-standard-16
       zones: [europe-west1-b, europe-west1-c, europe-west1-d]
       autoscaling: { min_per_zone: 1, max_per_zone: 3 }
-    - name: sonar
-      machine_type: n2-standard-8
-      zones: [europe-west1-b]
-      autoscaling: { min_per_zone: 1, max_per_zone: 1 }
-      taint: dedicated=sonar:NoSchedule
       sysctls: { vm.max_map_count: "524288" }
       traits: [sysctl-max-map-count]
-      owners: [sonarqube]
-    - name: kafka
-      machine_type: n2-standard-4
-      zones: [europe-west1-b, europe-west1-c, europe-west1-d]
-      autoscaling: { min_per_zone: 1, max_per_zone: 1 }
-      taint: dedicated=kafka:NoSchedule
-      owners: [kafka]
 capacity:                           # qa es dedicado: se calculan y publican, no se aplican (propuesta de Kafka §5)
   kafka_topics: 200
   kafka_partitions: 1000

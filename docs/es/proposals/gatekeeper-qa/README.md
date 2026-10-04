@@ -109,7 +109,7 @@ Fuente: [`diagrams/05-propiedad.mmd`](diagrams/05-propiedad.mmd)
 | P8 | Anotación de identidad | `ServiceAccount` | `iam.gke.io/gcp-service-account`. La plataforma usa Workload Identity directa sobre el principal del KSA; esa anotación haría que un KSA suplantara una cuenta de servicio de GCP | E2 §5.1, R15 | `deny` |
 | P9 | Accesos anónimos | `RoleBinding`, `ClusterRoleBinding` | Sujetos `system:anonymous` o `system:unauthenticated` | — | `deny` |
 | P10 | `NetworkPolicy` por defecto | `Namespace` (referencial) | Namespace de tenant sin `NetworkPolicy` default-deny | Todas las propuestas | **Solo auditoría**: la política llega después del namespace en el mismo despliegue |
-| P11 | Tolerancias a pools dedicados | `Pod` y plantillas de workloads | Tolerancia a `dedicated=<pool>` desde un namespace que no es de un arquetipo dueño del pool (`cluster.node_pools[].owners` del binding, por el camino de §7.1) | Propuesta de GKE §5.3, RN5 | `deny` |
+| P11 | Tolerancias a pools con taint | `Pod` y plantillas de workloads | Tolerancia al taint de un pool desde un namespace que no es de sus dueños (`cluster.node_pools[].owners` del binding, por el camino de §7.1). Con dos pools (GKE DN11), el único con taint es `system`, y sus dueños son los arquetipos de capa 2b y 3 más `kube-system` | Propuesta de GKE §5.3, RN5 | `deny` |
 | P12 | Prefijo de entorno en los KSA | `ServiceAccount` | Un nombre que empieza por el prefijo de **otro** entorno del mismo proyecto (`dev-`, `demos-`, `sandbox-`… en el cluster de `qa`). El pool de Workload Identity es uno por proyecto: sin esta regla, un KSA `qa-eso-sonarqube` creado en el cluster de `dev` sería la identidad de `qa` en GCP | `CLAUDE.md`, R54 | `deny` |
 
 ### 4.2 Reglas de los proveedores (las despliega cada uno)
@@ -218,7 +218,7 @@ La tercera es la que convierte R34 en un fallo de CI. Si el generador deja de em
 | Registros permitidos | Globals de la landing zone (proyecto y región del Artifact Registry) | Parámetros de P2 |
 | Namespaces con PSS especial | Valores de `policy-gatekeeper` (§5.2) | Parámetros de P7 |
 | Excepciones | `resolution.json` | Parámetros escritos por el stack `exemptions` |
-| Dueños de los pools dedicados | Binding del entorno (`cluster.node_pools[].owners`), vía `resolution.json` | Parámetros de P11, escritos por el stack `exemptions` |
+| Dueños de los pools con taint | Binding del entorno (`cluster.node_pools[].owners`), vía `resolution.json` | Parámetros de P11, escritos por el stack `exemptions` |
 | Prefijos de los demás entornos del proyecto | Los bindings de los entornos que comparten proyecto, vía `resolution.json` | Parámetros de P12 |
 
 Los tres primeros los genera `registry-generate` en el `values.yaml` del chart (arquitectura §13.8). La prueba de §6.2 corre sobre ese mismo `values.yaml`.

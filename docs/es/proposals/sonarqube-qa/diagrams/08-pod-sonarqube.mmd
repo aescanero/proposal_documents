@@ -1,5 +1,5 @@
 flowchart TB
-    subgraph NODE["Node pool 'sonar' · n2-standard-8 (8 vCPU · 32 GB) · taint dedicated=sonar:NoSchedule<br/>linux_node_config.sysctls: vm.max_map_count=524288"]
+    subgraph NODE["Node pool 'apps' · n2-standard-16 (16 vCPU · 64 GB) · compartido con capas 4-5, sin taint<br/>linux_node_config.sysctls: vm.max_map_count=524288"]
         subgraph POD["Pod sonarqube-0 · StatefulSet 1 réplica · request 4 vCPU / 12 GiB · limit 12 GiB, sin límite de CPU<br/>runAsNonRoot uid 1000 · seccomp RuntimeDefault · drop ALL · sin privilegios"]
             direction LR
             W["JVM web<br/>-Xmx2g"]

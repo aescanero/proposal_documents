@@ -1,0 +1,32 @@
+flowchart LR
+    subgraph COD["Code"]
+        SQ["SonarQube<br/>SAST"]
+    end
+    subgraph DEP["Dependencies"]
+        TF["Trivy fs<br/>SCA and secrets"]
+    end
+    subgraph INF["Infra and containers"]
+        CK["Checkov<br/>IaC"]
+        TI["Trivy image<br/>build and nightly"]
+    end
+    subgraph RUN["Runtime on qa"]
+        ZAP["OWASP ZAP<br/>web and API DAST"]
+        NU["Nuclei<br/>templates"]
+        AIG["A.I.G<br/>IA · MCP · jailbreak"]
+    end
+    DD[("DefectDojo<br/>deduplicates · life cycle · accepted risks")]
+    SQ -- "SonarQube API Import" --> DD
+    TF -- "Trivy Scan · main only" --> DD
+    CK -- "Checkov Scan · main only" --> DD
+    TI -- "Trivy Scan" --> DD
+    ZAP -- "ZAP Scan" --> DD
+    NU -- "Nuclei Scan" --> DD
+    AIG -- "Generic Findings Import<br/>with a converter" --> DD
+    PR{{"PR: gates<br/>quality gate · secrets · CRITICAL with a fix"}}
+    SQ -.-> PR
+    TF -.-> PR
+    CK -.-> PR
+    TI -.-> PR
+
+    style DD fill:#eef4ff
+    style AIG fill:#fff5e6

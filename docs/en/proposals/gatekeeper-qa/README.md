@@ -109,7 +109,7 @@ Source: [`diagrams/05-propiedad.mmd`](diagrams/05-propiedad.mmd)
 | P8 | Identity annotation | `ServiceAccount` | `iam.gke.io/gcp-service-account`. The platform uses direct Workload Identity on the KSA's principal; that annotation would let a KSA impersonate a GCP service account | S2 §5.1, R15 | `deny` |
 | P9 | Anonymous access | `RoleBinding`, `ClusterRoleBinding` | Subjects `system:anonymous` or `system:unauthenticated` | — | `deny` |
 | P10 | Default `NetworkPolicy` | `Namespace` (referential) | A tenant namespace without a default-deny `NetworkPolicy` | Every proposal | **Audit only**: the policy arrives after the namespace in the same deployment |
-| P11 | Tolerations for dedicated pools | `Pod` and workload templates | A toleration for `dedicated=<pool>` from a namespace that does not belong to one of the pool's owning archetypes (the binding's `cluster.node_pools[].owners`, along the §7.1 path) | GKE proposal §5.3, RN5 | `deny` |
+| P11 | Tolerations for tainted pools | `Pod` and workload templates | A toleration for a pool's taint from a namespace that does not belong to its owners (the binding's `cluster.node_pools[].owners`, along the §7.1 path). With two pools (GKE DN11), the only tainted one is `system`, and its owners are the layer 2b and 3 archetypes plus `kube-system` | GKE proposal §5.3, RN5 | `deny` |
 | P12 | Environment prefix on KSAs | `ServiceAccount` | A name starting with the prefix of **another** environment of the same project (`dev-`, `demos-`, `sandbox-`… in the `qa` cluster). The Workload Identity pool is one per project: without this rule, a `qa-eso-sonarqube` KSA created in the `dev` cluster would be `qa`'s identity in GCP | `CLAUDE.md`, R54 | `deny` |
 
 ### 4.2 Provider rules (each deploys its own)
@@ -218,7 +218,7 @@ The third is what turns R34 into a CI failure. If the generator stops emitting a
 | Allowed registries | Landing zone globals (Artifact Registry project and region) | P2 parameters |
 | Namespaces with special PSS | `policy-gatekeeper` values (§5.2) | P7 parameters |
 | Exceptions | `resolution.json` | Parameters written by the `exemptions` stack |
-| Owners of dedicated pools | Environment binding (`cluster.node_pools[].owners`), via `resolution.json` | P11 parameters, written by the `exemptions` stack |
+| Owners of tainted pools | Environment binding (`cluster.node_pools[].owners`), via `resolution.json` | P11 parameters, written by the `exemptions` stack |
 | Prefixes of the project's other environments | The bindings of the environments sharing the project, via `resolution.json` | P12 parameters |
 
 `registry-generate` generates the first three into the chart's `values.yaml` (architecture §13.8). The test of §6.2 runs on that same `values.yaml`.

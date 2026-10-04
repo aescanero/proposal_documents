@@ -1,35 +1,34 @@
 flowchart TB
     subgraph B["europe-west1-b"]
         direction TB
-        GB["general<br/>n2-standard-8 · 1-3"]
-        SB["sonar<br/>n2-standard-8 · 1<br/>taint dedicated=sonar<br/>vm.max_map_count"]
-        KB["kafka<br/>n2-standard-4 · 1<br/>taint dedicated=kafka"]
+        SB["system<br/>n2-standard-8 · 1-2"]
+        AB["apps<br/>n2-standard-16 · 1-3"]
     end
     subgraph C["europe-west1-c"]
         direction TB
-        GC["general<br/>n2-standard-8 · 1-3"]
-        KC["kafka<br/>n2-standard-4 · 1"]
+        SC["system<br/>n2-standard-8 · 1-2"]
+        AC["apps<br/>n2-standard-16 · 1-3"]
     end
     subgraph D["europe-west1-d"]
         direction TB
-        GD["general<br/>n2-standard-8 · 1-3"]
-        KD["kafka<br/>n2-standard-4 · 1"]
+        SD["system<br/>n2-standard-8 · 1-2"]
+        AD["apps<br/>n2-standard-16 · 1-3"]
     end
-    PLAT["Plataforma: Gatekeeper · cert-manager · ESO<br/>monitorización · Envoy · Keycloak · operador de Kafka"]
-    SQ["SonarQube<br/>nodeSelector gke-nodepool=sonar + tolerancia"]
-    KF["brokers de Kafka<br/>uno por zona + tolerancia"]
-    GK{{"Gatekeeper: solo el dueño del pool<br/>puede tolerar dedicated=pool"}}
-    PLAT --> GB
-    PLAT --> GC
-    PLAT --> GD
-    SQ --> SB
-    KF --> KB
-    KF --> KC
-    KF --> KD
-    GK -. "valida" .-> SQ
-    GK -. "valida" .-> KF
+    PLAT["Capas 2b y 3: Gatekeeper · cert-manager · ESO<br/>monitorización · Envoy Gateway · componentes de GKE<br/>nodeSelector system + tolerancia, puestos por el generador"]
+    APPS["Capas 4 y 5: Keycloak · Kafka · CNPG · SonarQube · DefectDojo<br/>sin selector ni tolerancia"]
+    GK{{"Gatekeeper P11: solo los dueños de system<br/>toleran su taint"}}
+    PLAT --> SB
+    PLAT --> SC
+    PLAT --> SD
+    APPS --> AB
+    APPS --> AC
+    APPS --> AD
+    GK -. "valida" .-> PLAT
+    GK -. "rechaza la tolerancia" .-> APPS
 
-    style SB fill:#fff5e6
-    style KB fill:#f4ecff
-    style KC fill:#f4ecff
-    style KD fill:#f4ecff
+    style SB fill:#eef4ff
+    style SC fill:#eef4ff
+    style SD fill:#eef4ff
+    style AB fill:#fff5e6
+    style AC fill:#fff5e6
+    style AD fill:#fff5e6

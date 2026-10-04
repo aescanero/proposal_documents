@@ -62,7 +62,7 @@ Source: [`diagrams/05-topologia.mmd`](diagrams/05-topologia.mmd)
 | Mode | **KRaft**, no ZooKeeper | `kraft` trait; ZooKeeper no longer exists in Kafka 4 |
 | `KafkaNodePool` | One, `dual`, **3 nodes with the `controller` and `broker` roles** | Enough on `qa`: a quorum of 3 and 3 replicas. On `prod` and `demos`, separate controller and broker pools (§11) |
 | Zones | One node per `europe-west1` zone; `rack.topologyKey: topology.kubernetes.io/zone` | Kafka places each partition's replicas in different zones: losing a zone loses no data |
-| GKE node pool | **`kafka`**: 3 × `n2-standard-4` (4 vCPU, 16 GB), one per zone, taint `dedicated=kafka:NoSchedule` | Kafka lives off the OS page cache: sharing a node with other workloads empties it. A new requirement on S1 §4.1 (§12) |
+| GKE node pool | **`apps`**, shared with the other layer 4 and 5 workloads (GKE proposal §5, DN11). One Kafka node per zone with `topologySpreadConstraints` on `topology.kubernetes.io/zone` and anti-affinity between Kafka nodes on `kubernetes.io/hostname` | The previous revision asked for a tainted `kafka` pool so as not to share the page cache. With two pools it shares it: the memory `request` (8 GiB, above the 4 GiB heap) reserves its part, and if `prod` measures queue latency caused by the cache, a pool of its own is justified by that data (GKE DN11) |
 | Resources per Kafka node | Request 2 CPU / 8 GiB; memory limit 12 GiB; heap `-Xms4g -Xmx4g` | Small, fixed heap; the rest of the memory is page cache. Never `-Xmx` equal to the limit (DG §8.3) |
 
 ### 2.2 Storage
@@ -245,7 +245,7 @@ Source: [`diagrams/07-acceso-vpc.mmd`](diagrams/07-acceso-vpc.mmd)
 
 | Piece | Value | Reason |
 |---|---|---|
-| Load balancer | A regional **internal** passthrough network load balancer (the internal variant of pattern B, Envoy Gateway §4.4), in the archetype's own `vpc-access` stack, over the `kafka` node pool's instance groups | An internal load balancer only has a private VPC IP |
+| Load balancer | A regional **internal** passthrough network load balancer (the internal variant of pattern B, Envoy Gateway §4.4), in the archetype's own `vpc-access` stack, over the `apps` node pool's instance groups | An internal load balancer only has a private VPC IP |
 | IP | Reserved in the node subnet (zone `infra`, purpose `endpoints`) | Stable across Service changes |
 | Ports | The fixed `nodePort`s, untranslated: 32100 for the bootstrap and 32101–32103 for each broker | A passthrough delivers the packet with its original destination port: the advertised port **is** the `nodePort` |
 | `externalTrafficPolicy` | `Local` | No extra hop between nodes and the source IP intact. The TCP health check on the `nodePort` only marks healthy the node that has the broker |
@@ -503,7 +503,7 @@ Metric names depend on Strimzi's JMX exporter configuration **(verify, VB10)**.
 | Nodes | 3 dual-role | 3 controllers + 3 brokers | 3 controllers + ≥ 3 brokers |
 | Budgets | Computed, not enforced | **Enforced** in the PR (AM §8) | Enforced |
 | Quotas | The defaults of §4.2 | Lower: many small tenants | Per application |
-| GKE | Standard with a `kafka` node pool | Autopilot: no dedicated node pool; a compute class with enough disk and memory **(verify Strimzi on Autopilot, VB11)** | Standard |
+| GKE | Standard; brokers on the `apps` pool | Autopilot: no dedicated node pool; a compute class with enough disk and memory **(verify Strimzi on Autopilot, VB11)** | Standard |
 | Partition ceiling | Measured by VB7 | VB7's number replaces the provisional 4000 | Same |
 | Access | Cluster and VPC, never outside | Same | Same |
 
@@ -514,7 +514,7 @@ Metric names depend on Strimzi's JMX exporter configuration **(verify, VB10)**.
 | Document | Change | Status |
 |---|---|---|
 | `qa` binding (S1 §7) | `event-bus: { archetype: kafka, version: 2.1.0, stack_id: gcp-qa-kafka }`; the budgets of §5 | **Applied** |
-| S1 §4.1 and §4.12 | `kafka` node pool: 3 × `n2-standard-4`, one per zone, taint `dedicated=kafka:NoSchedule` | **Applied** |
+| S1 §4.1 and §4.12 | `kafka` node pool: 3 × `n2-standard-4`, one per zone, taint `dedicated=kafka:NoSchedule` | **Applied**; replaced by the `apps` pool (GKE DN11) |
 | `gen_tenant_namespace` (S2 §5.1) | Label `kafka.disasterproject.com/client: "true"` if the manifest requires `event-bus` | **Applied** |
 | AM §10.1 and `registry/zones.yaml` | No `kafka-storage-subnet` claim (and no such purpose in the `data` zone); neither `schema-registry` nor `tls-mtls` in the example traits; a paragraph on SCRAM authentication and the 2.1.0 contract | **Applied** |
 | cert-manager §3 | `private-names` policy: approver-policy admits `*.<namespace>.qa.internal` for the namespace requesting them; names from the private zone, never public ones (DT10) | **Applied** |
@@ -529,7 +529,7 @@ Metric names depend on Strimzi's JMX exporter configuration **(verify, VB10)**.
 | # | Decision | Status | Recommendation | Alternative |
 |---|---|---|---|---|
 | DB1 | Operator | Consequence of AM §10 | Strimzi, limited to the `kafka` namespace | Managed Kafka (another provider) |
-| DB2 | Topology on `qa` | Proposal | KRaft, 3 dual-role nodes, one per zone, `kafka` node pool | Separate controllers and brokers (on `demos` and `prod`) |
+| DB2 | Topology on `qa` | Proposal | KRaft, 3 dual-role nodes, one per zone, on the `apps` pool | Separate controllers and brokers (on `demos` and `prod`) |
 | DB3 | Authentication | **Decided** | SCRAM-SHA-512 over TLS for every client; the consumer's password in Secret Manager (§3.1) | mTLS `tls-external` with `internal-ca` (discarded: it depended on a clients CA without its key) |
 | DB4 | CAs | Proposal | `internal-ca` for the listeners' TLS; Strimzi's CA only between brokers and controllers | Strimzi's CA distributed to clients |
 | DB5 | User name | Proposal | `<instance>-<purpose>`, with `-b` during a rotation | Free name with prefix |
@@ -590,7 +590,7 @@ Metric names depend on Strimzi's JMX exporter configuration **(verify, VB10)**.
 
 | Phase | Contents | Exit criterion | Estimate |
 |---|---|---|---|
-| **0 · Prerequisites** | `kafka` node pool; `qa` binding; VB10, VB12 | Versions pinned | 1 day |
+| **0 · Prerequisites** | `apps` pool with one node per zone; `qa` binding; VB10, VB12 | Versions pinned | 1 day |
 | **1 · Skeleton** | Manifest, charts, asserts, G1 rules and constraints, `gen_messaging` | `archetypectl resolve --dry-run`, `terramate generate --detailed-exit-code`, G1 and preview with mocks green | 2 days |
 | **2 · Operator and cluster** | `iam`, `operator`, `cluster`, `policy` | Cluster `Ready`; **VB1**, **VB2**, **VB3**, **VB4**, **VB9** | 2 days |
 | **3 · Load tests** | A test application with two instances | **VB5**, **VB6**, **VB7** | 2 days |

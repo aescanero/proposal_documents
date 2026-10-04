@@ -108,7 +108,7 @@ rect(ax+16,yy,aw-32,52,'#ffffff',fg,rx=8,sw=1.2,dash="4 4")
 text(ax+30,yy+22,"persistent sessions",14,600,TXT); text(ax+30,yy+42,"in DB · jdbc-ping cache",13,400,SUB)
 yy+=64
 rect(ax+16,yy,aw-32,74,'#f9fafb','#9ca3af',rx=8,sw=1.2)
-text(ax+30,yy+24,"node pool general",14,700,TXT,font=MONO); text(ax+30,yy+45,"spread across zones",13,400,SUB); text(ax+30,yy+64,"PDB minAvailable 1",13,400,SUB)
+text(ax+30,yy+24,"apps node pool",14,700,TXT,font=MONO); text(ax+30,yy+45,"spread across zones",13,400,SUB); text(ax+30,yy+64,"PDB minAvailable 1",13,400,SUB)
 
 # column 4
 stack(xs[3],by,colw,bh,'ops',7,"realm","Realm qa as code",["IdP entra · private_key_jwt","roles → entra_roles","reconciler every 5 min"])
