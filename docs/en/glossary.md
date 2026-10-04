@@ -378,7 +378,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 | **G0 — generation integrity** | `terramate generate && git diff --exit-code` on every PR; always blocking. Prevents a hand-edit to `_main.tf` being silently reverted. |
 | **G1 — structure and composition** | `conftest test --all-namespaces --policy policy/ --data registry/registry.json ...` on every PR; always blocking, and failing when it evaluated zero rules. Enforces the `input`↔`after` ordering invariant (R2), the upward edge, stack-naming conventions, instance tagging, the no-secret-output rule, consumed outputs that exist (R6) and mock shapes. |
 | **G2 — static security scan** | `checkov -d . --framework terraform` on every PR; blocking on HIGH/CRITICAL. Sees the module *call*. |
-| **G3 — plan scan** | `checkov -f plan.json --framework terraform_plan` + `conftest --namespace terraform.<package>` (exact package names), run before apply; blocking on HIGH/CRITICAL. Sees the module *result*, catching misconfigurations reachable only with a particular globals combination. |
+| **G3 — plan scan** | `checkov -f plan.json --framework terraform_plan` + `conftest --namespace terraform.<package>` (exact package names: `public_names`, `own_network`), run before apply; blocking on HIGH/CRITICAL. Sees the module *result*, catching misconfigurations reachable only with a particular globals combination. |
 | **Checkov** | Static/plan IaC security scanner; the "standard library" of known cloud misconfiguration checks, complementary to OPA/Rego (which encodes platform-specific rules Checkov cannot express). Config in `.checkov/gcp.yaml`, `.checkov/aws.yaml`. |
 | **conftest** | Stateless CLI policy tool consuming `registry/registry.json` as `--data`, always with `--all-namespaces`; chosen for CI policy checks instead of running an OPA server. |
 | **check-jsonschema** | CLI tool validating manifests, component files, environment bindings and pool ledgers against JSON Schemas before resolution runs. |
@@ -552,7 +552,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 
 ---
 
-## 26. Risk register (`risk-register.md`) — 64 risks by domain (61 active)
+## 26. Risk register (`risk-register.md`) — 66 risks by domain (63 active)
 
 Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mitigation tied to a document section.
 
@@ -609,6 +609,7 @@ Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mi
 | **R58–R60** | Landing zone: an unrepeatable bootstrap; a project-singleton policy (Binary Authorization) written by an environment; a project-level grant where a resource-level one would do. See `risk-register.md`. |
 | **R61–R62** | Landing zone in an adopted project: state readable through project-level grants; a name already taken in a shared project. See `risk-register.md`. |
 | **R63–R64** | An IAM-administration bound out of step with its role list; orphan authorised networks in the `/32`-per-job control-plane variant. See `risk-register.md`. |
+| **R65–R66** | In the shared non-prod project, one environment's network or DNS resource bound to another's; VPC egress denied by default blocking a legitimate flow, the environment's own range above all. See `risk-register.md`. |
 
 **Top five risks** (ranked by likelihood × impact, mitigation not yet in place): 1) R2 (missing `after`), 2) R12 (wildcard OIDC `sub`), 3) R26 (pod range sized for too few nodes), 4) R34 (registry drift), 5) R5 (shared platform destroyed by instance teardown).
 

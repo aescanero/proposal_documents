@@ -51,7 +51,7 @@ T=dict(
  blocks=[
   [("apis","In the landing zone",["shared project","none belongs to one env","disable_on_destroy = false"]),
    ("vpc","VPC qa",["no auto subnetworks","REGIONAL · MTU 1460","the subnet is gke's"]),
-   ("firewall","Only the environment's",["deny-all with logs","egress: in the cluster","flow logs via a global"])],
+   ("firewall","Only the environment's",["deny-all with logs","egress: deny, 443 allowed","flow logs via a global"])],
   [("nat","Cloud NAT",["all ranges","pods included","automatic IPs"]),
    ("ports","Dynamic allocation",["256-8192 per VM","64 pods per node","alert in layer 1b"]),
    ("route","0.0.0.0/0 stays",["used by NAT","and the private VIP","without it nothing leaves"])],
@@ -65,7 +65,7 @@ T=dict(
  items=[("gke","node subnet","on the qa VPC"),("postgres-cloudsql","instances","in the qa-psa range"),
         ("kafka","records","in qa.internal"),("edge","next proposal","env-edge")],
  controls="Controls",
- ctrl=[("assert","NAT · ports · googleapis"),("G1","qa.internal · flow logs"),("protected","VPC · PSA · zones"),
+ ctrl=[("assert","NAT · ports · googleapis"),("G1 · G3","qa.internal · own VPC"),("protected","VPC · PSA · zones"),
        ("org policy","peering · default net"),("tofu-state","encrypted state")],
  foot="docs/en/proposals/network-qa/README.md")
 

@@ -2435,7 +2435,7 @@ resource "google_service_account_iam_member" "apply" {
 }
 ```
 
-**In the shared non-prod project**, `tf-apply-qa@` and `tf-apply-dev@` are distinct identities, but a role granted at project level reaches every environment in the project. Grant at resource level wherever the service supports it (secrets, buckets, keys, service accounts, Cloud SQL instances with IAM conditions on the name prefix); where only a project-level role exists (`roles/container.admin`, `roles/compute.networkAdmin`), accept that a non-prod apply identity can touch another non-prod environment, and rely on the per-environment state prefixes, CODEOWNERS and the environment gate. That exposure never reaches `prod`, which is a different project.
+**In the shared non-prod project**, `tf-apply-qa@` and `tf-apply-dev@` are distinct identities, but a role granted at project level reaches every environment in the project. Grant at resource level wherever the service supports it (secrets, buckets, keys, service accounts, Cloud SQL instances with IAM conditions on the name prefix); where only a project-level role exists (`roles/container.admin`, `roles/compute.networkAdmin`), accept that a non-prod apply identity can touch another non-prod environment, and rely on the per-environment state prefixes, CODEOWNERS, the environment gate and the G3 rule `terraform.own_network`, which keeps an environment's network resources on its own VPC (§13.4). DNS is not in that list: the environment's public zone lives in the same project, so project-level `dns.admin` would reach the other environments' names, and the grant that creates private zones is conditioned on the zone prefix (`network-qa` DW8). That exposure never reaches `prod`, which is a different project.
 
 **Where the identities live.** The pipeline service accounts (`tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@`) are created in the landing zone's project, not in the environment's: an environment identity then cannot edit its own IAM policy or another's. State access is per prefix, with an IAM condition on the bucket (`resource.name.startsWith("projects/_/buckets/<state-bucket>/objects/<env>/") || api.getAttribute("storage.googleapis.com/objectListPrefix", "").startsWith("<env>/")` — the second half because listing is checked against the bucket, not an object, and it keeps the listing inside the prefix), so `tf-plan-qa@` reads the state of `qa`'s producers and not `dev`'s. The service accounts that receive cross-project grants — a runtime's node SA, for instance — are created by the landing zone too, so layer 0 never waits on layer 2 (`landing-zone-qa` §5, §6.3).
 
@@ -2666,7 +2666,7 @@ Never write a wildcard into a workload identity trust condition. `system:service
 | Control | GKE | EKS | AKS | Cloud Run | ECS Fargate |
 |---|---|---|---|---|
 | Private control plane | Private cluster + DNS endpoint (IAM only) or authorized networks | Private endpoint + `public_access_cidrs` | Private cluster + authorized IP ranges | n/a | n/a |
-| Workload egress | Cloud NAT, no external IPs | NAT, `assign_public_ip=false` | NAT gateway, no node public IPs | `PRIVATE_RANGES_ONLY` | `assign_public_ip=false` |
+| Workload egress | Cloud NAT, no external IPs; VPC egress denied by default, with 443, the environment's range and the private VIP allowed (`network-qa` DW6) | NAT, `assign_public_ip=false` | NAT gateway, no node public IPs | `PRIVATE_RANGES_ONLY` | `assign_public_ip=false` |
 | Private service access | PSA range for Cloud SQL | VPC endpoints | Private endpoints + private DNS zones | PSA + Direct VPC egress | VPC endpoints |
 | East-west policy | NetworkPolicy default-deny | NetworkPolicy default-deny | NetworkPolicy (Cilium or Calico) | Service-to-service IAM | Security group references |
 | Ingress filtering | Cloud Armor on the LB | AWS WAF on the ALB | Azure WAF on App Gateway / AGFC | Cloud Armor + `ingress` setting | AWS WAF on the ALB |
@@ -3234,8 +3234,9 @@ terramate run --changed -- \
   checkov -f plan.json --framework terraform_plan \
           --config-file "${TM_ROOT}/.checkov/${TM_CLOUD}.yaml"
 
-conftest test --policy policy/ --data registry/registry.json \
-  --namespace terraform.public_names plan.json      # one --namespace per G3 package
+conftest test --policy policy/ --data registry/registry.json --data env.json \
+  --namespace terraform.public_names --namespace terraform.own_network \
+  plan.json                                          # one --namespace per G3 package
 ```
 
 `--namespace` matches a package **exactly**: `--namespace terraform` matches no `package terraform.public_names` and the step passes with `0 tests` (measured, conftest 0.70.1). G3 names each of its packages, rather than `--all-namespaces`, so G1's rules are not run over a plan; and it carries the same zero-rules guard as G1 (§14.4).
@@ -3278,6 +3279,53 @@ deny contains msg if {
     some token in split(replace(name, ".", "-"), "-")
     token in env_words
     msg := sprintf("%s: public name %q carries the environment word %q (edge-qa DL10)", [addr, name, token])
+}
+```
+
+`terraform.own_network` keeps an environment's network and DNS resources on its own VPC. In the shared non-prod project, `compute.networkAdmin` reaches every VPC of the project, and nothing in IAM stops a private zone from being made visible to another environment's VPC (`network-qa` DW8). It runs on environment stacks; the landing zone's plans have their own rules (`landing-zone-qa` §11.1). `env.json` is written per stack from the globals (`{"env": {"name": "qa", "network": "projects/<project>/global/networks/qa"}}`):
+
+```rego
+package terraform.own_network
+
+import data.terraform.public_names.resources
+
+own := data.env.network
+prefix := sprintf("%s-", [data.env.name])
+
+# A self link, a full URL or a bare name, all of this environment's VPC.
+same_network(v) if endswith(v, own)
+same_network(v) if v == data.env.name
+
+# A mock means a producer not applied yet (preview); deploy runs G3 without mocks.
+checked(v) if { is_string(v); not contains(v, "mock") }
+
+network_bound := {"google_compute_firewall", "google_compute_subnetwork", "google_compute_router",
+                  "google_compute_route", "google_service_networking_connection"}
+
+deny contains msg if {
+    some r in resources
+    r.type in network_bound
+    checked(r.values.network)
+    not same_network(r.values.network)
+    msg := sprintf("%s: network %q is not this environment's VPC (network-qa DW8)", [r.address, r.values.network])
+}
+
+deny contains msg if {
+    some r in resources
+    r.type == "google_dns_managed_zone"
+    some c in r.values.private_visibility_config
+    some n in c.networks
+    checked(n.network_url)
+    not same_network(n.network_url)
+    msg := sprintf("%s: private zone visible to %q, another environment's VPC (network-qa DW8)", [r.address, n.network_url])
+}
+
+deny contains msg if {
+    some r in resources
+    r.type in {"google_dns_managed_zone", "google_dns_record_set"}
+    zone := object.get(r.values, "managed_zone", r.values.name)
+    not startswith(zone, prefix)
+    msg := sprintf("%s: zone %q does not carry the prefix %q (network-qa DW8)", [r.address, zone, prefix])
 }
 ```
 
@@ -3780,7 +3828,7 @@ terramate debug show metadata | jq -Rn '
 
 ## 15. Risk register
 
-The full register — 64 risks grouped by domain (61 active; R28 retired as a duplicate of R26, R38 and R39 retired with the control plane DNS endpoint), with likelihood, impact, mitigation and the section that specifies each control — is maintained in its own document, `risk-register.md`. It is reviewed at every roadmap phase gate rather than read end to end.
+The full register — 66 risks grouped by domain (63 active; R28 retired as a duplicate of R26, R38 and R39 retired with the control plane DNS endpoint), with likelihood, impact, mitigation and the section that specifies each control — is maintained in its own document, `risk-register.md`. It is reviewed at every roadmap phase gate rather than read end to end.
 
 The five to act on first:
 

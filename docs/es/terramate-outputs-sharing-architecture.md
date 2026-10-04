@@ -2444,7 +2444,7 @@ resource "google_service_account_iam_member" "apply" {
 }
 ```
 
-**En el proyecto non-prod compartido**, `tf-apply-qa@` y `tf-apply-dev@` son identidades distintas, pero un rol concedido a nivel de proyecto alcanza a todos los entornos del proyecto. Concede a nivel de recurso donde el servicio lo admita (secretos, buckets, claves, cuentas de servicio, instancias de Cloud SQL con condiciones IAM sobre el prefijo del nombre); donde solo existe un rol de proyecto (`roles/container.admin`, `roles/compute.networkAdmin`), acepta que una identidad de apply no productiva puede tocar otro entorno no productivo, y apóyate en los prefijos de estado por entorno, CODEOWNERS y la puerta de entorno. Esa exposición nunca llega a `prod`, que es otro proyecto.
+**En el proyecto non-prod compartido**, `tf-apply-qa@` y `tf-apply-dev@` son identidades distintas, pero un rol concedido a nivel de proyecto alcanza a todos los entornos del proyecto. Concede a nivel de recurso donde el servicio lo admita (secretos, buckets, claves, cuentas de servicio, instancias de Cloud SQL con condiciones IAM sobre el prefijo del nombre); donde solo existe un rol de proyecto (`roles/container.admin`, `roles/compute.networkAdmin`), acepta que una identidad de apply no productiva puede tocar otro entorno no productivo, y apóyate en los prefijos de estado por entorno, CODEOWNERS, la puerta de entorno y la regla G3 `terraform.own_network`, que mantiene los recursos de red de un entorno en su propia VPC (§13.4). DNS no está en esa lista: la zona pública del entorno vive en el mismo proyecto, así que un `dns.admin` de proyecto alcanzaría los nombres de los demás entornos, y el permiso que crea zonas privadas va condicionado al prefijo de zona (`network-qa` DW8). Esa exposición nunca llega a `prod`, que es otro proyecto.
 
 **Dónde viven las identidades.** Las cuentas de servicio del pipeline (`tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@`) se crean en el proyecto de la landing zone, no en el del entorno: así una identidad de entorno no puede editar su propia política IAM ni la de otra. El acceso al estado es por prefijo, con una condición IAM sobre el bucket (`resource.name.startsWith("projects/_/buckets/<bucket-de-estado>/objects/<env>/") || api.getAttribute("storage.googleapis.com/objectListPrefix", "").startsWith("<env>/")` — la segunda mitad porque el listado se evalúa contra el bucket, no contra un objeto, y lo mantiene dentro del prefijo), de modo que `tf-plan-qa@` lee el estado de los productores de `qa` y no el de `dev`. Las cuentas de servicio que reciben grants entre proyectos —la SA de nodos de un runtime, por ejemplo— también las crea la landing zone, para que la capa 0 nunca espere a la capa 2 (`landing-zone-qa` §5, §6.3).
 
@@ -2676,7 +2676,7 @@ Nunca escribas un comodín en una condición de confianza de workload identity. 
 | Control | GKE | EKS | AKS | Cloud Run | ECS Fargate |
 |---|---|---|---|---|
 | Plano de control privado | Cluster privado + endpoint DNS (solo IAM) o redes autorizadas | Endpoint privado + `public_access_cidrs` | Cluster privado + rangos de IP autorizados | n/a | n/a |
-| Egress de workload | Cloud NAT, sin IPs externas | NAT, `assign_public_ip=false` | NAT gateway, sin IPs públicas de nodo | `PRIVATE_RANGES_ONLY` | `assign_public_ip=false` |
+| Egress de workload | Cloud NAT, sin IPs externas; egress de la VPC denegado por defecto, con 443, el rango del entorno y el VIP privado permitidos (`network-qa` DW6) | NAT, `assign_public_ip=false` | NAT gateway, sin IPs públicas de nodo | `PRIVATE_RANGES_ONLY` | `assign_public_ip=false` |
 | Acceso privado a servicios | Rango PSA para Cloud SQL | Endpoints de VPC | Endpoints privados + zonas DNS privadas | PSA + Direct VPC egress | Endpoints de VPC |
 | Política este-oeste | NetworkPolicy default-deny | NetworkPolicy default-deny | NetworkPolicy (Cilium o Calico) | IAM servicio-a-servicio | Referencias a security groups |
 | Filtrado de ingress | Cloud Armor en el LB | AWS WAF en el ALB | Azure WAF en App Gateway / AGFC | Cloud Armor + configuración `ingress` | AWS WAF en el ALB |
@@ -3244,8 +3244,9 @@ terramate run --changed -- \
   checkov -f plan.json --framework terraform_plan \
           --config-file "${TM_ROOT}/.checkov/${TM_CLOUD}.yaml"
 
-conftest test --policy policy/ --data registry/registry.json \
-  --namespace terraform.public_names plan.json      # un --namespace por paquete de G3
+conftest test --policy policy/ --data registry/registry.json --data env.json \
+  --namespace terraform.public_names --namespace terraform.own_network \
+  plan.json                                          # un --namespace por paquete de G3
 ```
 
 `--namespace` coincide con un paquete **exactamente**: `--namespace terraform` no coincide con ningún `package terraform.public_names` y el paso pasa con `0 tests` (medido, conftest 0.70.1). G3 nombra cada uno de sus paquetes, en lugar de `--all-namespaces`, para que las reglas de G1 no se ejecuten sobre un plan; y lleva la misma salvaguarda de cero reglas que G1 (§14.4).
@@ -3288,6 +3289,53 @@ deny contains msg if {
     some token in split(replace(name, ".", "-"), "-")
     token in env_words
     msg := sprintf("%s: public name %q carries the environment word %q (edge-qa DL10)", [addr, name, token])
+}
+```
+
+`terraform.own_network` mantiene los recursos de red y DNS de un entorno en su propia VPC. En el proyecto non-prod compartido, `compute.networkAdmin` alcanza todas las VPC del proyecto, y nada en IAM impide hacer visible una zona privada a la VPC de otro entorno (`network-qa` DW8). Corre sobre los stacks de entorno; los planes de la landing zone tienen sus propias reglas (`landing-zone-qa` §11.1). `env.json` se escribe por stack desde los globals (`{"env": {"name": "qa", "network": "projects/<proyecto>/global/networks/qa"}}`):
+
+```rego
+package terraform.own_network
+
+import data.terraform.public_names.resources
+
+own := data.env.network
+prefix := sprintf("%s-", [data.env.name])
+
+# Un self link, una URL completa o un nombre a secas, todos de la VPC de este entorno.
+same_network(v) if endswith(v, own)
+same_network(v) if v == data.env.name
+
+# Un mock es un productor aún sin aplicar (preview); deploy ejecuta G3 sin mocks.
+checked(v) if { is_string(v); not contains(v, "mock") }
+
+network_bound := {"google_compute_firewall", "google_compute_subnetwork", "google_compute_router",
+                  "google_compute_route", "google_service_networking_connection"}
+
+deny contains msg if {
+    some r in resources
+    r.type in network_bound
+    checked(r.values.network)
+    not same_network(r.values.network)
+    msg := sprintf("%s: network %q is not this environment's VPC (network-qa DW8)", [r.address, r.values.network])
+}
+
+deny contains msg if {
+    some r in resources
+    r.type == "google_dns_managed_zone"
+    some c in r.values.private_visibility_config
+    some n in c.networks
+    checked(n.network_url)
+    not same_network(n.network_url)
+    msg := sprintf("%s: private zone visible to %q, another environment's VPC (network-qa DW8)", [r.address, n.network_url])
+}
+
+deny contains msg if {
+    some r in resources
+    r.type in {"google_dns_managed_zone", "google_dns_record_set"}
+    zone := object.get(r.values, "managed_zone", r.values.name)
+    not startswith(zone, prefix)
+    msg := sprintf("%s: zone %q does not carry the prefix %q (network-qa DW8)", [r.address, zone, prefix])
 }
 ```
 
@@ -3790,7 +3838,7 @@ terramate debug show metadata | jq -Rn '
 
 ## 15. Registro de riesgos
 
-El registro completo — 64 riesgos agrupados por dominio (61 activos; R28 retirado como duplicado de R26, R38 y R39 retirados con el endpoint DNS del plano de control), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
+El registro completo — 66 riesgos agrupados por dominio (63 activos; R28 retirado como duplicado de R26, R38 y R39 retirados con el endpoint DNS del plano de control), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
 
 Los cinco sobre los que actuar primero:
 

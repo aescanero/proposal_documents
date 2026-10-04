@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 4 |
+| **Status** | Proposal · revision 5 |
 | **Scope** | The network part of the environment archetype on `qa`: project APIs, VPC, baseline firewall, Cloud NAT, private access to Google APIs, private services access (PSA), private DNS zones, the environment's address pool, the `network` contract, stacks, policies, execution and plan. The edge (`env-edge`, `gcp-qa-edge`) is the next proposal |
 | **Why now** | It is the first thing applied on `qa` after the landing zone, and six proposals have left it requirements (§0.1). The GKE proposal took the node subnet away from it (DN2), so its contract changes |
 | **Base** | S1 §4.14 (KMS), §4.15 (separate VPC); architecture §5.2 (network stack), §11.7 (org policies), §11.9 (network baseline); AM §8–§9 (claims and pools). What is there is not repeated |
@@ -11,6 +11,8 @@
 | **Local identifiers** | Decisions `DW1…`, candidate risks `RW1…`, verifications `VW1…`. Risks get an `R54+` number in `risk-register.md` if adopted, after those of the earlier proposals |
 
 It reopens no decision of `CLAUDE.md`: it applies the separate VPC that `CLAUDE.md` already settles for `qa`. It finds a gap that affects every `NetworkPolicy` towards Google APIs (§4, RW1) and a version change owed to the DN2 correction (§8.1).
+
+Revision 5 denies VPC egress by default with an explicit allow list (DW6), resolves the private zones' DNS permission without project-level `dns.admin` and keeps every network resource of the environment on its own VPC (DW8), ties the CIDR literals to the ledger (DW9), and makes the `assert`s and the G1 and G3 rules part of phase 1's exit criterion (§13).
 
 ![environment archetype, network, in blocks](diagrams/06-bloques-presentacion.svg)
 
@@ -23,7 +25,7 @@ Source: [`diagrams/06-bloques-presentacion.py`](diagrams/06-bloques-presentacion
 | Question | Answer | Consequence |
 |---|---|---|
 | What it is | Archetype `environment`, `kind: catalog`, **layer 1**, instance `qa`. Provides **`network` 3.0.0** and, in the next proposal, `env-edge` | Stack `gcp-qa-network`; `gcp-qa-edge` later. APIs belong to the project, not the environment: the landing zone enables them (§1) |
-| Project | `disasterproject-nonprod`, the project **shared** by the non-production environments (`CLAUDE.md`), **created by the landing zone** with its project number, billing account, org policies and APIs | The environment has no organisation permissions and does not own the project: it creates its resources inside it, all with the `qa` prefix, and billing is split by the `environment` label |
+| Project | `disasterproject-nonprod`, the project **shared** by the non-production environments (`CLAUDE.md`), **created by the landing zone** with its project number, billing account, org policies and APIs | The environment has no organisation permissions and does not own the project: it creates its resources inside it, all with the `qa` prefix, and billing is split by the `environment` label — except for what takes no label (`google_compute_network`, firewall rules, routes, Cloud NAT), which is attributed by the `qa-` name prefix |
 | VPC | `qa`'s own, no Shared VPC and no peering with the hub (S1 §4.15) | Nothing transits the hub; R23 does not apply |
 | What it does **not** do | It creates no runtime subnets (`gke` does, DN2), nor the edge, nor the alert channel (layer 1b, `gcp-qa-cloudmon`) | Its contract carries only what every runtime shares |
 
@@ -36,10 +38,10 @@ Source: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 | Origin | Requirement | Where it is met |
 |---|---|---|
 | S1 §4.15, Kafka §6.3 | Private zone `qa.internal`, bound only to the `qa` VPC | §6 |
-| S1 §4.15, Keycloak, monitoring | Cloud NAT: Keycloak → Entra ID, Alertmanager and blackbox → internet | §3 |
+| S1 §4.15, Keycloak, monitoring | Cloud NAT: Keycloak → Entra ID, Alertmanager and blackbox → internet | §3, and the egress allows of §2 |
 | S1 §4.8, ESO, monitoring, CNPG, Cloud SQL variant | Google APIs without internet (Private Google Access) | §4 |
 | Cloud SQL variant, `postgres-cloudsql` | PSA: range `qa-psa` in the `data` zone and `google_service_networking_connection`; `sqladmin` API | §5 |
-| S1 §4.14 | `gcp-qa-network` is the first stack encrypted with the landing zone's `tofu-state` key | §9.3 |
+| S1 §4.14 | `gcp-qa-network` is the first stack encrypted with `qa`'s `tofu-state` key | §9.3 |
 | GKE DN2 | The network publishes the VPC; it creates no runtime subnets | §8 |
 
 ---
@@ -67,6 +69,8 @@ Source: [`diagrams/01-contexto.mmd`](diagrams/01-contexto.mmd)
 
 The resolver should derive the list from the bound archetypes, so that a new archetype does not depend on someone remembering to edit it: each manifest would declare the APIs it uses in a new field (`cloud_apis`), which does not exist in the schema today **(DW1)**. Until it does, it is the table above in the project's globals, in the landing zone.
 
+**Whatever the list's source, the plan checks it.** A read-only step of the plan job compares `gcloud services list --enabled` with the list (the plan identity holds `serviceusage.serviceUsageViewer`) and fails naming each missing API. An API nobody enabled then fails in the pull request, not thirty resources into the `apply`, and the check works the same whether the landing zone created the project or adopted it.
+
 ---
 
 ## 2. VPC and baseline firewall
@@ -85,8 +89,14 @@ The resolver should derive the list from the bound archetypes, so that a new arc
 | Rule | Priority | What it does | Reason |
 |---|---|---|---|
 | `qa-deny-all-ingress` | 65534 | Denies all ingress, **with logs** | The same as the implied rule, but visible in the logs: a blocked health check or client appears as denied instead of as an untraceable timeout |
-| Egress | Implied: allowed | — | Egress control lives in the cluster (`NetworkPolicy`, `FQDNNetworkPolicy`), where it is known which pod is leaving. Restricting egress by CIDR in the VPC cannot tell Keycloak from SonarQube |
+| `qa-deny-all-egress` | 65534 | Denies all egress, **with logs** | Defence in depth under the cluster's `NetworkPolicy`: a `hostNetwork` pod or a compromised node escapes the `NetworkPolicy`, not the VPC firewall. Logged, so a missing allow appears as a denial and not as a timeout (RW7) |
+| `qa-allow-egress-https` | 1000 | tcp:443 to `0.0.0.0/0` | Everything the environment's archetypes send outside (Entra ID, alert receivers, probes) is HTTPS. Which pod may leave is still decided in the cluster (`FQDNNetworkPolicy`) |
+| `qa-allow-egress-internal` | 1000 | All protocols to the environment's `/17` | Traffic inside the environment is egress too: a pod to kube-dns on another node, the nodes to the control plane's private endpoint (an address in the node subnet with PSC, `gke-qa` §2.3), a pod to Cloud SQL through the PSA range |
+| `qa-allow-egress-google-apis` | 900 | tcp:443 to `199.36.153.8/30` | The private VIP (§4). Redundant while 443 is open to every destination; it keeps Google APIs working the day 443 is narrowed (§10) |
+| Any other port | 1000 | One rule per entry of `global.network.egress_extra` (`{ port, protocol, owner, reason }`), declared by the archetype that needs it and reviewed | SMTP submission (587) for Alertmanager when a receiver is mail (`monitoring-qa` §8.3). The VPC rule opens the port for the nodes; the `NetworkPolicy` narrows it to the pod |
 | SSH via IAP (`35.235.240.0/20` → 22) | — | **Not created** | Emergency access to nodes: opened through a temporary exception, like the pipeline's access to the control plane |
+
+**The internal allow is the one that hurts to forget.** Without it nothing fails at `apply`: the cluster is created, and the first admission webhook times out. With `failurePolicy: Fail` that is the lock-out of `CLAUDE.md` — the webhook rejects everything, its own recovery included. A control plane outside the `/17` (a peering-based cluster's `/28`) needs its own egress allow on tcp 443 and **8132**, the konnectivity tunnel through which the control plane reaches webhooks, `logs` and `exec`; GKE writes it, because it claims the range (`gke-qa` §2.3). VW6 checks the list before Gatekeeper is installed.
 
 **Flow logs.** Enabled by whoever creates each subnet, with the environment's values: global `flow_logs = { aggregation_interval = "INTERVAL_5_SEC", flow_sampling = 0.5, metadata = "INCLUDE_ALL_METADATA" }` and an `assert` in the subnet generators (DW6). On `qa` the only subnet is GKE's node subnet.
 
@@ -121,10 +131,12 @@ The exhausted-ports alert (`nat/dropped_sent_packets_count` with reason `OUT_OF_
 | Private zone | Records |
 |---|---|
 | `googleapis.com.` | `private.googleapis.com.` A `199.36.153.8`–`.11`; `*.googleapis.com.` CNAME `private.googleapis.com.` |
-| `pkg.dev.` | `*.pkg.dev.` CNAME `private.googleapis.com.` — Artifact Registry (`europe-docker.pkg.dev`) for node pulls |
-| `gcr.io.` | `*.gcr.io.` and `gcr.io.` CNAME/A to `private.googleapis.com` — GKE system images still served from there **(verify, VW1)** |
+| `pkg.dev.` | Apex `A` to the four VIPs; `*.pkg.dev.` CNAME `pkg.dev.` — Artifact Registry (`europe-docker.pkg.dev`) for node pulls |
+| `gcr.io.` | Apex `A` to the four VIPs; `*.gcr.io.` CNAME `gcr.io.` — GKE system images still served from there **(verify, VW1)** |
 
-**In the shared project**, each environment has its own zones (resources `qa-googleapis`, `qa-pkg-dev`, `qa-gcr-io`), bound only to its VPC: the same DNS name can sit in several private zones of the project as long as each is bound to a different VPC.
+A `CNAME` cannot sit at a zone's apex, and `gcr.io` itself is a registry host (`gcr.io/<project>/<image>`), so the apex carries the `A` records and the wildcard points at the apex of its own zone. Every name in the three zones resolves to the four VIPs, and each zone resolves without depending on another.
+
+**In the shared project**, each environment has its own zones (resources `qa-googleapis`, `qa-pkg-dev`, `qa-gcr-io`), bound only to its VPC: the same DNS name can sit in several private zones of the project as long as each is bound to a different VPC. The other side of that: a zone bound to a second VPC changes that environment's resolution — `dev`'s Google APIs answered by addresses `qa` chose. The G3 rule `terraform.own_network` rejects it (§9.1, DW8).
 
 `restricted.googleapis.com` (VPC Service Controls) is not used: `qa` has no VPC-SC perimeter, and the restricted VIP rejects APIs that do not support it.
 
@@ -154,7 +166,7 @@ The landing zone's `compute.restrictVpcPeering` org policy must allow `projects/
 | Zone | `qa-internal`, DNS `qa.internal.`, **private**, bound only to the `qa` VPC |
 | Who writes records | Each archetype, only under `<its namespace>.qa.internal` (Kafka: `bootstrap.kafka.qa.internal`, `broker-<n>.kafka.qa.internal`) |
 | How it is checked | New conftest rule (G1): a stack only declares `google_dns_record_set` in `qa-internal` with a name under its namespace. Gatekeeper does not see Cloud DNS, so the check is on the plan (DW7) |
-| Permissions | `qa`'s apply identity can already write in the project; there is no per-archetype identity, so the limit is the G1 rule, not IAM |
+| Permissions | Creating a private zone is a project-level permission, and project-level `dns.admin` would reach the other environments' public zones, which live in the same project (`landing-zone-qa` §7: DNS-01 certificates for their names). `tf-apply-qa@` gets `dns.admin` on the project **conditioned on the zone name** (`managedZones/qa-`), never unconditioned **(verify, VW7)**; DW8 has the alternative if Cloud DNS does not honour the condition. There is no per-archetype identity, so inside `qa`'s zones the limit is the G1 rule, not IAM |
 | Outside the VPC | It does not resolve: neither from the hub nor from the internet. If there is ever peering with the hub, it is bound there on purpose (S1 §4.15) |
 | Client certificates | Certificates for those names are issued by `internal-ca` under the `private-names` policy (cert-manager DT10) |
 
@@ -175,6 +187,8 @@ Source: [`diagrams/02-red.mmd`](diagrams/02-red.mmd)
 | Claims on `qa` | PSA `/21` (this archetype); nodes `/24`, pods `/18`, services `/22` (GKE §1.1); Kafka's internal IP if there are VPC clients | Each archetype's manifest |
 
 The environment **publishes** the pool (the ledger) and **claims** only the PSA in it. Everything else belongs to whoever uses it (AM §9.1).
+
+**A CIDR written as a literal is still the ledger's.** The resolver writes ranges into the globals as literals, so that a ledger edit cannot move a live range; the price is that a literal can drift from the ledger. A range in the globals with no `active` allocation for its `(pool, owner, purpose)` is a claim nobody else sees, and the next allocation can hand it out again. A G1 rule compares the two in both directions (DW9).
 
 ---
 
@@ -255,10 +269,13 @@ assert {
 }
 ```
 
-| New rule (conftest, G1) | What it checks |
+| New rule (conftest) | What it checks |
 |---|---|
-| `qa.internal` records | A stack only writes names under `<its namespace>.qa.internal` (§6) |
-| Flow logs | Every `google_compute_subnetwork` carries the `log_config` of the `flow_logs` global (§2) |
+| G1: `qa.internal` records | A stack only writes names under `<its namespace>.qa.internal` (§6) |
+| G1: flow logs | Every `google_compute_subnetwork` carries the `log_config` of the `flow_logs` global (§2) |
+| G1: ledger | Every CIDR in an environment's globals has an `active` ledger allocation with the same `(pool, owner, purpose)`, and every `active` allocation is in some globals (§7, DW9) |
+| G1: extra egress | Each `egress_extra` entry carries `owner` and `reason`, names one port and one protocol, and none is `all` (§2) |
+| G3: `terraform.own_network` | In an environment's plan, every firewall rule, subnet, router, route and PSA connection names that environment's VPC; every private zone is visible only to it; every DNS record and zone carries its prefix (§4, §6, DW8; architecture §13.4) |
 
 ### 9.2 Execution
 
@@ -267,11 +284,11 @@ assert {
 | Bootstrap | The landing zone creates the project, grants the cross-project permissions and the `tofu-state` key (S1 §4.14) |
 | First deployment | Phase A of S1 §6: project APIs (landing zone) → `network` → GKE. `postgres-cloudsql` can run in parallel with GKE as soon as the PSA exists |
 | Changes | Infrequent; `plan` reviewed by the platform team (CODEOWNERS) |
-| Destruction | `protected` tag, `prevent_destroy` on VPC, PSA and zones; only with the destroy identity. Destroying the network is destroying the environment |
+| Destruction | `protected` tag, `prevent_destroy` on the VPC, the PSA range and connection, and the zones; only with the destroy identity. Destroying the network is destroying the environment |
 
 ### 9.3 Encrypted state
 
-`gcp-qa-network` is the first `qa` stack whose state is encrypted with the landing zone's `tofu-state` key (S1 §4.14). No `qa` stack writes state in the clear, and the key belongs to the environment even though the project is shared: `dev`'s state cannot be decrypted with `qa`'s.
+`gcp-qa-network` is the first `qa` stack with encrypted state, under `qa`'s own `tofu-state` key — key ring `qa`, created by the landing zone (`landing-zone-qa` §4; S1 §4.14), not the landing zone's `lz` key. No `qa` stack writes state in the clear, and the grant is per key: the `qa` identities decrypt `qa`'s state and nothing else, so even in the shared project `dev`'s state cannot be decrypted with `qa`'s key.
 
 ### 9.4 Candidate risks
 
@@ -283,6 +300,8 @@ assert {
 | RW4 | **Org policy blocks the PSA peering** | Medium on first deployment | High — no Cloud SQL at all | Allowed peerings list in the landing zone; VW5 |
 | RW5 | **Deletion of the PSA connection or the VPC** | Low | Critical — every database in the environment unreachable, or the whole environment | `prevent_destroy`, `protected` tag, separate destroy identity |
 | RW6 | **An archetype writes in `qa.internal` outside its namespace** | Medium | Medium — impersonation of an internal name inside the VPC; TLS with `internal-ca` detects it, a non-verifying client does not | G1 rule (§6) |
+| RW7 | **Egress denied by default blocks a legitimate flow**: a port other than 443, or the internal allow missing | Medium with each new archetype | High if it is the internal allow (admission webhooks time out; with `failurePolicy: Fail`, lock-out); Medium otherwise | Logged deny rule; the §2 allow list written before the cluster; `egress_extra` per archetype; VW6 before Gatekeeper |
+| RW8 | **One environment's network or DNS resource bound to another's** in the shared project: a private zone visible to `dev`'s VPC, a firewall rule or route on it, a record in its zones | Low by mistake, possible by intent | High — another environment's Google APIs or internal names answered by addresses this one chose; its traffic opened or redirected; with record write on its public zone, certificates for its names | G3 `terraform.own_network`; `dns.admin` conditioned on the zone prefix, never unconditioned (VW7); per-environment state prefix; review (DW8) |
 
 ### 9.5 Verifications
 
@@ -293,6 +312,8 @@ assert {
 | VW3 | PSA reachable from the pod range | The Cloud SQL proxy connects from a pod (= VC1 and VC9 of the Cloud SQL variant) |
 | VW4 | `qa.internal` | Resolves from a pod and from a VM in the VPC; not from outside |
 | VW5 | Peering org policy | `google_service_networking_connection` is created without error |
+| VW6 | Egress allow list, **before Gatekeeper** | With egress denied, from a node and from a pod: kube-dns on another node, the control-plane endpoint, a Cloud SQL private IP, `199.36.153.8:443` and an external `:443` answer; an external `:80` and `:22` do not, and appear in the logs under `qa-deny-all-egress` |
+| VW7 | `dns.admin` conditioned on the zone name | With the project-level grant conditioned on `managedZones/qa-`, `tf-apply-qa@` creates `qa-googleapis` and writes records in it, and is refused on a zone named `dev-…`. If the condition is not honoured, DW8's alternative applies |
 
 ---
 
@@ -302,6 +323,7 @@ assert {
 |---|---|---|---|
 | Pool | `/17` | `/16`, PSA `/20` | `/17` |
 | NAT | `AUTO_ONLY` | `MANUAL_ONLY` if a third party filters by IP | `AUTO_ONLY` |
+| VPC egress | Denied by default; 443, the `/17` and the VIP allowed | Denied by default; 443 narrowed to known destinations where possible | As `qa` |
 | Private Google zones | Yes | Yes | Yes |
 | Peering with the hub | No | Depending on what it needs from on-premise | `CLAUDE.md` open question no. 2 |
 
@@ -317,6 +339,12 @@ assert {
 | S1 §4.8 and proposals with egress to Google APIs | The rule to `199.36.153.8/30` depends on the §4 private zones; this proposal is cited | **Applied** (DW2) |
 | GKE proposal §7.3 | The `subnet` stack applies the `flow_logs` global | **Applied** (DW6) |
 | Landing zone | Org policies `compute.skipDefaultNetworkCreation` and `compute.restrictVpcPeering` with `servicenetworking` allowed | **Applied** (requirement on the landing zone) |
+| Architecture §11.9 | Workload egress on GKE: VPC egress denied by default, with the environment's range, 443 and the private VIP allowed | **Applied** (DW6) |
+| Architecture §13.4 | G3 rule `terraform.own_network` | **Applied** (DW8) |
+| `gke-qa` §2.3 | The nodes reach the control plane through the internal allow; a peering-based control plane's egress allow (443, 8132) belongs to GKE | **Applied** (DW6) |
+| `monitoring-qa` §8.3 | SMTP (587) is an `egress_extra` entry | **Applied** (DW6) |
+| `landing-zone-qa` §5.1, §7, §11.1 | `dns.admin` on the project only conditioned on the environment's zone prefix; the G3 rule rejects an unconditioned grant | **Applied** (DW8) |
+| Risk register | R65 (RW8), R66 (RW7) | **Applied** |
 
 ---
 
@@ -329,8 +357,10 @@ assert {
 | DW3 | Cloud NAT | **Approved** | `AUTO_ONLY`, dynamic allocation 256–8192, error logs | Fixed IPs; default static ports |
 | DW4 | PSA | **Approved** | `/21` in `data` | `/24` |
 | DW5 | Contract version | **Approved** | `network` 3.0.0 | 2.x without the outputs, breaking silently |
-| DW6 | Firewall and flow logs | **Approved** | Deny-all with logs at priority 65534; egress open in the VPC and controlled in the cluster; flow logs via a global | Egress restricted by CIDR in the VPC |
+| DW6 | Firewall and flow logs | **Revised** (revision 5) | Deny-all ingress **and egress** with logs at priority 65534; allows for 443, the environment's `/17` and the private VIP; any other port per archetype in `egress_extra`; flow logs via a global | Egress open in the VPC and controlled only in the cluster (revision 4): a `hostNetwork` pod or a compromised node escapes it |
 | DW7 | Records in `qa.internal` | **Approved** | Each archetype under its namespace, checked in G1 | One zone per archetype |
+| DW8 | Network and DNS resources in the shared project | **Proposed** | G3 `terraform.own_network`; `dns.admin` on the project conditioned on the zone prefix (VW7) | If the condition is not honoured: the landing zone creates the private zones, bound to the VPC by its deterministic URL, in a stack that runs after `gcp-<env>-network` (an upward edge, named in G1 like the NEG's) and grants `dns.admin` per zone. Never unconditioned project-level `dns.admin` |
+| DW9 | CIDRs and the ledger | **Proposed** | Literals in the globals, compared with the ledger in G1 both ways | CIDRs computed from the ledger at generation (a ledger edit moves a live range) |
 
 ---
 
@@ -339,8 +369,8 @@ assert {
 | Phase | Contents | Exit criterion | Estimate |
 |---|---|---|---|
 | **0 · Landing zone** | Project, org policies, `tofu-state` key, `qa` identities; **VW5** | APIs enabled; `plan` of `gcp-qa-network` with encrypted state | 1 day (the landing zone's) |
-| **1 · Network** | `network`; `assert`s and G1 rules | VPC, NAT, PSA and zones created | 1 day |
-| **2 · With GKE** | **VW1**, **VW2**, **VW4** with the GKE proposal's cluster | Pods that leave via NAT and reach Google APIs through the private VIP | 0.5 days |
+| **1 · Network** | `network`; `assert`s, G1 and G3 rules; **VW7** | VPC, NAT, PSA and zones created; the three `assert`s and the G1 and G3 rules of §9.1 blocking, each shown failing on a negative case; `prevent_destroy` on the VPC, the PSA range and connection, and the zones | 1.5 days |
+| **2 · With GKE** | **VW6** before Gatekeeper; **VW1**, **VW2**, **VW4** with the GKE proposal's cluster | Pods that leave via NAT and reach Google APIs through the private VIP | 0.5 days |
 | **3 · With Cloud SQL** | **VW3** with the first instance | The proxy connects from a pod | 0.5 days |
 
-Two days for one person, plus the landing zone's.
+Two and a half days for one person, plus the landing zone's. **A control that is in no exit criterion does not get built**: a phase closes when its resources exist, and nothing then asks for the `assert`s or the rules. That is why phase 1 names them.

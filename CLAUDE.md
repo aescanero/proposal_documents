@@ -17,7 +17,7 @@ A multi-cloud infrastructure platform built on **Terramate CLI + OpenTofu**, wit
 | **Resolve** | `archetype-model.md` | What may be composed with what — manifests, capabilities, traits, pools, CMDB, resolution |
 | **Generate** | `terramate-outputs-sharing-architecture.md` | How it is generated and applied — generators, outputs sharing, IAM, policy, CI/CD, per-cloud guides |
 
-Plus `platform-overview.md` (diagram-led map, read first), `risk-register.md` (64 risks by domain, 61 active), `glossary.md` (every term, defined) and `developer-guide.md` (the application developer's half — branching, versioning, build, rollback). Each of these lives in **two languages**: `docs/en/<file>.md` and `docs/es/<file>.md`. Below, a bare `docs/<file>.md` reference means "that file, in whichever language you are reading" — both copies say the same thing, so the path is language-neutral by design.
+Plus `platform-overview.md` (diagram-led map, read first), `risk-register.md` (66 risks by domain, 63 active), `glossary.md` (every term, defined) and `developer-guide.md` (the application developer's half — branching, versioning, build, rollback). Each of these lives in **two languages**: `docs/en/<file>.md` and `docs/es/<file>.md`. Below, a bare `docs/<file>.md` reference means "that file, in whichever language you are reading" — both copies say the same thing, so the path is language-neutral by design.
 
 **This repository is the normative design specification, and stays so.** It is not frozen, and no deployment repository replaces it. A deployment repository (`disasterproject/infra`, `infra-repo-qa`) implements what is written here and carries a byte-identical copy of `registry/` and `schemas/` pinned to a commit of this one (DR4); it never edits that copy. What implementing the design teaches — a measured tool behaviour, a gate that did not run, a constraint of a real organisation — comes back here as a design change, in both languages, stated as a fact about the design rather than as a report of where it was found.
 
@@ -155,6 +155,10 @@ These are the failure modes that have already been identified. Do not rediscover
 **Avoid `kubernetes_manifest`** for Gateway API and Gatekeeper custom resources. It requires the CRD to exist and the API server reachable **at plan time**, which breaks PR previews. Package CRs in the archetype's own Helm chart and deploy with `helm_release`.
 
 **The Keycloak ↔ Gateway bootstrap cycle.** Keycloak's own `HTTPRoute` carries **no** `SecurityPolicy`, and the Gateway's OIDC discovery resolves through the in-cluster Service, not the public hostname. Without both, a cold environment does not start and the cause is not obvious.
+
+**VPC egress is denied by default, and the environment's own range is egress too.** Without an allow for the `/17`, nothing fails at apply: the cluster is created, and the first admission webhook times out — with `failurePolicy: Fail`, the lock-out below. The allows are 443, the `/17` and the private VIP; a peering-based control plane outside the `/17` needs 443 and 8132 (konnectivity), written by GKE; any other port is an `egress_extra` entry of the archetype that needs it (`network-qa` DW6, R66).
+
+**In the shared project, IAM does not keep a network resource on its own VPC.** `compute.networkAdmin` reaches every VPC, and a private zone bound to another environment's VPC answers its Google APIs. The G3 rule `terraform.own_network` does; `dns.admin` on the project is only ever conditioned on the zone prefix, because the public zones live there too (`network-qa` DW8, R65).
 
 **`failurePolicy: Fail` can lock you out of the cluster** — Gatekeeper rejects its own recovery. `exemptNamespaces` for `kube-system` and the Gatekeeper namespace, ≥3 replicas with a PDB, `Ignore` everywhere except production.
 

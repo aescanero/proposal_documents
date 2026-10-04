@@ -6,7 +6,7 @@
 |---|---|
 | **Scope** | Every identified failure mode across generation, resolution, identity, edge, policy and multi-tenancy |
 | **Section references** | `§n` refers to the architecture document unless prefixed `AM §n` (archetype model) |
-| **Identifiers** | R1–R64. R28 is **retired** (duplicate of R26), and R38 and R39 are retired with the control plane DNS endpoint (`landing-zone-qa` DZ4); retired numbers are not reused |
+| **Identifiers** | R1–R66. R28 is **retired** (duplicate of R26), and R38 and R39 are retired with the control plane DNS endpoint (`landing-zone-qa` DZ4); retired numbers are not reused |
 | **Review cadence** | At each roadmap phase gate, and whenever a pinned tool version changes |
 
 Risks are grouped by domain rather than numbered order, because that is how they are reviewed. The original R-numbers are stable identifiers and must not be reused if a risk is retired.
@@ -67,6 +67,7 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R26 | **Pod secondary range sized for too few nodes** — immutable after cluster creation. The original trigger was a /18 at 110 pods per node (64 nodes) | High without the check | High — cluster cannot grow; fixed only by rebuilding it | Platform default of 64 pods per node (`/25` per node, 128 nodes in a `/18`); resolver rejects `max_nodes × block > range` (AM §9.4); `/16` for production; Azure CNI Overlay removes the constraint (§9.2) |
 | R27 | **Environment pool fragments into unusable /17s** | Medium over 12 months | Medium — a /16 becomes unallocatable | Buddy allocation preferring blocks that do not split larger free runs; isolate the ephemeral supernet (AM §8.5) |
 | R38 | *Retired — the control plane DNS endpoint removes the authorized networks it described (`landing-zone-qa` DZ4). Number not reused.* | — | — | — |
+| R66 | **VPC egress denied by default blocks a legitimate flow**: a port other than 443, or the allow for the environment's own range missing | Medium with each new archetype | High if it is the internal allow — nothing fails at apply, and every admission webhook times out (with `failurePolicy: Fail`, lock-out); Medium otherwise | Logged deny rule; the allow list (443, the environment's range, the private VIP) written before the cluster; other ports per archetype in `egress_extra`, reviewed; the list verified before Gatekeeper is installed (`network-qa` §2, VW6) |
 
 ## 4. Edge and ingress
 
@@ -92,6 +93,7 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R30 | **Tenant writes unprefixed Kafka topics** | High without admission policy | Medium — silent collision between demos | Mandatory `{{ instance }}-` prefix enforced by the provider; ACLs derived by the `kafka` archetype, never hand-written |
 | R31 | **Demo archetypes accumulate past their usefulness** | Certain | Medium — ranges, identities and quotas leak | `expiresOn` mandatory for `kind: demo`; scheduled job opens a destroy PR; never automatic destruction |
 | R32 | **Each demo provisions its own managed database** | Certain in `demos`, by design | Medium — a shared demo environment stops being cheap | Accepted: both `database-platform` providers give each consumer its own instance (`CLAUDE.md`, isolation over cost). Bounded by the `managed_db_instances` capacity in the binding (25 in `demos`); a CNPG `Cluster` costs less than a Cloud SQL instance where a client chooses `postgres-operator` |
+| R65 | **One environment's network or DNS resource bound to another's** in the shared non-prod project: a private zone visible to another VPC, a firewall rule or route on it, a record in its zones | Low by mistake, possible by intent | High — another environment's Google APIs or internal names answered by addresses this one chose; its traffic opened or redirected; with record write on its public zone, certificates for its names | G3 `terraform.own_network` (§13.4); `dns.admin` on the project only conditioned on the environment's zone prefix; per-environment state prefix; review. Never reaches `prod` (`network-qa` DW8) |
 
 ## 6. Policy and validation
 

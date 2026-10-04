@@ -6,7 +6,7 @@
 |---|---|
 | **Alcance** | Todos los modos de fallo identificados en generación, resolución, identidad, borde, políticas y multi-tenancy |
 | **Referencias de sección** | `§n` se refiere al documento de arquitectura salvo que lleve el prefijo `AM §n` (modelo de arquetipos) |
-| **Identificadores** | R1–R64. R28 está **retirado** (duplicado de R26), y R38 y R39 se retiran con el endpoint DNS del plano de control (`landing-zone-qa` DZ4); los números retirados no se reutilizan |
+| **Identificadores** | R1–R66. R28 está **retirado** (duplicado de R26), y R38 y R39 se retiran con el endpoint DNS del plano de control (`landing-zone-qa` DZ4); los números retirados no se reutilizan |
 | **Cadencia de revisión** | En cada fase del roadmap, y siempre que cambie la versión fijada de una herramienta |
 
 Los riesgos se agrupan por dominio, no por orden numérico, porque así es como se revisan. Los números R son identificadores estables y no deben reutilizarse si un riesgo se retira.
@@ -67,6 +67,7 @@ Un riesgo cuya mitigación es una puerta de CI solo está mitigado cuando esa pu
 | R26 | **Rango secundario de pods dimensionado para pocos nodos** — inmutable tras crear el cluster. El disparador original era una /18 a 110 pods por nodo (64 nodos) | Alta sin la comprobación | Alta — el cluster no puede crecer; solo se arregla reconstruyéndolo | Valor por defecto de la plataforma de 64 pods por nodo (`/25` por nodo, 128 nodos en una `/18`); el resolver rechaza `max_nodes × bloque > rango` (AM §9.4); `/16` para producción; Azure CNI Overlay elimina la restricción (§9.2) |
 | R27 | **El pool del entorno se fragmenta en /17 inutilizables** | Media en 12 meses | Media — una /16 deja de poder asignarse | Asignación por pares que prefiere bloques que no dividen tiradas libres más grandes; aislar la supernet efímera (AM §8.5) |
 | R38 | *Retirado — el endpoint DNS del plano de control elimina las redes autorizadas que describía (`landing-zone-qa` DZ4). El número no se reutiliza.* | — | — | — |
+| R66 | **El egress de la VPC denegado por defecto bloquea un flujo legítimo**: un puerto distinto de 443, o falta el permiso para el propio rango del entorno | Media con cada arquetipo nuevo | Alto si es el permiso interno — nada falla en el apply, y todos los webhooks de admisión expiran (con `failurePolicy: Fail`, bloqueo); Medio en otro caso | Regla de denegación con logs; la lista de permisos (443, el rango del entorno, el VIP privado) escrita antes del cluster; otros puertos por arquetipo en `egress_extra`, revisados; la lista verificada antes de instalar Gatekeeper (`network-qa` §2, VW6) |
 
 ## 4. Borde e ingress
 
@@ -92,6 +93,7 @@ Un riesgo cuya mitigación es una puerta de CI solo está mitigado cuando esa pu
 | R30 | **Un tenant escribe topics de Kafka sin prefijo** | Alta sin política de admisión | Media — colisión silenciosa entre demos | Prefijo obligatorio `{{ instance }}-` forzado por el proveedor; ACL derivadas por el arquetipo `kafka`, nunca escritas a mano |
 | R31 | **Los arquetipos demo se acumulan más allá de su utilidad** | Segura | Media — fuga de rangos, identidades y cuotas | `expiresOn` obligatorio para `kind: demo`; un job programado abre un PR de destrucción; nunca destrucción automática |
 | R32 | **Cada demo aprovisiona su propia base de datos gestionada** | Segura en `demos`, por diseño | Media — un entorno de demos compartido deja de ser barato | Aceptado: los dos proveedores de `database-platform` dan a cada consumidor su propia instancia (`CLAUDE.md`, aislamiento antes que coste). Acotado por la capacity `managed_db_instances` del binding (25 en `demos`); un `Cluster` de CNPG cuesta menos que una instancia de Cloud SQL donde un cliente elige `postgres-operator` |
+| R65 | **Un recurso de red o DNS de un entorno enlazado al de otro** en el proyecto non-prod compartido: una zona privada visible para otra VPC, una regla de firewall o una ruta sobre ella, un registro en sus zonas | Baja por error, posible a propósito | Alto — las APIs de Google o los nombres internos de otro entorno respondidos con direcciones que eligió este; su tráfico abierto o desviado; con escritura en su zona pública, certificados para sus nombres | G3 `terraform.own_network` (§13.4); `dns.admin` sobre el proyecto solo condicionado al prefijo de zona del entorno; prefijo de estado por entorno; revisión. Nunca llega a `prod` (`network-qa` DW8) |
 
 ## 6. Políticas y validación
 
