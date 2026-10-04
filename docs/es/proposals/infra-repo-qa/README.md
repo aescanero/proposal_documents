@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 2 · G1 con `--all-namespaces` y el paquete del registro; inventario sobre `debug show metadata`; experimento `scripts`; `ci/fetch-observed.sh`; marcador de deploy atado al paso de apply (`poc/RESULTS.md` A8) |
+| **Estado** | Propuesta · revisión 3 · marcadores frente a puertas (§1.5); revisión 2: G1 con `--all-namespaces` y el paquete del registro; inventario sobre `debug show metadata`; experimento `scripts`; `ci/fetch-observed.sh`; marcador de deploy atado al paso de apply (`poc/RESULTS.md` A8) |
 | **Alcance** | Cómo se organiza el repositorio donde se despliega la plataforma: qué repositorios hay y qué va en cada uno, la estructura de directorios, el modelo de ramas (y por qué no hay rama `qa`), la configuración de GitHub (rulesets, Environments, variables, CODEOWNERS), los workflows y el ciclo de vida de un entorno. Incluye **plantillas** de los workflows, validadas, en [`templates/`](templates/) |
 | **Por qué ahora** | Este repositorio (`proposal_documents`) es solo documentación y propuestas. Las propuestas de `qa` describen stacks, identidades y guardas, pero ninguna dice dónde viven ni qué workflow los aplica; el workflow de deploy de la arquitectura, además, no podía aplicar `qa` (§5.1) |
 | **Base** | Arquitectura §4.11 (primer despliegue), §11.2–§11.4 (identidades del pipeline), §12.4 (destroy), §14 (CI/CD); `landing-zone-qa` §1, §5, §10; `cmdb-qa` §2–§6; `developer-guide.md` §1, §3; `poc/RESULTS.es.md`. No se repite lo que ya está allí |
@@ -75,6 +75,20 @@ Este repositorio es la especificación normativa y lo sigue siendo: `registry/` 
 
 Un cambio del registro se hace **primero aquí**, por PR; subir el pin en `infra` es un segundo PR (`spec-sync.sh --update`) cuyo diff muestra exactamente qué capacidades, traits o campos de esquema cambiaron. Los schemas se copian sin anotar: JSON Schema no admite comentarios, y un `$comment` rompería la comprobación de igualdad exacta. La procedencia vive en el lock.
 
+
+### 1.5 Marcadores de posición para herramientas que aún no existen
+
+`archetypectl` y `registry-generate` llegan en la fase 2c del roadmap; `infra` empieza antes. Dos clases de marcador, tratadas de forma opuesta:
+
+> **Un marcador de datos se marca y es inerte; un marcador de una puerta se implementa — una puerta sin implementar es una puerta desactivada.**
+
+| Clase | Ejemplo | Tratamiento |
+|---|---|---|
+| Datos que escribirá una herramienta | `binding.tm.hcl` antes de `archetypectl resolve`; globals de plataforma escritos a mano en `config.tm.hcl` | Escritos a mano, **sin** el prefijo `_` (G0 no debe reclamarlos), y marcados de cuatro formas independientes para que ninguna omisión aislada los haga pasar por generados: un banner que nombra la herramienta, la fase del roadmap y qué cambiar cuando llegue; `globals "resolver" { provenance = "hand-written" }`; un `assert` en `imports/contracts/guards.tm.hcl` que hace fallar `terramate generate` cuando un stack no tiene procedencia; una entrada en `PLACEHOLDERS.md`, que un paso de CI lista en `$GITHUB_STEP_SUMMARY` en cada PR |
+| Una puerta que ejecutará una herramienta | `registry-generate --check`, `archetypectl cmdb check`, `archetypectl enrich` | **Se implementa ya**, como scripts pequeños con las mismas entradas y el mismo fallo: la comparación provisional de enums (`.github/scripts/check-registry-enums.py` de este repositorio), un extractor que alimenta a la vez la regla de R2 y las aristas de la CMDB (R56). Un paso que imprime un aviso y pasa es el fallo de `CLAUDE.md`, "A gate that cannot run" |
+
+Cuando llega la herramienta, el banner del marcador dice qué borrar; el script de la puerta se sustituye por el `--check` de la herramienta, y los dos se ejecutan juntos durante un PR para demostrar que coinciden.
+
 ---
 
 ## 2. Estructura de `disasterproject/infra`
@@ -85,6 +99,7 @@ disasterproject/infra/
 ├── config.tm.hcl                    globals de la organización (dominio, región, proyecto lz)
 ├── .mise.toml                       terramate, tofu, checkov, conftest, platform-tools
 ├── spec.lock.json                   pin de registry/ y schemas/: commit de origen + sha256 por fichero (DR4)
+├── PLACEHOLDERS.md                 ficheros escritos a mano que generará una herramienta; listados en cada PR (§1.5)
 ├── registry/                        COPIA del registro de la especificación, nunca se edita aquí
 ├── schemas/                         COPIA de los schemas de la especificación, nunca se edita aquí
 ├── environments/

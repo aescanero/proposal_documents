@@ -2653,7 +2653,7 @@ Two observations that shape multi-tenant design:
 - **GKE and EKS scope identity by namespace**, so the namespace *is* the tenancy boundary and must never be shared between instances.
 - **Cloud Run and Fargate scope identity per service or task**, which is a finer boundary requiring no cluster-level RBAC — one reason both are better defaults for shared demo environments.
 
-**GKE's pool is per project, not per cluster.** `PROJECT.svc.id.goog` is shared by every cluster in the project, and the principal names only namespace and KSA. In the shared non-prod project, `sonarqube/eso-sonarqube` in `dev` and in `qa` would be one identity. Every KSA that receives GCP IAM is therefore named `<env>-<name>` (`qa-eso-sonarqube`); Gatekeeper rule P12 rejects a ServiceAccount carrying another environment's prefix, and G1 rejects an IAM `member` without the owning environment's prefix (R54). EKS and AKS do not share this trap: their OIDC issuer is per cluster, and the trust condition or federated credential names it.
+**GKE's pool is per project, not per cluster.** `PROJECT.svc.id.goog` is shared by every cluster in the project, and the principal names only namespace and KSA. In the shared non-prod project, `sonarqube/eso-sonarqube` in `dev` and in `qa` would be one identity. Every KSA that receives GCP IAM is therefore named `<env>-<name>` (`qa-eso-sonarqube`); Gatekeeper rule P12 rejects a ServiceAccount carrying another environment's prefix, and G1 rejects an IAM `member` without the owning environment's prefix (R54). Generators build that name in one way only, from `global.ksa_prefix = "${global.env}-"`, set once in the environment's `config.tm.hcl`; a literal KSA name in `imports/generators/` is rejected by G1, because a name written by hand is the one that forgets the prefix. EKS and AKS do not share this trap: their OIDC issuer is per cluster, and the trust condition or federated credential names it.
 
 Never write a wildcard into a workload identity trust condition. `system:serviceaccount:*:*` or `POOL[*/*]` grants every pod in the cluster the role, silently defeating the entire model.
 
@@ -3095,6 +3095,55 @@ deny contains msg if {
     some dep in s.consumes
     not dep.from_stack_id in {p.id | some p in input.stacks}
     msg := sprintf("stack %q consumes from %q, which is not in the inventory", [s.id, dep.from_stack_id])
+}
+```
+
+**Mocks are checked against their shape, not trusted.** G0 cannot see a wrong-typed mock — it changes no generated file — so the enricher also records each `input`'s `mock` in `consumes[]`, and a rule checks the shapes the guides warn about. A provider identifier keeps its format (`vpc-mock…`, `projects/mock-project/…`, an ARN ending in `MOCK`), so the rule asks for the word `mock` anywhere rather than a `mock-` prefix; exemptions are a named list, visible in review:
+
+```rego
+package terramate.mocks
+
+import rego.v1
+
+# Values whose shape the consumer validates literally (an API version): named, never silent.
+exempt := {"template_api_version"}
+
+mocks contains [s.id, dep.output, m] if {
+    some s in input.stacks
+    some dep in s.consumes
+    not dep.output in exempt
+    some m in as_list(dep.mock)
+}
+
+as_list(x) := x if is_array(x)
+as_list(x) := [x] if is_string(x)
+
+# A mock says it is one, so a mocked value that reaches a log is recognisable.
+deny contains msg if {
+    some [id, output, m] in mocks
+    not endswith(output, "_ca")
+    not contains(lower(m), "mock")
+    msg := sprintf("stack %q: the mock of %q (%q) does not say it is a mock", [id, output, m])
+}
+
+# A *_ca mock is base64 that decodes to a mock value: the consumer calls base64decode() on it.
+deny contains msg if {
+    some [id, output, m] in mocks
+    endswith(output, "_ca")
+    not contains(lower(decoded(m)), "mock")
+    msg := sprintf("stack %q: the mock of %q is not base64 of a mock value", [id, output])
+}
+
+decoded(m) := base64.decode(m) if base64.is_valid(m)
+decoded(m) := "" if not base64.is_valid(m)
+
+# A GKE endpoint has no scheme (an EKS one does): a mock with :// hides the copy-paste bug.
+deny contains msg if {
+    some [id, output, m] in mocks
+    startswith(id, "gcp-")
+    endswith(output, "_endpoint")
+    contains(m, "://")
+    msg := sprintf("stack %q: the GKE endpoint mock of %q carries a scheme", [id, output])
 }
 ```
 
@@ -3729,7 +3778,7 @@ terramate debug show metadata | jq -Rn '
 
 `debug` is a diagnostic command, not a stable interface: the script is pinned to the Terramate version in `mise.toml`, and a format change that parses nothing yields an empty array, which the script rejects rather than handing G1 an inventory with no stacks. Replace it with `list --json` when Terramate offers one that carries `after`.
 
-`archetypectl enrich` is the only custom piece: the inventory does not expose `input` blocks, so the enricher scans each stack for `from_stack_id` and `after`, producing the `consumes[]` and `after_ids[]` fields the policy compares. Keeping that extraction in one small tool, rather than in the policy, keeps the Rego portable and testable against fixtures.
+`archetypectl enrich` is the only custom piece: the inventory does not expose `input` blocks, so the enricher reads each stack's `input` blocks — `from_stack_id`, the output and the `mock` — into `consumes[]`, and resolves the inventory's `after` (paths and tag filters) into `after_ids[]`; the policies compare those fields. Keeping that extraction in one small tool, rather than in the policy, keeps the Rego portable and testable against fixtures.
 
 
 ---
@@ -3812,7 +3861,7 @@ Sequenced so that nothing blocks a real deployment until it has been observed in
 
 **2c.1 — Registry (2–3 days).** `registry/{capabilities,traits,zones,labels}.yaml`, the three generators (schema `enum`s, conftest `--data` bundle, Gatekeeper chart values), and the `registry-generate --check` gate. This comes first because everything after it consumes the registry. Retrofitting a single source once three copies exist is materially harder (R34).
 
-**2c.2 — `archetypectl enrich` (2 days).** The stack inventory (`ci/stacks-json.sh`, §14.4) does not expose `input` blocks, so the enricher scans each stack for `from_stack_id` and `after` and emits `consumes[]` and `after_ids[]`. Keep the extraction here, not in Rego, so the policies stay portable and testable against fixtures.
+**2c.2 — `archetypectl enrich` (2 days).** The stack inventory (`ci/stacks-json.sh`, §14.4) does not expose `input` blocks, so the enricher reads each stack's `input` blocks (`from_stack_id`, output, `mock`) into `consumes[]` and resolves `after` into `after_ids[]`. Keep the extraction here, not in Rego, so the policies stay portable and testable against fixtures.
 
 **2c.3 — G1 gate, advisory (3 days).** The `input`↔`after` policy plus stack-naming and secret-output rules, running **non-blocking**. Measure the false-positive rate against the existing repository before turning it on.
 

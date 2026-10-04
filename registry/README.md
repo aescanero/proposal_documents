@@ -19,4 +19,4 @@ Generated from here (by `registry-generate`, roadmap phase 2c.1, not yet written
 | `registry/registry.json` bundle, top-level key `registry` (git-ignored) | `conftest --data` |
 | Gatekeeper chart `values.yaml` | `ConstraintTemplate` parameters |
 
-To add a term: edit the YAML here, then regenerate. Until the generator exists, the matching `enum` in `schemas/` is updated **in the same commit, mechanically, to equal the YAML** — never on its own. See `CLAUDE.md`, "The registry is load-bearing", and risk R34.
+To add a term: edit the YAML here, then regenerate. Until the generator exists, the matching `enum` in `schemas/` is updated **in the same commit, mechanically, to equal the YAML** — never on its own; `.github/scripts/check-registry-enums.py`, blocking in `validate.yml`, fails the pull request when capabilities, traits or allocatable zones differ. See `CLAUDE.md`, "The registry is load-bearing", and risk R34.

@@ -83,7 +83,7 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|---|
 | R5 | **Shared platform destroyed by an instance teardown** | Low with guards, catastrophic without | Critical | `protected` tag + destroy-selector check + CMDB reference count by edges, not by name (§12.4); R56 |
-| R6 | **Producer output rename breaks N consumers** | Medium | High on shared platforms | Treat outputs as a versioned contract; add new outputs alongside old, deprecate over two releases; the CMDB relationship graph tells you who is affected |
+| R6 | **Producer output rename breaks N consumers** | Medium | High on shared platforms | Treat outputs as a versioned contract; add new outputs alongside old, deprecate over two releases; a G1 rule fails the PR when a consumed output is missing from its producer and names the consumer (§13.3, `terramate.contracts`); the CMDB relationship graph tells you who is affected |
 | R11 | **Cluster rebuild invalidates every IRSA/WI binding on a shared platform** | Low | High | Treat cluster replacement as a fleet event; maintain the consumer list in the CMDB; rehearse in an ephemeral environment |
 | R13 | **Shared task execution role on a multi-tenant ECS cluster** | High by default | High — cross-tenant secret exposure | Per-instance execution role scoped to that instance's secret ARNs (§8.4) |
 | R14 | **Cloud Run service deployed with `ingress = ALL`** | Medium | High — bypasses Cloud Armor, WAF and access logs | Globals default + assertion + org policy `constraints/run.allowedIngress` (§7.2) |

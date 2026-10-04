@@ -130,7 +130,7 @@ These are the failure modes that have already been identified. Do not rediscover
 
 **`mock_on_fail` must be true in preview and false in deploy.** Separate named `script` blocks so it cannot be got wrong. A deployment that silently falls back to a mock applies nonsense.
 
-**Mocks must be type-correct.** A base64 field mocked as `"mock"` breaks `base64decode()`. A list field mocked as a string type-checks locally and explodes on apply. Prefix every mock with `mock-` — and a base64 mock decodes to a `mock-` value too (`bW9jay1jYQ==`, `mock-ca`), so a mocked CA that reaches a deploy log is recognisable.
+**Mocks must be type-correct.** A base64 field mocked as `"mock"` breaks `base64decode()`. A list field mocked as a string type-checks locally and explodes on apply. Prefix every mock with `mock-`, or, where the provider fixes the format, carry `mock` inside it (`vpc-mock…`, `projects/mock-project/…`) — and a base64 mock decodes to a `mock-` value too (`bW9jay1jYQ==`, `mock-ca`), so a mocked CA that reaches a deploy log is recognisable. The G1 rule `terramate.mocks` checks all three shapes (architecture §13.3).
 
 **`--mock-on-fail` covers `input` blocks, never `data` sources.** A `data` source that reads something another stack creates fails the preview whenever that thing does not exist yet, and no flag saves it. Reference by a deterministic name or URL instead — the NEG is referenced by its URL, built from `neg_name` (architecture §10.2). An `after` with no `input` behind it is checked by nobody, so the one such edge, the upward one, has a named G1 rule (§13.3).
 
@@ -159,7 +159,7 @@ These are the failure modes that have already been identified. Do not rediscover
 **OIDC trust policies: `StringEquals` on the exact `sub`, never `StringLike` with a wildcard.** The most common AWS OIDC misconfiguration. Risk R12.
 
 **Pod secondary ranges are immutable.** Sizing them for too few nodes means rebuilding the cluster. Risk R26.
-**One Workload Identity pool per GCP project.** Two clusters in the shared non-prod project that both run `sonarqube/eso-sonarqube` get the same GCP identity, and each can read the other's secrets. Prefix every KSA that holds GCP IAM with the environment (`qa-eso-sonarqube`); prefixing the ESO controller's namespace isolates nothing, because the controller has no GCP identity and reads with each consumer's KSA.
+**One Workload Identity pool per GCP project.** Two clusters in the shared non-prod project that both run `sonarqube/eso-sonarqube` get the same GCP identity, and each can read the other's secrets. Prefix every KSA that holds GCP IAM with the environment (`qa-eso-sonarqube`), and build it only from `global.ksa_prefix` — G1 rejects a literal KSA name in a generator; prefixing the ESO controller's namespace isolates nothing, because the controller has no GCP identity and reads with each consumer's KSA.
 
 ---
 
@@ -202,7 +202,7 @@ cmdb-data/              level 0 CMDB, declared half, one file per stack (observe
 
 **Never hand-edit an `enum` in `schemas/`.** That is a bug. The failure mode of drift is nasty: a label the generator stopped emitting while the admission `Constraint` still demands it blocks legitimate deployments at admission. Risk R34.
 
-The generator (`registry-generate`) is **not yet written**. It is the first task of roadmap phase 2c.
+The generator (`registry-generate`) is **not yet written**. It is the first task of roadmap phase 2c. Until it exists, `.github/scripts/check-registry-enums.py` — blocking in `validate.yml` — compares capabilities, traits and allocatable zones with the schema enums: a notice in its place would be a gate that cannot run.
 
 ---
 

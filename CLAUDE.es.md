@@ -130,7 +130,7 @@ Estos son los modos de fallo que ya se han identificado. No los redescubras.
 
 **`mock_on_fail` debe ser true en preview y false en deploy.** Bloques `script` nombrados por separado para que no se pueda confundir. Un deployment que cae silenciosamente en un mock aplica un sinsentido.
 
-**Los mocks deben tener el tipo correcto.** Un campo base64 mockeado como `"mock"` rompe `base64decode()`. Un campo lista mockeado como una cadena valida el tipo localmente y explota al aplicar. Prefijar cada mock con `mock-` — y un mock base64 también se decodifica a un valor `mock-` (`bW9jay1jYQ==`, `mock-ca`), para que una CA mockeada que llegue a un log de deploy sea reconocible.
+**Los mocks deben tener el tipo correcto.** Un campo base64 mockeado como `"mock"` rompe `base64decode()`. Un campo lista mockeado como una cadena valida el tipo localmente y explota al aplicar. Prefijar cada mock con `mock-`, o, donde el proveedor fija el formato, llevar `mock` dentro (`vpc-mock…`, `projects/mock-project/…`) — y un mock base64 también se decodifica a un valor `mock-` (`bW9jay1jYQ==`, `mock-ca`), para que una CA mockeada que llegue a un log de deploy sea reconocible. La regla G1 `terramate.mocks` comprueba las tres formas (arquitectura §13.3).
 
 **`--mock-on-fail` cubre bloques `input`, nunca fuentes `data`.** Una fuente `data` que lee algo que crea otro stack hace fallar la preview siempre que ese algo aún no exista, y ningún flag la salva. Referenciar por un nombre o una URL deterministas — el NEG se referencia por su URL, construida a partir de `neg_name` (arquitectura §10.2). Un `after` sin `input` detrás no lo comprueba nadie, así que la única arista así, la ascendente, tiene una regla G1 con nombre (§13.3).
 
@@ -159,7 +159,7 @@ Estos son los modos de fallo que ya se han identificado. No los redescubras.
 **Políticas de confianza OIDC: `StringEquals` sobre el `sub` exacto, nunca `StringLike` con un wildcard.** El error de configuración de OIDC más común en AWS. Riesgo R12.
 
 **Los rangos secundarios de pods son inmutables.** Dimensionarlos para muy pocos nodos significa reconstruir el cluster. Riesgo R26.
-**Un pool de Workload Identity por proyecto de GCP.** Dos clusters del proyecto non-prod compartido que ejecuten `sonarqube/eso-sonarqube` obtienen la misma identidad de GCP, y cada uno puede leer los secretos del otro. Pon el prefijo del entorno a todo KSA con IAM de GCP (`qa-eso-sonarqube`); prefijar el namespace del controlador de ESO no aísla nada, porque el controlador no tiene identidad de GCP y lee con el KSA de cada consumidor.
+**Un pool de Workload Identity por proyecto de GCP.** Dos clusters del proyecto non-prod compartido que ejecuten `sonarqube/eso-sonarqube` obtienen la misma identidad de GCP, y cada uno puede leer los secretos del otro. Pon el prefijo del entorno a todo KSA con IAM de GCP (`qa-eso-sonarqube`), y constrúyelo solo a partir de `global.ksa_prefix` — G1 rechaza un nombre de KSA literal en un generador; prefijar el namespace del controlador de ESO no aísla nada, porque el controlador no tiene identidad de GCP y lee con el KSA de cada consumidor.
 
 ---
 
@@ -202,7 +202,7 @@ cmdb-data/              CMDB de nivel 0, mitad declarada, un archivo por stack (
 
 **Nunca editar a mano un `enum` en `schemas/`.** Eso es un bug. El modo de fallo de la divergencia es desagradable: una label que el generador dejó de emitir mientras el `Constraint` de admisión todavía la exige bloquea deployments legítimos en la admisión. Riesgo R34.
 
-El generador (`registry-generate`) **todavía no está escrito**. Es la primera tarea de la fase 2c del roadmap.
+El generador (`registry-generate`) **todavía no está escrito**. Es la primera tarea de la fase 2c del roadmap. Hasta que exista, `.github/scripts/check-registry-enums.py` — bloqueante en `validate.yml` — compara capacidades, traits y zonas asignables con los enums de los schemas: un aviso en su lugar sería una puerta que no puede ejecutarse.
 
 ---
 

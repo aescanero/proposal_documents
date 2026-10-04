@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 2 · G1 with `--all-namespaces` and the registry bundle; inventory over `debug show metadata`; `scripts` experiment; `ci/fetch-observed.sh`; deploy marker tied to the apply step (`poc/RESULTS.md` A8) |
+| **Status** | Proposal · revision 3 · placeholders vs. gates (§1.5); revision 2: G1 with `--all-namespaces` and the registry bundle; inventory over `debug show metadata`; `scripts` experiment; `ci/fetch-observed.sh`; deploy marker tied to the apply step (`poc/RESULTS.md` A8) |
 | **Scope** | How the repository the platform is deployed from is organised: which repositories exist and what goes in each, the directory layout, the branch model (and why there is no `qa` branch), the GitHub configuration (rulesets, Environments, variables, CODEOWNERS), the workflows and an environment's life cycle. Includes validated workflow **templates** in [`templates/`](templates/) |
 | **Why now** | This repository (`proposal_documents`) is documentation and proposals only. The `qa` proposals describe stacks, identities and guards, but none says where they live or which workflow applies them; and the architecture's deploy workflow could not apply `qa` at all (§5.1) |
 | **Basis** | Architecture §4.11 (first deployment), §11.2–§11.4 (pipeline identities), §12.4 (destroy), §14 (CI/CD); `landing-zone-qa` §1, §5, §10; `cmdb-qa` §2–§6; `developer-guide.md` §1, §3; `poc/RESULTS.md`. What is already there is not repeated |
@@ -75,6 +75,20 @@ This repository is the normative specification and stays so: `registry/` is writ
 
 A registry change is made **here first**, by pull request; raising the pin in `infra` is a second pull request (`spec-sync.sh --update`) whose diff shows exactly which capabilities, traits or schema fields changed. The schemas are copied unannotated: JSON Schema carries no comments, and a `$comment` would break the exact-equality check. Provenance lives in the lock.
 
+
+### 1.5 Placeholders for tools that do not exist yet
+
+`archetypectl` and `registry-generate` arrive in roadmap phase 2c; `infra` starts before them. Two kinds of placeholder, treated oppositely:
+
+> **A placeholder for data is marked and inert; a placeholder for a gate is implemented — an unimplemented gate is a disabled gate.**
+
+| Kind | Example | Treatment |
+|---|---|---|
+| Data a tool will write | `binding.tm.hcl` before `archetypectl resolve`; platform globals written by hand in `config.tm.hcl` | Written by hand, **without** the `_` prefix (G0 must not claim it), and marked four independent ways so that no single omission lets it pass as generated: a banner naming the tool, the roadmap phase and what to change when it arrives; `globals "resolver" { provenance = "hand-written" }`; an `assert` in `imports/contracts/guards.tm.hcl` that fails `terramate generate` when a stack has no provenance; an entry in `PLACEHOLDERS.md`, which a CI step lists in `$GITHUB_STEP_SUMMARY` on every pull request |
+| A gate a tool will run | `registry-generate --check`, `archetypectl cmdb check`, `archetypectl enrich` | **Implemented now**, as small scripts with the same inputs and the same failure: the interim enum comparison (this repository's `.github/scripts/check-registry-enums.py`), an extractor that feeds both the R2 rule and the CMDB edges (R56). A step that prints a notice and passes is the failure mode of `CLAUDE.md`, "A gate that cannot run" |
+
+When the tool arrives, the placeholder's banner says what to delete; the gate script is replaced by the tool's `--check`, and the two are run side by side for one pull request to prove they agree.
+
 ---
 
 ## 2. Layout of `disasterproject/infra`
@@ -85,6 +99,7 @@ disasterproject/infra/
 ├── config.tm.hcl                    organisation globals (domain, region, lz project)
 ├── .mise.toml                       terramate, tofu, checkov, conftest, platform-tools
 ├── spec.lock.json                   pin of registry/ and schemas/: origin commit + sha256 per file (DR4)
+├── PLACEHOLDERS.md                 hand-written files a tool will generate; listed in every PR summary (§1.5)
 ├── registry/                        COPY of the specification's registry, never edited here
 ├── schemas/                         COPY of the specification's schemas, never edited here
 ├── environments/

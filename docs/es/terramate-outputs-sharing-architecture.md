@@ -2662,7 +2662,7 @@ Dos observaciones que dan forma al diseño multi-tenant:
 - **GKE y EKS restringen la identidad por namespace**, así que el namespace *es* el límite de tenencia y nunca debe compartirse entre instancias.
 - **Cloud Run y Fargate restringen la identidad por servicio o tarea**, un límite más fino que no requiere RBAC a nivel de cluster — una razón por la que ambos son mejores valores por defecto para entornos demo compartidos.
 
-**El pool de GKE es por proyecto, no por cluster.** `PROJECT.svc.id.goog` lo comparten todos los clusters del proyecto, y el principal solo nombra namespace y KSA. En el proyecto non-prod compartido, `sonarqube/eso-sonarqube` de `dev` y el de `qa` serían una sola identidad. Por eso todo KSA que recibe IAM de GCP se llama `<env>-<nombre>` (`qa-eso-sonarqube`); la regla P12 de Gatekeeper rechaza un ServiceAccount con el prefijo de otro entorno, y G1 rechaza un `member` de IAM sin el prefijo del entorno dueño (R54). EKS y AKS no tienen esta trampa: su emisor OIDC es por cluster, y la condición de confianza o la credencial federada lo nombra.
+**El pool de GKE es por proyecto, no por cluster.** `PROJECT.svc.id.goog` lo comparten todos los clusters del proyecto, y el principal solo nombra namespace y KSA. En el proyecto non-prod compartido, `sonarqube/eso-sonarqube` de `dev` y el de `qa` serían una sola identidad. Por eso todo KSA que recibe IAM de GCP se llama `<env>-<nombre>` (`qa-eso-sonarqube`); la regla P12 de Gatekeeper rechaza un ServiceAccount con el prefijo de otro entorno, y G1 rechaza un `member` de IAM sin el prefijo del entorno dueño (R54). Los generadores construyen ese nombre de una sola forma, a partir de `global.ksa_prefix = "${global.env}-"`, fijado una vez en el `config.tm.hcl` del entorno; G1 rechaza un nombre de KSA literal en `imports/generators/`, porque un nombre escrito a mano es el que olvida el prefijo. EKS y AKS no tienen esta trampa: su emisor OIDC es por cluster, y la condición de confianza o la credencial federada lo nombra.
 
 Nunca escribas un comodín en una condición de confianza de workload identity. `system:serviceaccount:*:*` o `POOL[*/*]` concede el rol a cada pod del cluster, anulando silenciosamente todo el modelo.
 
@@ -3104,6 +3104,55 @@ deny contains msg if {
     some dep in s.consumes
     not dep.from_stack_id in {p.id | some p in input.stacks}
     msg := sprintf("el stack %q consume de %q, que no está en el inventario", [s.id, dep.from_stack_id])
+}
+```
+
+**Los mocks se comprueban por su forma, no se dan por buenos.** G0 no ve un mock de tipo incorrecto — no cambia ningún fichero generado —, así que el enriquecedor registra también el `mock` de cada `input` en `consumes[]`, y una regla comprueba las formas de las que avisan las guías. Un identificador de proveedor conserva su formato (`vpc-mock…`, `projects/mock-project/…`, un ARN que acaba en `MOCK`), así que la regla pide la palabra `mock` en cualquier posición en lugar de un prefijo `mock-`; las excepciones son una lista con nombre, visible en la revisión:
+
+```rego
+package terramate.mocks
+
+import rego.v1
+
+# Valores cuya forma el consumidor valida literalmente (una versión de API): con nombre, nunca en silencio.
+exempt := {"template_api_version"}
+
+mocks contains [s.id, dep.output, m] if {
+    some s in input.stacks
+    some dep in s.consumes
+    not dep.output in exempt
+    some m in as_list(dep.mock)
+}
+
+as_list(x) := x if is_array(x)
+as_list(x) := [x] if is_string(x)
+
+# Un mock dice que lo es, para que un valor mockeado que llega a un log sea reconocible.
+deny contains msg if {
+    some [id, output, m] in mocks
+    not endswith(output, "_ca")
+    not contains(lower(m), "mock")
+    msg := sprintf("stack %q: el mock de %q (%q) no dice que es un mock", [id, output, m])
+}
+
+# Un mock *_ca es base64 que se decodifica a un valor mock: el consumidor le aplica base64decode().
+deny contains msg if {
+    some [id, output, m] in mocks
+    endswith(output, "_ca")
+    not contains(lower(decoded(m)), "mock")
+    msg := sprintf("stack %q: el mock de %q no es base64 de un valor mock", [id, output])
+}
+
+decoded(m) := base64.decode(m) if base64.is_valid(m)
+decoded(m) := "" if not base64.is_valid(m)
+
+# Un endpoint de GKE no lleva esquema (uno de EKS sí): un mock con :// esconde el error de copiar y pegar.
+deny contains msg if {
+    some [id, output, m] in mocks
+    startswith(id, "gcp-")
+    endswith(output, "_endpoint")
+    contains(m, "://")
+    msg := sprintf("stack %q: el mock del endpoint GKE de %q lleva esquema", [id, output])
 }
 ```
 
@@ -3738,7 +3787,7 @@ terramate debug show metadata | jq -Rn '
 
 `debug` es un comando de diagnóstico, no una interfaz estable: el script está fijado a la versión de Terramate de `mise.toml`, y un cambio de formato que no se pueda leer produce un array vacío, que el script rechaza en lugar de entregar a G1 un inventario sin stacks. Sustitúyase por `list --json` cuando Terramate ofrezca uno que lleve `after`.
 
-`archetypectl enrich` es la única pieza a medida: el inventario no expone los bloques `input`, así que el enriquecedor escanea cada stack en busca de `from_stack_id` y `after`, produciendo los campos `consumes[]` y `after_ids[]` que la política compara. Mantener esa extracción en una pequeña herramienta, en lugar de en la política, mantiene el Rego portable y testable contra fixtures.
+`archetypectl enrich` es la única pieza a medida: el inventario no expone los bloques `input`, así que el enriquecedor lee los bloques `input` de cada stack — `from_stack_id`, la salida y el `mock` — en `consumes[]`, y resuelve el `after` del inventario (rutas y filtros por tag) en `after_ids[]`; las políticas comparan esos campos. Mantener esa extracción en una pequeña herramienta, en lugar de en la política, mantiene el Rego portable y testable contra fixtures.
 
 
 ---
@@ -3821,7 +3870,7 @@ Secuenciada para que nada bloquee un despliegue real hasta que se haya observado
 
 **2c.1 — Registro (2–3 días).** `registry/{capabilities,traits,zones,labels}.yaml`, los tres generadores (`enum`s de schema, bundle `--data` de conftest, values del chart de Gatekeeper), y la puerta `registry-generate --check`. Esto va primero porque todo lo que sigue consume el registro. Retroadaptar una única fuente una vez existen tres copias es materialmente más difícil (R34).
 
-**2c.2 — `archetypectl enrich` (2 días).** El inventario de stacks (`ci/stacks-json.sh`, §14.4) no expone los bloques `input`, así que el enriquecedor escanea cada stack en busca de `from_stack_id` y `after` y emite `consumes[]` y `after_ids[]`. Mantén la extracción aquí, no en Rego, para que las políticas sigan siendo portables y testables contra fixtures.
+**2c.2 — `archetypectl enrich` (2 días).** El inventario de stacks (`ci/stacks-json.sh`, §14.4) no expone los bloques `input`, así que el enriquecedor lee los bloques `input` de cada stack (`from_stack_id`, salida, `mock`) en `consumes[]` y resuelve `after` en `after_ids[]`. Mantén la extracción aquí, no en Rego, para que las políticas sigan siendo portables y testables contra fixtures.
 
 **2c.3 — Puerta G1, consultiva (3 días).** La política `input`↔`after` más las reglas de nombrado de stacks y de outputs secretos, ejecutándose **sin bloquear**. Mide la tasa de falsos positivos contra el repositorio existente antes de activarla.
 
