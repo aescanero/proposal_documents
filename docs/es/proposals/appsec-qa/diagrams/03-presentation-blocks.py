@@ -43,10 +43,10 @@ T=dict(
  aria="Seguridad del ciclo de vida en qa: bloques",
  arch="archetypes/{defectdojo,dast,aig}", kind="layers 4-5 · vuln-mgmt 1.0.0",
  title="Seguridad del ciclo de vida en qa — DefectDojo, DAST y A.I.G",
- subtitle="cuatro fases · el CI escanea · el cluster solo aloja DefectDojo y los jobs DAST · A.I.G en una VM aislada · nada contra prod",
+ subtitle="cuatro fases · el CI escanea · DefectDojo, DAST y A.I.G en el cluster · el agente de A.I.G en un pool gVisor · nada contra prod",
  left="Consume de la plataforma", left_sub="capas 1-4",
- caps=[("cluster · apps","DefectDojo, ZAP y Nuclei",False),("database-platform","Cloud SQL propia",False),("oidc-idp","Keycloak · cliente tenant",False),
-       ("secrets · eso","tokens en Secret Manager",False),("network","NAT · subred de la VM",False)],
+ caps=[("cluster","apps · gvisor (GKE Sandbox)",False),("database-platform","Cloud SQL propia",False),("oidc-idp","Keycloak · cliente tenant",False),
+       ("secrets · eso","tokens en Secret Manager",False),("network","NAT · Cloud Armor 800",False)],
  cols=["1 · CI","2 · Consolidar","3 · DAST","4 · IA"],
  blocks=[
   [("sonarqube","SAST y quality gate",["escáner en CI","servidor ya propuesto","API Import a DefectDojo"]),
@@ -58,15 +58,15 @@ T=dict(
   [("zap","Baseline y API",["pasivo cada noche","API con OpenAPI","full: bajo demanda"]),
    ("nuclei","Plantillas fijadas",["semanal, medium o más","sin dos, fuzz, intrusive","imagen por versión"]),
    ("borde","Por el borde público",["Cloud Armor, prioridad 800","NAT MANUAL_ONLY · 2 IPs","objetivos de la resolución"])],
-  [("vm","Aislada del cluster",["SYS_ADMIN, sin seccomp","sin IP pública · COS","subred /28 propia"]),
-   ("iap","Acceso por túnel",["8088 solo por IAP","appsec-redteam@","nada hacia el cluster"]),
+  [("gvisor","Pool con GKE Sandbox",["agente con SYS_ADMIN","kernel propio por pod","0-1 nodos, a cero"]),
+   ("acceso","Sin borde",["servidor en apps, ClusterIP","port-forward con RBAC","sin red hacia el /17"]),
    ("import","Generic Findings",["conversor programado","importer-platform-aig","claves con límite de gasto"])]],
  right="Provee", right_sub="vuln-mgmt 1.0.0",
  items=[("equipos","appsec.yml reutilizable","product type por equipo"),("seguridad","hallazgos deduplicados","SLA y riesgos aceptados"),
         ("prod","sin DefectDojo propio","engagement deployed-prod"),("nocturno","CVEs posteriores al build","sobre lo desplegado")],
  controls="Controles",
  ctrl=[("assert","BD de database-platform"),("G1","prod no enlaza dast"),("Gatekeeper","P2 · P3 · P11"),
-       ("Cloud Armor","regla 800 solo no-prod"),("IAP","VM sin IP pública")],
+       ("Cloud Armor","regla 800 solo no-prod"),("P13","privilegios solo en gVisor")],
  foot="docs/es/proposals/appsec-qa/README.md")
 
 o.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="{e(T["aria"])}">')

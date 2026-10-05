@@ -164,6 +164,8 @@ Todos: 64 pods por nodo, `COS_CONTAINERD`, Shielded, `GKE_METADATA`, SA `gke-nod
 
 **`vm.max_map_count` en todo `apps`.** Elasticsearch, dentro de SonarQube, lo exige; con un pool `sonar` solo lo tenía su nodo. En `apps` lo llevan todos los nodos: subir el límite de áreas de memoria mapeadas no cambia el comportamiento de un proceso que no las usa, y SonarQube puede programarse en cualquier nodo del pool en su zona.
 
+**El único tercer pool documentado: `gvisor`.** Cuando un arquetipo tiene que ejecutar código de terceros con privilegios —el agente de A.I.G, con `SYS_ADMIN` (`appsec-qa` §5, DA8)— va a un tercer pool con GKE Sandbox (`sandbox_config { sandbox_type = "gvisor" }`): cada pod tiene su propio kernel en espacio de usuario, así que el privilegio nunca llega al del nodo. `e2-standard-4`, **0–1 nodos** en una zona, autoescalado a cero; el taint de GKE `sandbox.gke.io/runtime=gvisor:NoSchedule`, que solo toleran sus dueños (P11); su propia SA de nodos, `gke-gvisor-<env>@`, creada por la landing zone solo con logs, métricas y lectura de `third-party`. Es la excepción respaldada por datos de DN11, no un tercer pool general: no se programa nada más ahí, y un entorno que no enlaza un arquetipo así no tiene pool `gvisor`.
+
 **Lo que se pierde respecto a los pools dedicados**, y por qué se acepta en `qa`:
 
 | Pool que desaparece | Daba | Con dos pools | Mitigación |

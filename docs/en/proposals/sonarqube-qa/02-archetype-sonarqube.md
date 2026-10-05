@@ -745,7 +745,7 @@ assert {
 
 ### 7.4 Gatekeeper (admission, layer 2b)
 
-The complete catalogue, with each rule's owner, is in the Gatekeeper proposal (§4); the core rules are P1–P12. This table only records their effect on SonarQube.
+The complete catalogue, with each rule's owner, is in the Gatekeeper proposal (§4); the core rules are P1–P13. This table only records their effect on SonarQube.
 
 | Constraint | Effect on `sonarqube` |
 |---|---|

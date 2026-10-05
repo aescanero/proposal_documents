@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Estado** | Propuesta · revisión 1 |
+| **Estado** | Propuesta · revisión 2 · A.I.G en el cluster: agente en un pool `gvisor` con gVisor, servidor en `apps` (§5, DA8); revisión 1: A.I.G en una VM aislada |
 | **Alcance** | Las cuatro fases de análisis que pide el ciclo de vida — código (SonarQube), dependencias (Trivy), infraestructura y contenedores (Checkov, Trivy), ejecución (OWASP ZAP, Nuclei, A.I.G) — y su consolidación en **DefectDojo**: dónde corre cada herramienta, cuándo bloquea, cómo llegan sus resultados a DefectDojo, y los tres arquetipos nuevos (`defectdojo`, `dast`, `aig`). Incluye la plantilla del workflow reutilizable de los repositorios de aplicación |
 | **Por qué ahora** | SonarQube ya tiene propuesta y Checkov ya está en las puertas G1/G2 del pipeline de infraestructura, pero cada herramienta deja sus resultados en su sitio. Nadie ve el conjunto de una aplicación, ni lo que cambia entre dos versiones, ni qué se aceptó como riesgo |
 | **Base** | `sonarqube-qa` (E1, E2) y su variante Cloud SQL; `keycloak-qa` §6 (clientes como tenant resources); `postgres-cloudsql-qa`; `edge-qa` §3 (Cloud Armor); `network-qa` (Cloud NAT, DW3); `gke-qa` §5 (pools `system` y `apps`, DN11); `gatekeeper-qa`; `cmdb-qa` (mitad observada); `infra-repo-qa` (workflows); `landing-zone-qa` §6 (copia de imágenes) |
@@ -16,9 +16,9 @@ Fuente: [`diagrams/01-ciclo.mmd`](diagrams/01-ciclo.mmd)
 
 No reabre ninguna decisión de `CLAUDE.md`. Al llevar el esquema pedido a `qa` aparecen seis cosas que el esquema no dice:
 
-1. **Las herramientas no corren todas en el mismo sitio.** SonarQube (escáner), Trivy y Checkov corren en CI, en cada PR y en cada merge. En el cluster solo hay **dos servidores**: SonarQube, que ya existe, y DefectDojo, que es nuevo. ZAP y Nuclei son **jobs** programados en el cluster. A.I.G no puede ir al cluster (punto 3).
+1. **Las herramientas no corren todas en el mismo sitio.** SonarQube (escáner), Trivy y Checkov corren en CI, en cada PR y en cada merge. En el cluster hay **dos servidores** compartidos: SonarQube, que ya existe, y DefectDojo, que es nuevo. ZAP y Nuclei son **jobs** programados en el cluster. A.I.G va también al cluster, pero no a los pools de siempre (punto 3).
 2. **No hay entorno `staging`: es `qa`.** Los nombres de entorno están normalizados (`CLAUDE.md`) y `qa` es el que replica producción. El DAST se lanza contra `qa` y **nunca contra `prod`**: un escaneo activo crea, modifica y borra datos.
-3. **A.I.G no tiene autenticación y su agente pide `SYS_ADMIN` con seccomp desactivado** (`docker-compose.images.yml` del proyecto; el README advierte que no se publique en redes públicas). Ninguna de las dos cosas cabe en un cluster compartido con PSS `restricted`, y el agente además ejecuta código de terceros (MCP servers, skills). Va a una **VM aislada** en la VPC de `qa`, sin IP pública y accesible solo por IAP (§5).
+3. **A.I.G no tiene autenticación y su agente pide `SYS_ADMIN` con seccomp desactivado** (`docker-compose.images.yml` del proyecto; el README advierte que no se publique en redes públicas). Ninguna de las dos cosas cabe en un cluster compartido con PSS `restricted`, y el agente además ejecuta código de terceros (MCP servers, skills). El agente va a un **pool propio con GKE Sandbox (gVisor)**, con su propio kernel y escalado a cero; el servidor, sin privilegios, a `apps`, sin ruta por el borde y accesible solo por `port-forward` (§5).
 4. **Un DAST que pasa por el borde público prueba Cloud Armor, no la aplicación.** Las reglas OWASP y `scannerdetection` bloquean a ZAP y Nuclei, y el límite por IP los frena. Hace falta una regla de Cloud Armor que deje pasar al escáner, y eso exige que su IP de salida sea fija (§4.2).
 5. **DefectDojo con resultados de PR es ruido.** Cada PR produciría hallazgos que se cierran en el siguiente push. En DefectDojo solo entra lo que está en `main` y lo que encuentran los escaneos programados; los resultados de una PR se quedan en la PR, como puerta (DA6).
 6. **Escanear la imagen al construirla no basta.** Una CVE publicada después del build no aparece en ningún escaneo de CI: la imagen ya no se reconstruye, se promueve (DG §5). Un escaneo nocturno de los **digests desplegados**, sacados de la CMDB, cierra ese hueco (§3.4).
@@ -41,7 +41,7 @@ Fuente: [`diagrams/03-presentation-blocks.py`](diagrams/03-presentation-blocks.p
 | | **Trivy** `image` | CVEs del sistema operativo y de las librerías de la imagen | CI al construir; **nocturno sobre lo desplegado** | Build; cada noche | Build: `CRITICAL` con corrección | **Trivy Scan** |
 | Ejecución (`qa`) | **OWASP ZAP** | Vulnerabilidades web y de API en ejecución (cabeceras, cookies, inyecciones, XSS…) | Jobs en el cluster, pool `apps` | Pasivo cada noche; activo bajo demanda | No: informa | **ZAP Scan** (XML) |
 | | **Nuclei** | Exposiciones y CVEs conocidas por plantilla | Jobs en el cluster | Semanal | No | **Nuclei Scan** (JSONL) |
-| | **A.I.G** (AI-Infra-Guard) | CVEs de componentes de IA, riesgos de MCP servers y skills, jailbreak de modelos | VM aislada (§5) | Bajo demanda del equipo de seguridad | No | **Generic Findings Import**, con un conversor (no hay parser de A.I.G) |
+| | **A.I.G** (AI-Infra-Guard) | CVEs de componentes de IA, riesgos de MCP servers y skills, jailbreak de modelos | Cluster: agente en el pool `gvisor` (gVisor), servidor en `apps` (§5) | Bajo demanda del equipo de seguridad | No | **Generic Findings Import**, con un conversor (no hay parser de A.I.G) |
 | Consolidación | **DefectDojo** | Deduplica, sigue el ciclo de vida de cada hallazgo, riesgos aceptados, SLA | Cluster, pool `apps` | Siempre | — | — |
 
 Parsers comprobados en `dojo/tools/` del repositorio de DefectDojo el 2026-10-03: `sonarqube`, `trivy`, `checkov`, `zap`, `nuclei`, `generic`, `sarif`. Ninguno de A.I.G.
@@ -71,7 +71,7 @@ Fuente: [`diagrams/02-despliegue.mmd`](diagrams/02-despliegue.mmd)
 |---|---|---|
 | **CI** (GitHub Actions) | Escáner de SonarQube, Trivy `fs` e `image`, Checkov | El análisis estático necesita el código y la imagen recién construida, y su resultado es una puerta de la PR |
 | **Cluster de `qa`, pool `apps`** | DefectDojo (`defectdojo`, capa 4); jobs de ZAP y Nuclei (`dast`, capa 5) | DefectDojo es un servicio con base de datos, SSO y API, como SonarQube. ZAP y Nuclei necesitan una IP de salida conocida (§4.2) y tiempo de ejecución largo |
-| **VM aislada** en la VPC de `qa` | A.I.G, servidor y agente (`aig`, capa 5) | Sin autenticación y con un agente privilegiado que ejecuta código ajeno (§5) |
+| **Cluster de `qa`, pool `gvisor`** (GKE Sandbox) | El agente de A.I.G (`aig`, capa 5); su servidor, en `apps` | Un agente privilegiado que ejecuta código ajeno necesita su propio kernel; el servidor no tiene autenticación y no se publica (§5) |
 | **Programado en `infra`** | Trivy sobre los digests desplegados | La lista de digests sale de la CMDB (`cmdb-observed`), que vive en `infra` |
 
 Ninguna herramienta corre en el pool `system`: son capa 4 y 5 (`gke-qa` DN11).
@@ -265,34 +265,37 @@ ZAP sin sesión solo ve la pantalla de login de una aplicación protegida por la
 
 Es una herramienta del **equipo de seguridad**, bajo demanda: no hay un escaneo de A.I.G por PR.
 
-### 5.2 Por qué una VM y no el cluster (DA8)
+### 5.2 Por qué un pool `gvisor` y no `apps` (DA8)
 
 | Hecho (repositorio de A.I.G, 2026-10-03) | Consecuencia |
 |---|---|
-| "Currently lacks an authentication mechanism and should not be deployed on public networks" | Ni `HTTPRoute` pública ni `SecurityPolicy`: no se publica por el borde |
-| El agente se ejecuta con `cap_add: SYS_ADMIN`, `seccomp:unconfined` y `shm_size: 2gb` | Incompatible con PSS `restricted`. Una excepción por nombre pondría un contenedor con `SYS_ADMIN` en un nodo de `apps`, junto a SonarQube y Keycloak |
-| El agente analiza MCP servers y skills, y en modo dinámico los ejecuta | Código de terceros, sin revisar, con privilegios |
-| Servidor con SQLite (`DB_PATH=/app/db/tasks.db`) | Una réplica, disco propio |
+| "Currently lacks an authentication mechanism and should not be deployed on public networks" | Ni `HTTPRoute` ni `SecurityPolicy`: el servidor es un `Service` `ClusterIP` y se llega a él por `port-forward` |
+| El agente se ejecuta con `cap_add: SYS_ADMIN`, `seccomp:unconfined` y `shm_size: 2gb` | Incompatible con PSS `restricted` en `apps`: pondría un contenedor con `SYS_ADMIN` sobre el kernel del nodo, junto a SonarQube y Keycloak |
+| El agente analiza MCP servers y skills, y en modo dinámico los ejecuta | Código de terceros, sin revisar, con privilegios: necesita su propio kernel |
+| Servidor con SQLite (`DB_PATH=/app/db/tasks.db`) | Una réplica, un PVC |
 
-Un tercer node pool con GKE Sandbox (gVisor) lo aislaría dentro del cluster, pero contradice los dos pools (`gke-qa` DN11) para una herramienta que se usa a ratos. **Si VA5 demuestra que el agente funciona sin `SYS_ADMIN`**, el servidor podría ir al cluster; el agente seguiría fuera, porque ejecuta código ajeno.
+**El agente corre en un tercer pool, `gvisor`, con GKE Sandbox (gVisor).** Cada pod del pool tiene su propio kernel en espacio de usuario: el `SYS_ADMIN` del agente actúa sobre ese kernel, no sobre el del nodo **(verificar, VA5)**. Es la excepción a los dos pools que `gke-qa` DN11 admite con datos que la justifiquen: código ajeno y privilegiado no comparte kernel con la plataforma. El pool escala a cero: cuando nadie escanea, no hay nodo.
 
-### 5.3 La VM
+**Lo que se concede frente a una VM.** La frontera es el kernel de gVisor, no un hipervisor: un fallo de gVisor deja al atacante en el nodo. Se acepta en `qa` porque ese nodo no aloja nada más (taint del pool, P11), su cuenta de servicio no tiene permisos útiles y no hay ruta desde el agente al resto del cluster (§5.3). Una organización que exija hipervisor tiene la alternativa de DA8.
+
+El **servidor** no necesita privilegios: va a `apps`, con PSS `restricted`, como cualquier otro servicio de capa 5.
+
+### 5.3 En el cluster
 
 | Pieza | Valor |
 |---|---|
-| Máquina | `e2-standard-4` (4 vCPU, 16 GB): el proyecto pide 4 GB, y el agente lanza un navegador sin interfaz |
-| SO | Container-Optimized OS, Shielded VM, sin IP pública (org policies de la landing zone) |
-| Contenedores | `zhuquelab/aig-server` y `zhuquelab/aig-agent` 4.6.4, por digest desde `third-party` (el proyecto publica `latest`); dos unidades de systemd, sin docker-compose |
-| Disco | 50 GiB `pd-balanced` para `db/`, `uploads/` y `logs/`; *snapshot* diario, 7 días |
-| Subred | `/28` propia en la VPC de `qa`, reclamada por el arquetipo en el ledger del entorno (AM §9.5: quien reclama, crea y escribe el firewall) |
-| Firewall | Entrada: solo el rango de IAP (`35.235.240.0/20`) a 8088 y 22. Salida: internet por NAT. **Nada** hacia el cluster ni hacia la subred de nodos |
-| Acceso | Túnel TCP de IAP al puerto 8088 para el grupo `appsec-redteam@`, con `iap.tunnelResourceAccessor` solo sobre esta VM. Cada sesión queda en el log de auditoría |
-| SA de la VM | `qa-aig-vm@`: lector del token `importer-platform-aig` en Secret Manager y lector de `third-party`. Nada más |
-| Claves de modelos | Las introduce el equipo en la interfaz de A.I.G y quedan en su SQLite, en el disco de la VM. Se usan claves de **proyectos de prueba** de cada proveedor, con límite de gasto, nunca las de producción (RA9) |
+| Pool `gvisor` | `sandbox_config { sandbox_type = "gvisor" }`, `e2-standard-4` (el agente lanza un navegador sin interfaz), **0–1 nodos** en una zona, autoescalado. GKE pone el taint `sandbox.gke.io/runtime=gvisor:NoSchedule`; solo el namespace `aig` lo tolera (P11) |
+| SA de los nodos del pool | `gke-gvisor-qa@`, creada por la landing zone (`landing-zone-qa` §6.3): `logging.logWriter`, `monitoring.metricWriter` y lector de `third-party`. Nada más: quien escape de gVisor llega a un nodo vacío con una identidad que no vale nada |
+| Agente | `Deployment` `aig-agent` con **0 réplicas** por defecto; el grupo `appsec-redteam@` lo escala a 1 (RBAC `deployments/scale` solo en `aig`) y el pool levanta un nodo en minutos. `runtimeClassName: gvisor`, `capabilities.add: [SYS_ADMIN]`, seccomp `Unconfined`, `shm` en un `emptyDir` de memoria de 2 GiB; sin Workload Identity y con `automountServiceAccountToken: false`. Admitido solo por P13 |
+| Servidor | `Deployment` `aig-server` en `apps`, una réplica, PSS `restricted`; PVC `pd-balanced` de 50 GiB para `db/`, `uploads/` y `logs/`, con `VolumeSnapshot` diario y 7 días de retención; `Service` `ClusterIP`, **sin `HTTPRoute`** |
+| Imágenes | `zhuquelab/aig-server` y `zhuquelab/aig-agent` 4.6.4, por digest desde `third-party` (el proyecto publica `latest`) |
+| Acceso | `kubectl port-forward` al servidor, por el endpoint DNS del plano de control (IAM `container.clusters.connect`) y RBAC `pods/portforward` en `aig` solo para `appsec-redteam@`. Cada sesión queda en los logs de auditoría de Kubernetes |
+| Red | Namespace `aig` con default-deny (P10). Agente: salida al servidor y a `0.0.0.0/0` **salvo** el `/17` del entorno y el VIP privado — escanea por el NAT hacia los hostnames públicos, que la regla 800 de Cloud Armor admite como al DAST (§4.2); sin entrada. Servidor: entrada solo desde el agente y el conversor |
+| Claves de modelos | Las introduce el equipo en la interfaz de A.I.G y quedan en su SQLite, en el PVC del servidor. Se usan claves de **proyectos de prueba** de cada proveedor, con límite de gasto, nunca las de producción (RA9) |
 
 ### 5.4 Resultados a DefectDojo
 
-DefectDojo no tiene parser de A.I.G. Un temporizador en la VM consulta la API de A.I.G (`GET` de resultados de tareas terminadas), convierte cada hallazgo al formato **Generic Findings Import** (título, severidad, descripción, componente, CVE si la hay, referencias) y lo sube al *product* del servicio escaneado, engagement `ai-redteam`. El conversor es pequeño y vive en `platform-tools` con sus tests **(VA7)**. Los resultados de jailbreak no son vulnerabilidades de un componente: van como un único hallazgo por modelo y conjunto de datos, con la tasa de éxito del ataque, para que el riesgo se acepte o se mitigue en DefectDojo como cualquier otro.
+DefectDojo no tiene parser de A.I.G. Un `CronJob` del namespace `aig`, en `apps` y sin privilegios, consulta la API del servidor (`GET` de resultados de tareas terminadas), convierte cada hallazgo al formato **Generic Findings Import** (título, severidad, descripción, componente, CVE si la hay, referencias) y lo sube al *product* del servicio escaneado, engagement `ai-redteam`, con el token `importer-platform-aig` que materializa ESO. El agente nunca ve ese token. El conversor es pequeño y vive en `platform-tools` con sus tests **(VA7)**. Los resultados de jailbreak no son vulnerabilidades de un componente: van como un único hallazgo por modelo y conjunto de datos, con la tasa de éxito del ataque, para que el riesgo se acepte o se mitigue en DefectDojo como cualquier otro.
 
 ---
 
@@ -302,13 +305,13 @@ DefectDojo no tiene parser de A.I.G. Un temporizador en la VM consulta la API de
 |---|---|---|---|---|
 | `defectdojo` | 4 | `cluster`, `policy`, `ingress` (`http-route`), `secrets` (`eso`), `monitoring`, `database-platform`, `oidc-idp` | `vuln-mgmt` 1.0.0 | `iam` (KSA `qa-defectdojo`, bucket de `media`), `secrets`, `data` / `data-tenant`, `app`, `tenants` (reconciliador: equipos, cuentas, tokens), `frontdoor`, `observability` |
 | `dast` | 5 | `cluster`, `policy`, `secrets` (`eso`), `vuln-mgmt` | — | `secrets`, `jobs` (CronJobs generados de la resolución) |
-| `aig` | 5 | `network`, `vuln-mgmt` | — | `subnet` (claim y firewall), `vm`, `iam` |
+| `aig` | 5 | `cluster`, `policy`, `secrets` (`eso`), `vuln-mgmt` | — | `secrets`, `app` (servidor, agente en `gvisor`, conversor) |
 
 | Entrada por sharing | Productor | Consumidores | Mock |
 |---|---|---|---|
-| `api_url` | `gcp-qa-defectdojo-app` | `dast-jobs`, `aig-vm` | `https://mock-dojo.example.invalid` |
+| `api_url` | `gcp-qa-defectdojo-app` | `dast-jobs`, `aig-app` | `https://mock-dojo.example.invalid` |
 | `internal_service` | `gcp-qa-defectdojo-app` | `dast-jobs` | `mock-defectdojo.mock.svc` |
-| `importer_secret_ids` | `gcp-qa-defectdojo-tenants` | `dast-secrets`, `aig-iam` | `{ "platform-dast" = "mock-secret-dast", "platform-aig" = "mock-secret-aig" }` (mapa, como el real) |
+| `importer_secret_ids` | `gcp-qa-defectdojo-tenants` | `dast-secrets`, `aig-secrets` | `{ "platform-dast" = "mock-secret-dast", "platform-aig" = "mock-secret-aig" }` (mapa, como el real) |
 
 Cada `input` con su `after = ["tag:vuln-mgmt"]` (`CLAUDE.md`: el `after` olvidado es R2).
 
@@ -320,10 +323,11 @@ Cada `input` con su `after = ["tag:vuln-mgmt"]` (`CLAUDE.md`: el `after` olvidad
 |---|---|
 | `assert` de `defectdojo` | `cloudsql.enabled == false` y `postgresql.enabled == false`: la base de datos es la de `database-platform`; `DD_ASYNC_FINDING_IMPORT` activo |
 | `assert` de `dast` | Ningún objetivo fuera de los hostnames del entorno; `zap-full-scan` solo para instancias con `security.dast.active` |
-| `assert` de `aig` | VM sin IP pública; regla de firewall de entrada solo desde `35.235.240.0/20` |
+| `assert` de `aig` | Ningún `HTTPRoute` para el servidor; el agente solo con `runtimeClassName: gvisor` y el selector del pool `gvisor`; `automountServiceAccountToken: false` en el agente |
+| Gatekeeper P13 | Un pod que añade capacidades más allá de `restricted` solo se admite en `aig`, con `runtimeClassName: gvisor` y el selector del pool `gvisor` (`gatekeeper-qa` P13) |
 | G1 | El entorno `prod` no enlaza `dast`. La regla de Cloud Armor de prioridad 800 solo existe en entornos no productivos |
 | G1 | Las listas de entornos de `DRIFT_ENVS`, `first-deploy` y `destroy` cubren también los de `dast-active` (`infra-repo-qa` RR4) |
-| Gatekeeper | Sin reglas nuevas. P2 (registros por digest), P3 (raíz de solo lectura) y P11 (nadie de capa 4–5 en `system`) ya cubren DefectDojo, ZAP y Nuclei |
+| Gatekeeper | P2 (registros por digest), P3 (raíz de solo lectura) y P11 (nadie de capa 4–5 en `system`; solo `aig` en `gvisor`) cubren DefectDojo, ZAP, Nuclei y el servidor de A.I.G. Una regla nueva, P13, para el agente |
 
 ---
 
@@ -333,7 +337,7 @@ Cada `input` con su `after = ["tag:vuln-mgmt"]` (`CLAUDE.md`: el `after` olvidad
 |---|---|---|---|
 | DefectDojo | La única instancia, para todos los entornos (DA2) | No tiene: sus hallazgos van a la de `qa` (engagement `deployed-prod`) | No tiene |
 | DAST | Sí | **Nunca** | Opcional, solo línea base, sin activo |
-| A.I.G | La VM de §5 | No | No |
+| A.I.G | El pool `gvisor` de §5 | No | No |
 | Regla de Cloud Armor para el escáner | Sí | **Nunca** | Solo si se enlaza `dast` |
 
 **DefectDojo en `qa` (DA2).** Es la misma decisión que con SonarQube: las herramientas de los equipos viven en `qa`. Pero DefectDojo guarda el **mapa de vulnerabilidades de producción** en un proyecto no productivo, donde la frontera entre entornos es de nombres y revisión, no de proyecto (`CLAUDE.md`, R54). Se acepta con SSO, permisos por equipo, sin acceso anónimo, auditoría y Cloud Armor. Cuando exista un entorno de herramientas compartidas, DefectDojo y SonarQube se mueven juntos.
@@ -345,8 +349,8 @@ Cada `input` con su `after = ["tag:vuln-mgmt"]` (`CLAUDE.md`: el `after` olvidad
 | # | Riesgo | Probabilidad | Impacto | Mitigación |
 |---|---|---|---|---|
 | RA1 | **El mapa de vulnerabilidades de producción en un proyecto no productivo** | Media | Alta — un atacante en `qa` sabe por dónde entrar en `prod` | SSO y permisos por equipo; sin anónimos; auditoría; mover con SonarQube a un entorno de herramientas (DA2) |
-| RA2 | **A.I.G publicado por error**: no tiene autenticación | Baja con la VM | Alta — cualquiera lanza escaneos o lee resultados | Sin IP pública ni ruta por el borde; firewall solo desde IAP; `assert` |
-| RA3 | **Escape desde el agente de A.I.G**, privilegiado y ejecutando código ajeno | Media | Media — limitado a la VM | VM aislada; SA sin permisos útiles; sin red hacia el cluster |
+| RA2 | **A.I.G publicado por error**: no tiene autenticación | Baja con los controles | Alta — cualquiera lanza escaneos o lee resultados | `Service` `ClusterIP`; ningún `HTTPRoute` (`assert`); acceso solo por `port-forward` con RBAC en `aig` |
+| RA3 | **Escape desde el agente de A.I.G**, privilegiado y ejecutando código ajeno | Media | Media — hasta el kernel de gVisor; con un fallo de gVisor, hasta un nodo que no aloja nada más | GKE Sandbox; pool con taint propio y escalado a cero; SA de nodo sin permisos útiles; sin Workload Identity ni token; red solo hacia el servidor y fuera del `/17`. Una frontera de hipervisor exige la alternativa de DA8 |
 | RA4 | **Cualquier pod de `qa` salta el WAF hacia `qa`** por la regla del escáner | Alta (es el diseño) | Baja en `qa` | La regla solo para los hostnames del entorno; nunca en `prod` (G1) |
 | RA5 | **Un escaneo activo corrompe datos de `qa`** | Media | Media | Activo solo bajo demanda, por instancia que lo active, con aprobación |
 | RA6 | **Ruido**: hallazgos duplicados o que nunca se cierran | Alta sin el modelo de §2.6 | Media — nadie mira DefectDojo | Un test por herramienta con título estable; `reimport-scan` con `close_old_findings`; solo `main` |
@@ -364,7 +368,8 @@ Cada `input` con su `after = ["tag:vuln-mgmt"]` (`CLAUDE.md`: el `after` olvidad
 | VA2 | SSO con Keycloak y grupos en DefectDojo | Un miembro de `team-<x>` entra y ve solo el *product type* de su equipo |
 | VA3 | `media` por el CSI de Cloud Storage FUSE con PSS `restricted` | uwsgi recibe un informe, un worker de otro nodo lo procesa |
 | VA4 | `reimport-scan` de un informe de 50 MB por Cloud Armor, GLB, Envoy y nginx | Importado sin 403 ni 413; la exclusión de `file` es suficiente |
-| VA5 | Agente de A.I.G sin `SYS_ADMIN` ni `seccomp:unconfined` | Lista de módulos que dejan de funcionar |
+| VA5 | Agente de A.I.G en GKE Sandbox | Un pod con `runtimeClassName: gvisor`, `SYS_ADMIN` y seccomp `Unconfined` se admite y arranca; el navegador sin interfaz funciona; los cuatro módulos de §5.1 terminan una tarea. Si alguno no funciona bajo gVisor, se anota cuál y se decide entre prescindir de él o la alternativa de DA8 |
+| VA9 | Aislamiento del agente | Desde el pod del agente: no responde nada del `/17` salvo el servidor; el servidor de metadatos no entrega credenciales; no hay token de ServiceAccount montado |
 | VA6 | Regla de Cloud Armor de prioridad 800 con las IPs del NAT | ZAP completa la línea base sin bloqueos; desde otra IP, `scannerdetection` sigue bloqueando |
 | VA7 | Conversor de A.I.G a Generic Findings Import | Un escaneo de vLLM y uno de MCP aparecen como hallazgos con severidad y referencias |
 | VA8 | Trivy con `TRIVY_DB_REPOSITORY` y `TRIVY_JAVA_DB_REPOSITORY` en Artifact Registry | Un escaneo sin acceso a registros externos encuentra las mismas CVEs |
@@ -383,6 +388,9 @@ Pregunta abierta **QA1**: usuarios de prueba de Entra para el DAST autenticado (
 | `network-qa` DW3 | NAT de `qa` en `MANUAL_ONLY` con 2 IPs reservadas, claim `nat-egress` | Propuesto (DA7) |
 | `edge-qa` §3 | Regla de prioridad 800: `allow` desde las IPs del NAT del entorno hacia sus hostnames; exclusiones del campo `file` en las rutas de importación de DefectDojo | Propuesto (DA7) |
 | `gke-qa` §4 | Addon `GcsFuseCsiDriver` | Propuesto (DA5) |
+| `gke-qa` §5.1 | Pool `gvisor` (GKE Sandbox, 0–1 nodos) como excepción documentada de DN11 | **Aplicado** (DA8) |
+| `gatekeeper-qa` P11, P13 | Dueños del pool `gvisor`; regla P13 para pods privilegiados solo en gVisor | **Aplicado** (DA8) |
+| `landing-zone-qa` §6.3 | SA `gke-gvisor-<env>@` con tres roles | **Aplicado** (DA8) |
 | `infra-repo-qa` §5 | Workflows `appsec-infra.yml`, `appsec-deployed.yml` y `dast-active.yml`; Environment `qa-dast`; `image-mirror` copia también `trivy-db` y `trivy-java-db` | Propuesto |
 | `landing-zone-qa` §5.1, §6.2 | Imágenes de DefectDojo, ZAP, Nuclei y A.I.G en `images/third-party.yaml`; identidad de solo lectura `image-scan@`, a la que llegan los repositorios de aplicación por el proveedor `github-apps` — `github-oidc` solo admite `infra` | Propuesto |
 
@@ -392,14 +400,14 @@ Pregunta abierta **QA1**: usuarios de prueba de Entra para el DAST autenticado (
 
 | # | Decisión | Estado | Recomendación | Alternativa |
 |---|---|---|---|---|
-| DA1 | Dónde corre cada herramienta | Propuesta | Análisis estático en CI; DefectDojo y DAST en el cluster (`apps`); A.I.G en una VM aislada | Todo en el cluster |
+| DA1 | Dónde corre cada herramienta | Propuesta | Análisis estático en CI; DefectDojo, DAST y el servidor de A.I.G en el cluster (`apps`); el agente de A.I.G en el pool `gvisor` | A.I.G en una VM aislada |
 | DA2 | Dónde vive DefectDojo | Propuesta | En `qa`, una instancia para todos los entornos, como SonarQube | Un entorno de herramientas, aún inexistente |
 | DA3 | Base de datos | Consecuencia | Proveedor global de `database-platform` (Cloud SQL en `qa`), con Auth Proxy v2 | PostgreSQL del chart |
 | DA4 | Valkey | Propuesta | Componente en el cluster, sin persistencia | Memorystore cuando haya proveedor de `cache` |
 | DA5 | Ficheros de `media` | Propuesta | Bucket por el CSI de Cloud Storage FUSE | Filestore; un pod con disco RWO |
 | DA6 | Qué se importa | Propuesta | Solo `main`, programado y manual desde `main`; `reimport-scan` con `close_old_findings` | Todo, incluidas las PR |
 | DA7 | Camino del DAST | Propuesta | Por el borde, con regla de Cloud Armor para 2 IPs de NAT reservadas | Directo a Envoy dentro del cluster |
-| DA8 | A.I.G | Propuesta | VM aislada, sin IP pública, acceso por IAP | Excepción en el cluster; pool con GKE Sandbox |
+| DA8 | A.I.G | **Revisada** (revisión 2) | Agente en un pool `gvisor` con GKE Sandbox, escalado a cero, SA de nodo sin permisos y P13; servidor en `apps` sin `HTTPRoute`; acceso por `port-forward` | VM aislada sin IP pública, acceso por IAP: frontera de hipervisor, para organizaciones que la exijan; excepción en `apps`: nunca |
 | DA9 | Contrato | Propuesta | Capacidad nueva `vuln-mgmt` 1.0.0; bloque `security.dast` en el manifiesto | DefectDojo como aplicación sin contrato; objetivos de DAST a mano |
 
 ---
@@ -408,10 +416,10 @@ Pregunta abierta **QA1**: usuarios de prueba de Entra para el DAST autenticado (
 
 | Fase | Contenido | Criterio de salida | Estimación |
 |---|---|---|---|
-| **0 · Verificaciones** | VA1, VA3, VA5 en un efímero | Contexto de seguridad de DefectDojo y de `media` decidido; A.I.G confirmado fuera del cluster | 1 día |
+| **0 · Verificaciones** | VA1, VA3, VA5, VA9 en un efímero | Contexto de seguridad de DefectDojo y de `media` decidido; el agente de A.I.G funciona en GKE Sandbox y está aislado | 1 día |
 | **1 · DefectDojo** | Arquetipo `defectdojo`, Cloud SQL, SSO, reconciliador de equipos; VA2, VA4 | Un equipo entra por SSO y una importación manual aparece en su producto | 3 días |
 | **2 · CI** | `appsec.yml` y `defectdojo-upload` en `ci-workflows`; copia de la base de Trivy; `appsec-infra.yml`, `appsec-deployed.yml`; VA8 | Tres repositorios piloto suben en cada merge; el escaneo nocturno de lo desplegado funciona | 2 días |
 | **3 · DAST** | NAT y regla de Cloud Armor (DA7); arquetipo `dast`; imagen de Nuclei; VA6 | Línea base nocturna de los tres pilotos en DefectDojo | 2 días |
-| **4 · A.I.G** | Arquetipo `aig`, VM, IAP, conversor; VA7 | Un escaneo de un servicio de IA de `qa` aparece en DefectDojo | 2 días |
+| **4 · A.I.G** | Pool `gvisor` (`gke-qa`), P13, arquetipo `aig`, conversor; VA7 | Un escaneo de un servicio de IA de `qa` aparece en DefectDojo | 2 días |
 
 Diez días para una persona, sin contar QA1, que depende del equipo de identidad.

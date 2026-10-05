@@ -43,10 +43,10 @@ T=dict(
  aria="Life-cycle security on qa: blocks",
  arch="archetypes/{defectdojo,dast,aig}", kind="layers 4-5 · vuln-mgmt 1.0.0",
  title="Life-cycle security on qa — DefectDojo, DAST and A.I.G",
- subtitle="four phases · CI scans · the cluster only hosts DefectDojo and the DAST jobs · A.I.G on an isolated VM · nothing against prod",
+ subtitle="four phases · CI scans · DefectDojo, DAST and A.I.G in the cluster · A.I.G's agent on a gVisor pool · nothing against prod",
  left="From the platform", left_sub="layers 1-4",
- caps=[("cluster · apps","DefectDojo, ZAP and Nuclei",False),("database-platform","its own Cloud SQL",False),("oidc-idp","Keycloak · tenant client",False),
-       ("secrets · eso","tokens in Secret Manager",False),("network","NAT · the VM's subnet",False)],
+ caps=[("cluster","apps · gvisor (GKE Sandbox)",False),("database-platform","its own Cloud SQL",False),("oidc-idp","Keycloak · tenant client",False),
+       ("secrets · eso","tokens in Secret Manager",False),("network","NAT · Cloud Armor 800",False)],
  cols=["1 · CI","2 · Consolidate","3 · DAST","4 · AI"],
  blocks=[
   [("sonarqube","SAST and quality gate",["scanner in CI","server already proposed","API Import to DefectDojo"]),
@@ -58,15 +58,15 @@ T=dict(
   [("zap","Baseline and API",["passive every night","API with OpenAPI","full: on demand"]),
    ("nuclei","Pinned templates",["weekly, medium or above","no dos, fuzz, intrusive","image per version"]),
    ("edge","Through the public edge",["Cloud Armor, priority 800","NAT MANUAL_ONLY · 2 IPs","targets from resolution"])],
-  [("vm","Isolated from the cluster",["SYS_ADMIN, no seccomp","no public IP · COS","its own /28 subnet"]),
-   ("iap","Access by tunnel",["8088 only through IAP","appsec-redteam@","nothing towards the cluster"]),
+  [("gvisor","A GKE Sandbox pool",["agent with SYS_ADMIN","a kernel per pod","0-1 nodes, scaled to zero"]),
+   ("access","No edge",["server on apps, ClusterIP","port-forward with RBAC","no network to the /17"]),
    ("import","Generic Findings",["scheduled converter","importer-platform-aig","keys with a spend limit"])]],
  right="Provides", right_sub="vuln-mgmt 1.0.0",
  items=[("teams","reusable appsec.yml","a product type per team"),("security","deduplicated findings","SLA and accepted risks"),
         ("prod","no DefectDojo of its own","engagement deployed-prod"),("nightly","CVEs after the build","on what is deployed")],
  controls="Controls",
  ctrl=[("assert","database-platform's DB"),("G1","prod does not bind dast"),("Gatekeeper","P2 · P3 · P11"),
-       ("Cloud Armor","rule 800 non-prod only"),("IAP","VM without public IP")],
+       ("Cloud Armor","rule 800 non-prod only"),("P13","privileges only on gVisor")],
  foot="docs/en/proposals/appsec-qa/README.md")
 
 o.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="{e(T["aria"])}">')

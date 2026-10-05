@@ -382,7 +382,7 @@ The landing zone grants `artifactregistry.reader` to `qa`'s node SA and `cryptoK
 | B. The `gke` stack makes the grant | `qa`'s identity would need `setIamPolicy` on a landing zone repository, and with it could grant access to other environments' images |
 | C. A project-level grant (`artifactregistry.reader` on `disasterproject-lz`) | Any SA with that role reads every repository, including those not meant for it |
 
-**Decision (DZ5, approved):** A. `gke-qa` §3 receives the node SA as a landing zone global.
+**Decision (DZ5, approved):** A. `gke-qa` §3 receives the node SA as a landing zone global. The same holds for the `gvisor` pool's node SA, `gke-gvisor-<env>@`, created only for environments that bind an archetype needing it (`appsec-qa` DA8): `logging.logWriter`, `monitoring.metricWriter` and `artifactregistry.reader` on `third-party`, nothing else — whoever escapes gVisor reaches an identity worth nothing.
 
 ---
 

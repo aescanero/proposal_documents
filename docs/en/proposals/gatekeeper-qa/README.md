@@ -109,8 +109,9 @@ Source: [`diagrams/05-propiedad.mmd`](diagrams/05-propiedad.mmd)
 | P8 | Identity annotation | `ServiceAccount` | `iam.gke.io/gcp-service-account`. The platform uses direct Workload Identity on the KSA's principal; that annotation would let a KSA impersonate a GCP service account | S2 §5.1, R15 | `deny` |
 | P9 | Anonymous access | `RoleBinding`, `ClusterRoleBinding` | Subjects `system:anonymous` or `system:unauthenticated` | — | `deny` |
 | P10 | Default `NetworkPolicy` | `Namespace` (referential) | A tenant namespace without a default-deny `NetworkPolicy` | Every proposal | **Audit only**: the policy arrives after the namespace in the same deployment |
-| P11 | Tolerations for tainted pools | `Pod` and workload templates | A toleration for a pool's taint from a namespace that does not belong to its owners (the binding's `cluster.node_pools[].owners`, along the §7.1 path). With two pools (GKE DN11), the only tainted one is `system`, and its owners are the layer 2b and 3 archetypes plus `kube-system` | GKE proposal §5.3, RN5 | `deny` |
+| P11 | Tolerations for tainted pools | `Pod` and workload templates | A toleration for a pool's taint from a namespace that does not belong to its owners (the binding's `cluster.node_pools[].owners`, along the §7.1 path). With two pools (GKE DN11), the only tainted one is `system`, and its owners are the layer 2b and 3 archetypes plus `kube-system`; where the `gvisor` pool exists, its only owner is the archetype that needs it (`aig`, `appsec-qa` DA8) | GKE proposal §5.3, RN5 | `deny` |
 | P12 | Environment prefix on KSAs | `ServiceAccount` | A name starting with the prefix of **another** environment of the same project (`dev-`, `demos-`, `sandbox-`… in the `qa` cluster). The Workload Identity pool is one per project: without this rule, a `qa-eso-sonarqube` KSA created in the `dev` cluster would be `qa`'s identity in GCP | `CLAUDE.md`, R54 | `deny` |
+| P13 | Privileges only on gVisor | `Pod` and workload templates | A container that adds capabilities beyond PSS `restricted`, or runs with seccomp `Unconfined`, outside a namespace owning the `gvisor` pool, without `runtimeClassName: gvisor` or without that pool's selector. The privilege then acts on gVisor's kernel, never on the node's | `appsec-qa` DA8, GKE §5.1 | `deny` |
 
 ### 4.2 Provider rules (each deploys its own)
 
@@ -311,7 +312,7 @@ The archetype version stays at **1.0.0**, the one the bindings pin; the contract
 | Stack | Contents | Inputs via sharing |
 |---|---|---|
 | `controller` | Namespace `gatekeeper-system`; `helm_release` of Gatekeeper (§2.1) with CRDs with `keep`; `Config` with exclusions and its own `SyncSet`; `NetworkPolicy` | `cluster_endpoint`, `cluster_ca` |
-| `library` | Own chart with the `ConstraintTemplate`s and `Constraint`s of P1–P12, with parameters generated from the registry (§7.1) | `cluster_*` |
+| `library` | Own chart with the `ConstraintTemplate`s and `Constraint`s of P1–P13, with parameters generated from the registry (§7.1) | `cluster_*` |
 | `exemptions` | The exception parameters of P3, P5 and P6, generated from `resolution.json` (§5.1) | `cluster_*` |
 
 **Why three stacks.** An engine upgrade must not touch the rules; a rules change must not reinstall the engine; and a consumer's new exception must not replan either the engine or the rules. Each has its own owner in `CODEOWNERS`: platform, platform and security, and security.
@@ -454,7 +455,7 @@ The monitoring archetype declares the rules (monitoring §5.1), for the same cyc
 |---|---|---|---|
 | **0 · Prerequisites** | `qa` GKE; **VP1**, VP10 | Webhook reachable | 1 day |
 | **1 · Engine** | `controller` | Webhook with 3 replicas, audit, exclusions; **VP4**, **VP5** | 1 day |
-| **2 · Core rules** | `library` with P1–P12 in `dryrun`; `registry-generate` of the parameters; `gator` in CI | **VP2**, **VP3**, **VP9**; audit report reviewed | 2 days |
+| **2 · Core rules** | `library` with P1–P13 in `dryrun`; `registry-generate` of the parameters; `gator` in CI | **VP2**, **VP3**, **VP9**; audit report reviewed | 2 days |
 | **3 · Exceptions and promotion** | `exemptions`; `admission_exceptions` in the registry; promotion to `deny` of what was reviewed; measurement of the shared Rego | **VP8**; P1, P2, P4–P9 in `deny` | 2 days |
 | **4 · Providers** | Each provider deploys its rules with its own archetype; **VP6**, **VP7** | `gator test` of every chart green | With each provider |
 

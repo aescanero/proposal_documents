@@ -164,6 +164,8 @@ All: 64 pods per node, `COS_CONTAINERD`, Shielded, `GKE_METADATA`, SA `gke-nodes
 
 **`vm.max_map_count` on all of `apps`.** Elasticsearch, inside SonarQube, requires it; with a `sonar` pool only its node had it. On `apps` every node carries it: raising the limit on mapped memory areas does not change the behaviour of a process that does not use them, and SonarQube can schedule on any node of the pool in its zone.
 
+**The one documented third pool: `gvisor`.** Where an archetype must run third-party code with privileges — A.I.G's agent, with `SYS_ADMIN` (`appsec-qa` §5, DA8) — it goes on a third pool with GKE Sandbox (`sandbox_config { sandbox_type = "gvisor" }`): each pod gets its own user-space kernel, so the privilege never reaches the node's. `e2-standard-4`, **0–1 nodes** in one zone, autoscaled to zero; GKE's taint `sandbox.gke.io/runtime=gvisor:NoSchedule`, tolerated only by its owners (P11); its own node SA, `gke-gvisor-<env>@`, created by the landing zone with logging, metrics and `third-party` read only. It is the data-backed exception of DN11, not a third general pool: nothing else is scheduled there, and an environment that binds no such archetype has no `gvisor` pool.
+
 **What is lost compared with dedicated pools**, and why it is accepted on `qa`:
 
 | Pool that goes away | It gave | With two pools | Mitigation |
