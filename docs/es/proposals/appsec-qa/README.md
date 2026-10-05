@@ -7,7 +7,7 @@
 | **Por qué ahora** | SonarQube ya tiene propuesta y Checkov ya está en las puertas G1/G2 del pipeline de infraestructura, pero cada herramienta deja sus resultados en su sitio. Nadie ve el conjunto de una aplicación, ni lo que cambia entre dos versiones, ni qué se aceptó como riesgo |
 | **Base** | `sonarqube-qa` (E1, E2) y su variante Cloud SQL; `keycloak-qa` §6 (clientes como tenant resources); `postgres-cloudsql-qa`; `edge-qa` §3 (Cloud Armor); `network-qa` (Cloud NAT, DW3); `gke-qa` §5 (pools `system` y `apps`, DN11); `gatekeeper-qa`; `cmdb-qa` (mitad observada); `infra-repo-qa` (workflows); `landing-zone-qa` §6 (copia de imágenes) |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `developer-guide.md` (DG §n) |
-| **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano |
+| **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano. `diagrams/03-presentation-blocks.svg` (1920×1080, para presentaciones) se genera con `03-presentation-blocks.py`, no con Mermaid |
 | **Identificadores propios** | Decisiones `DA1…`, riesgos candidatos `RA1…`, verificaciones `VA1…`, preguntas `QA1…` |
 
 ![Ciclo de vida](diagrams/01-ciclo.svg)
@@ -22,6 +22,10 @@ No reabre ninguna decisión de `CLAUDE.md`. Al llevar el esquema pedido a `qa` a
 4. **Un DAST que pasa por el borde público prueba Cloud Armor, no la aplicación.** Las reglas OWASP y `scannerdetection` bloquean a ZAP y Nuclei, y el límite por IP los frena. Hace falta una regla de Cloud Armor que deje pasar al escáner, y eso exige que su IP de salida sea fija (§4.2).
 5. **DefectDojo con resultados de PR es ruido.** Cada PR produciría hallazgos que se cierran en el siguiente push. En DefectDojo solo entra lo que está en `main` y lo que encuentran los escaneos programados; los resultados de una PR se quedan en la PR, como puerta (DA6).
 6. **Escanear la imagen al construirla no basta.** Una CVE publicada después del build no aparece en ningún escaneo de CI: la imagen ya no se reconstruye, se promueve (DG §5). Un escaneo nocturno de los **digests desplegados**, sacados de la CMDB, cierra ese hueco (§3.4).
+
+![Seguridad del ciclo de vida, en bloques](diagrams/03-presentation-blocks.svg)
+
+Fuente: [`diagrams/03-presentation-blocks.py`](diagrams/03-presentation-blocks.py) — vista de presentación; el detalle está en §0–§8.
 
 ---
 
