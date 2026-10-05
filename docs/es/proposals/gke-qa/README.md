@@ -109,6 +109,8 @@ Private Google Access se activa en la subred de nodos: la crea `gke`, así que l
 
 GKE crea la regla que deja al plano de control llegar a los nodos por **443 y 10250**. Por eso todos los webhooks de la plataforma escuchan en 10250 (Gatekeeper RP1, ESO RE3, monitorización VM3, CNPG VO1). El arquetipo no añade reglas: cualquier otro puerto de webhook necesitaría una, y los `assert` de cada proveedor lo impiden **(verificar con PSC, VN2)**.
 
+**La otra dirección.** La VPC deniega el egress por defecto (`network-qa` DW6). Los nodos llegan al plano de control por el permiso interno del entorno: con PSC su endpoint privado es una dirección de la subred de nodos, dentro del `/17` **(verificar, VN2)**. El `/28` de un cluster con peering queda fuera, y entonces este arquetipo escribe el permiso de egress hacia él a tcp 443 y **8132** — el túnel de konnectivity por el que el plano de control llega a los webhooks, a `logs` y a `exec`; sin 8132 todos los webhooks de admisión expiran.
+
 ---
 
 ## 3. Seguridad de nodos e identidad

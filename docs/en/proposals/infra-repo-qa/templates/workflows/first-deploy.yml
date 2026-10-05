@@ -5,19 +5,43 @@ on:
     inputs:
       env:
         description: Environment deployed for the first time
-        type: choice
-        options: [landing-zone, qa, prod]      # extended when each environment is onboarded
+        type: string                           # validated below; no list of environments here (multi-environment DX8)
+        required: true
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
-  apply:
+  validate:                                    # no environment and no credentials: the input is text until checked
     runs-on: ubuntu-latest
-    environment: ${{ inputs.env }}
+    permissions: { contents: read, actions: read }
+    outputs:
+      env: ${{ steps.v.outputs.env }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          ENV_NAME: ${{ inputs.env }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$ENV_NAME" =~ ^[a-z][a-z0-9-]{0,17}[a-z0-9]$ ]] || { echo "::error::invalid environment name"; exit 1; }
+          [ "$ENV_NAME" = landing-zone ] || [ -f "environments/$ENV_NAME/binding.yaml" ] \
+            || { echo "::error::'$ENV_NAME' is not an environment"; exit 1; }
+          # a job that names a missing Environment gets one created on the fly, unprotected (multi-environment DX9)
+          gh api "repos/$GITHUB_REPOSITORY/environments/$ENV_NAME" \
+            --jq '(.protection_rules | length > 0) and (.deployment_branch_policy != null)' | grep -qx true \
+            || { echo "::error::GitHub Environment '$ENV_NAME' missing or unprotected"; exit 1; }
+          echo "env=$ENV_NAME" >> "$GITHUB_OUTPUT"
+
+  apply:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: ${{ needs.validate.outputs.env }}
+    env:
+      ENV_NAME: ${{ needs.validate.outputs.env }}
     concurrency:
-      group: deploy-${{ inputs.env }}
+      group: deploy-${{ needs.validate.outputs.env }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
@@ -27,39 +51,37 @@ jobs:
         run: |
           [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::first-deploy only runs from main"; exit 1; }
           ./ci/fetch-observed.sh
-          if git show "origin/cmdb-observed:cmdb-data/observed/deployed/${{ inputs.env }}.json" >/dev/null 2>&1; then
-            echo "::error::${{ inputs.env }} already has a deploy marker: deploy applies its changes"
+          if git show "origin/cmdb-observed:cmdb-data/observed/deployed/$ENV_NAME.json" >/dev/null 2>&1; then
+            echo "::error::$ENV_NAME already has a deploy marker: deploy applies its changes"
             exit 1
           fi
 
       - uses: ./.github/actions/setup
         with:
           identity: tf-apply
-          env: ${{ inputs.env }}
+          env: ${{ needs.validate.outputs.env }}
 
       - name: Generated code is current
         run: terramate generate --detailed-exit-code
 
       - name: Staged apply
         id: apply
-        env:
-          ENV: ${{ inputs.env }}
         run: |
-          if [ "$ENV" = landing-zone ]; then
+          if [ "$ENV_NAME" = landing-zone ]; then
             # no clusters: one ordered pass, without the bootstrap (DZ8)
             terramate script run --tags landing-zone --no-tags bootstrap tofu deploy
           else
             # a consumer's provider cannot reach a cluster that does not exist yet: by layers
             for layer in network cluster platform-services; do
-              terramate script run --tags "gcp:$ENV:$layer" tofu deploy
+              terramate script run --tags "gcp:$ENV_NAME:$layer" tofu deploy
             done
-            terramate script run --tags "$ENV" tofu deploy   # instances and whatever remains
+            terramate script run --tags "$ENV_NAME" tofu deploy   # instances and whatever remains
           fi
 
       - name: CMDB observations
         if: ${{ !cancelled() }}
         run: |
-          terramate run --tags "${{ inputs.env }}" --no-tags bootstrap -- \
+          terramate run --tags "$ENV_NAME" --no-tags bootstrap -- \
             archetypectl cmdb observe --out "$RUNNER_TEMP/observed"
 
       - name: First deploy marker
@@ -67,12 +89,12 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/observed/deployed"
           jq -n --arg sha "$GITHUB_SHA" --argjson run "$GITHUB_RUN_NUMBER" '{sha: $sha, run: $run}' \
-            > "$RUNNER_TEMP/observed/deployed/${{ inputs.env }}.json"
+            > "$RUNNER_TEMP/observed/deployed/$ENV_NAME.json"
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: cmdb-observed-${{ github.run_id }}-${{ inputs.env }}
+          name: cmdb-observed-${{ github.run_id }}-${{ needs.validate.outputs.env }}
           path: ${{ runner.temp }}/observed
 
   cmdb:

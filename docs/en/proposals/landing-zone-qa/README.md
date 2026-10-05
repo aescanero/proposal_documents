@@ -77,11 +77,11 @@ The procedure for steps 2 and 3 is kept in the deployment repository as `docs/ru
 |---|---|---|
 | Project | `disasterproject-lz` | Directly under the organisation, not in a folder: that way no later stack moves it and changes its org policy inheritance. The organisation's billing account |
 | APIs | `storage`, `cloudkms`, `iam`, `iamcredentials`, `sts`, `cloudresourcemanager`, `serviceusage`, `cloudbilling`, `orgpolicy` | Those used by steps 2–6 themselves. The environment projects' APIs are enabled by `gcp-lz-projects` (§2.1) |
-| State bucket | `disasterproject-tfstate-gcp` | `europe-west1`; uniform access; public access prevention enforced; versioning, noncurrent versions kept 30 days; `prevent_destroy` |
+| State bucket | `disasterproject-tfstate-gcp` | `europe-west1`; uniform access; public access prevention enforced; versioning, noncurrent versions kept 30 days; `prevent_destroy`. It is the `eu` jurisdiction's bucket: each jurisdiction has its own, in one of its regions (`multi-environment` DX4) |
 | Audit of state reads | `google_project_iam_audit_config` on `disasterproject-lz`, service `storage.googleapis.com`, `DATA_READ` and `DATA_WRITE` | Answers *who read the state*: Cloud Audit Logs, which no bucket setting can switch off. **Not** GCS bucket access logging: it requires granting the bucket to `group:cloud-storage-analytics@google.com`, which `iam.allowedPolicyMemberDomains` (§3.1) forbids; without that grant a `logging` block is configured and inert — no log is ever written and the code looks right |
 | Key ring and key | `lz` / `tofu-state` | `europe-west1`; 90-day rotation; `prevent_destroy`. Environment key rings are created by `gcp-lz-kms` (§4) |
-| Federation pool and provider | `gh-disasterproject-infra` / `github-oidc` | `attribute_condition` on the repository **and** the numeric `repository_owner_id` (architecture §11.2); mapping of `repository`, `environment` and `ref` |
-| Identities | `tf-plan-lz@`, `tf-apply-lz@`, `tf-destroy-lz@` | In `disasterproject-lz`. `tf-plan-lz@` ← `attribute.repository/disasterproject/infra`; `tf-apply-lz@` ← `attribute.environment/landing-zone`; `tf-destroy-lz@` ← `attribute.environment/landing-zone-destroy` |
+| Federation pool and provider | `gh-disasterproject-infra` / `github-oidc` | `attribute_condition` on the repository **and** the numeric `repository_owner_id` (architecture §11.2); mapping of `repository`, `environment`, `ref` and `env_ref` (`multi-environment` DX9) |
+| Identities | `tf-plan-lz@`, `tf-apply-lz@`, `tf-destroy-lz@` | In `disasterproject-lz`. `tf-plan-lz@` ← `attribute.repository/disasterproject/infra`; `tf-apply-lz@` ← `attribute.env_ref/landing-zone@refs/heads/main`; `tf-destroy-lz@` ← `attribute.env_ref/landing-zone-destroy@refs/heads/main` |
 | Grants to `tf-apply-lz@` | Organisation: `resourcemanager.folderCreator` (not `folderAdmin`, which carries `setIamPolicy` on every project in the folder), `resourcemanager.projectCreator`, `orgpolicy.policyAdmin`, `iam.organizationRoleAdmin`; billing account: `billing.user`; `disasterproject-lz`: `cloudkms.admin`, `artifactregistry.admin`, `dns.admin`, `iam.serviceAccountAdmin`; bucket: `storage.admin` | `storage.admin` on the bucket, not the project: it is what lets it set the per-prefix conditions on the environment identities (§5.1). On each environment project, `resourcemanager.projectIamAdmin` **bounded by role** (DZ13): one binding per chunk of ≤10 roles of `global.identities`, each with `api.getAttribute('iam.googleapis.com/modifiedGrantsByRole', []).hasOnly([...])`. It can grant exactly the roles the platform's identities hold and nothing else — not `owner`, not `editor`, not itself |
 | Grants to `tf-plan-lz@` | Organisation: `browser`, `orgpolicy.policyViewer`, `iam.securityReviewer`; `disasterproject-lz`: the enumerated read list of §5.1, **never `roles/viewer`** (DZ14); bucket: read on the `lz/` prefix with the listing half of the condition (§5.1) | Read-only, for the landing zone's preview and drift |
 | Grants on `tofu-state` | `cryptoKeyEncrypterDecrypter` to the three `lz` identities | Per key, never per key ring |
@@ -253,6 +253,8 @@ Every entry is a consequence stated up front rather than discovered on the first
 
 Org policies apply per folder (§3), so `nonprod` and `prod` can differ without repeating the list.
 
+**Jurisdictions.** The `nonprod` and `prod` folders above are those of the `eu` jurisdiction, under a folder `eu` that carries its `gcp.resourceLocations`. Another jurisdiction is another folder with its own `nonprod` and `prod`, its own non-production project and its own state bucket, all read from `global.lz.jurisdictions`, the only list of them (`multi-environment` DX4). `disasterproject-lz` stays in `platform` and hosts what every jurisdiction shares: rings, regional registries, federation.
+
 **When the non-prod project reaches a limit** (CPU quotas, IPs, SAs per project), `disasterproject-nonprod-2` is added in the same folder and new environments go there; none is split across two projects (`CLAUDE.md`). The environment's binding already carries `platform.project_id`, so moving it is changing that value and rebuilding, not redesigning.
 
 ### 2.1 APIs of the non-prod project
@@ -280,7 +282,7 @@ Those listed in `network-qa` §1.1, enabled by the `gcp-lz-projects` stack with 
 | `sql.restrictPublicIp` | Enforce | `nonprod`, `prod` | Cloud SQL through PSA only |
 | `storage.publicAccessPrevention` | Enforce | All | No public bucket, the state bucket included |
 | `storage.uniformBucketLevelAccess` | Enforce | All | Bucket IAM with per-prefix conditions (§5.1) |
-| `gcp.resourceLocations` | `in:europe-west1-locations` (and `global` for what is not regional) | All | Residency; KMS and buckets must also match the cluster (S1 §4.14) |
+| `gcp.resourceLocations` | The jurisdiction's regions — `in:europe-west1-locations` for `eu` — and `global` for what is not regional | Each jurisdiction's folder; `platform` with the union of all of them | Residency; KMS and buckets must also match the cluster (S1 §4.14; `multi-environment` DX4) |
 | `cloudkms.minimumDestroyScheduledDuration` | 30 days | `platform` | Rescue window for a key version (S1 §4.14) |
 | `run.allowedIngress` | `internal-and-cloud-load-balancing` | `nonprod`, `prod` | R14; see §3.2 |
 
@@ -306,7 +308,7 @@ S1 §4.14's design applies as is; here is where and who.
 | Piece | Value |
 |---|---|
 | Project | `disasterproject-lz` |
-| Key ring | One per environment: `qa`, in `europe-west1` (the etcd key must be in the cluster's location). Plus `lz`, from the bootstrap |
+| Key ring | One per environment, **in that environment's region** (the etcd key must be in the cluster's location, and a ring has one location): `qa` in `europe-west1`. Plus `lz`, from the bootstrap, in `global.lz.region` |
 | `qa` keys | `tofu-state`, `gke-secrets`, `cosign` (S1 §4.14). The optional `gcs-cmek` and `secrets-cmek` are not created on `qa` |
 | Grants | On **each key**, never on the key ring or the project: `tofu-state` → `tf-plan-qa@`, `tf-apply-qa@`, `tf-destroy-qa@`; `gke-secrets` → the GKE agent of `disasterproject-nonprod`; `cosign` → the build identity |
 | Protection | `prevent_destroy`; no environment identity has `cloudkms.admin`; version destruction with a 30-day minimum (§3.1) |
@@ -324,11 +326,11 @@ All in `disasterproject-lz`, not in the environment's project: so a `qa` identit
 | Identity | Principal that uses it (federation) | Permissions, on `disasterproject-nonprod` unless stated |
 |---|---|---|
 | `tf-plan-qa@` | `attribute.repository/disasterproject/infra` (any branch) | An **enumerated** read list — `compute.viewer`, `compute.networkViewer`, `container.viewer`, `dns.reader`, `iam.serviceAccountViewer`, `iam.roleViewer`, `certificatemanager.viewer`, `cloudkms.viewer`, `secretmanager.viewer` (metadata only), `cloudsql.viewer`, `monitoring.viewer`, `serviceusage.serviceUsageViewer` — **never `roles/viewer`** (DZ14): this identity is reachable from any pull request, and `roles/viewer` reads every service's configuration. Never `secretmanager.secretAccessor`, never `cryptoKeyDecrypter` beyond its own `tofu-state`. Read of the state bucket's `qa/` prefix; `qa`'s `tofu-state` |
-| `tf-apply-qa@` | `attribute.environment/qa` (only with the GitHub Environment `qa`) | The roles of architecture §11.2; write on the `qa/` prefix; `dns.admin` **on `qa`'s zone**; `qa`'s `tofu-state` |
-| `tf-destroy-qa@` | `attribute.environment/qa-destroy` (an Environment with another approver group) | Like `tf-apply-qa@`, plus the `delete`s it does not have (architecture §11.4) |
+| `tf-apply-qa@` | `attribute.env_ref/qa@refs/heads/main` (only with the GitHub Environment `qa`, and only on `main`: `multi-environment` DX9) | The roles of architecture §11.2; write on the `qa/` prefix; `dns.admin` **on `qa`'s public zone**, and on the project only **conditioned on `qa`'s zone prefix** for its private zones (`network-qa` §6, DW8); `qa`'s `tofu-state` |
+| `tf-destroy-qa@` | `attribute.env_ref/qa-destroy@refs/heads/main` (an Environment with another approver group) | Like `tf-apply-qa@`, plus the `delete`s it does not have (architecture §11.4) |
 | `tf-plan-lz@` | `attribute.repository/disasterproject/infra` | Read on the organisation and the `lz/` prefix; the landing zone's preview and drift (§1.1) |
-| `tf-apply-lz@` | `attribute.environment/landing-zone` | Organisation, folders, projects, KMS, Artifact Registry, parent zone. Landing zone only; created by the bootstrap (§1.1) |
-| `tf-destroy-lz@` | `attribute.environment/landing-zone-destroy` | Like `tf-apply-lz@`, with a different approver group |
+| `tf-apply-lz@` | `attribute.env_ref/landing-zone@refs/heads/main` | Organisation, folders, projects, KMS, Artifact Registry, parent zone. Landing zone only; created by the bootstrap (§1.1) |
+| `tf-destroy-lz@` | `attribute.env_ref/landing-zone-destroy@refs/heads/main` | Like `tf-apply-lz@`, with a different approver group |
 | `cmdb-reader@` | Reconciliation job (`cmdb-qa` §7) | `cloudasset.viewer` on `disasterproject-nonprod` |
 | `image-mirror@` | Image copy workflow (§6.2) | `artifactregistry.writer` on the `third-party` repository |
 | `image-build@` | Build workflow | `artifactregistry.writer` on `apps`; `signerVerifier` on `cosign` |
@@ -338,7 +340,7 @@ All in `disasterproject-lz`, not in the environment's project: so a `qa` identit
 
 **One list of roles, read twice.** The roles of every pipeline and node identity live once, in `global.identities` (apply, plan, node). `gcp-lz-identities` grants them, and the bound on `tf-apply-lz@`'s IAM administration (DZ13) is generated from the same list: a role added to one place and not the other fails with a 403, by design, instead of drifting. Roles for log-based alerts are the custom `logNotificationRuleEditor` (`logging.notificationRules.*`), never `logging.configWriter`, which also creates **sinks** — a channel to export every log.
 
-**Committed federation coordinates (DZ12).** The pool, the provider, the landing zone project and its number live in `ci/federation.env`, reviewed by security (CODEOWNERS); the workflows derive `tf-<role>-<env>@` from the job's GitHub Environment. They are identifiers, not secrets: what grants access is each identity's binding to `attribute.environment/<env>`, and a GitHub Environment's protection is what produces that claim. Variables would hold the same values, editable without review or trace. G1 fails if a workflow reads `vars.GCP_*`, if the file and the modules disagree, or if an `env` used for an identity is not a directory of `environments/`.
+**Committed federation coordinates (DZ12).** The pool, the provider, the landing zone project and its number live in `ci/federation.env`, reviewed by security (CODEOWNERS); the workflows derive `tf-<role>-<env>@` from the job's GitHub Environment. They are identifiers, not secrets: what grants access is each identity's binding to `attribute.env_ref/<env>@refs/heads/main`, which only a job on `main` behind that GitHub Environment produces (`multi-environment` DX9). Variables would hold the same values, editable without review or trace. G1 fails if a workflow reads `vars.GCP_*`, if the file and the modules disagree, or if an `env` used for an identity is not a directory of `environments/`.
 
 **Application repositories federate through a second provider.** `github-oidc` admits only `disasterproject/infra` (repository and owner id). Application repositories use `github-apps` in the same pool: `attribute_condition` on `repository_owner_id` **and** `assertion.repository` in an allowlist generated from `teams.yaml`. Its only bindings are `image-scan@` (read `apps`) and `image-build@`, the latter per repository (`attribute.repository/<org>/<app>`). Never a pipeline identity: an application repository can never impersonate a `tf-*@`, and a G1 rule fails on any `tf-*@` binding that names `github-apps`.
 
@@ -364,7 +366,7 @@ A personal account with `organizationAdmin`, not used day to day, with an alert 
 | `third-party` | Copies by digest of third-party images: SonarQube, Keycloak, CNPG and its catalog, Cloud SQL Auth Proxy, Envoy, Gatekeeper… | `image-mirror@` | Each environment's node SA |
 | `charts` | The archetypes' own OCI charts | `image-build@` | `tf-apply-<env>@` |
 
-In `europe-docker.pkg.dev`, inside the perimeter of each VPC's private `pkg.dev` zone (`network-qa` §4). Gatekeeper P2 only admits images from these repositories, and by digest.
+One set per distinct region of the bindings, in `<region>-docker.pkg.dev/disasterproject-lz/` (`europe-west1-docker.pkg.dev` for `qa`) — never a multi-region location such as `europe-docker.pkg.dev`, which `gcp.resourceLocations` forbids. Each environment's node SA reads the repositories of its own region; the mirror copies the same digest to every region (`multi-environment` DX6). Inside the perimeter of each VPC's private `pkg.dev` zone (`network-qa` §4). Gatekeeper P2 only admits images from these repositories, and by digest.
 
 ### 6.2 Copying third-party images
 
@@ -391,7 +393,7 @@ The landing zone grants `artifactregistry.reader` to `qa`'s node SA and `cryptoK
 | Parent zone | `disasterproject.com`, in `disasterproject-lz`, with DNSSEC. The domain registrar registers it; the `DS` at the registrar is updated by hand on every key change (RL4) |
 | Public identifier | A `random_string` of 7 lowercase letters (no digits or uppercase), one per environment, generated by `gcp-lz-environments` (`edge-qa` DL10). If it contains an environment word, G1 rejects the binding and it is regenerated (`taint`) |
 | Environment zone | `<public_id>.disasterproject.com`, created in `disasterproject-nonprod` with DNSSEC and NSEC3; the resource is named `qa-public`. The landing zone writes the child's `NS` and `DS` into the parent (DL2) |
-| Permission | `roles/dns.admin` for `tf-apply-qa@` **on that zone**, not on the project. Project-level `dns.admin` would let an environment write the apex and the other environments' zones: subdomain takeover, changing their `CAA`, DNS-01 certificates for their names. A G3 rule rejects any project-level `roles/dns.admin` for an environment identity |
+| Permission | `roles/dns.admin` for `tf-apply-qa@` **on that zone**, not on the project. Project-level `dns.admin` would let an environment write the apex and the other environments' zones: subdomain takeover, changing their `CAA`, DNS-01 certificates for their names. A G3 rule rejects any project-level `roles/dns.admin` for an environment identity. The private zones (`network-qa` §4, §6) need a project-level grant to be created: it carries a condition on the zone name (`managedZones/<env>-`), never none (`network-qa` DW8, VW7) |
 | How it reaches the binding | The landing zone publishes `public_id`, `public_zone` and `dns_suffix` as outputs; the PR that onboards the environment copies them into the binding (`network.public_id`, `dns_zone`, `dns_suffix`), and G1 checks the binding (architecture §13.3). From then on they are deterministic globals: nobody reads them through outputs sharing |
 
 **The identifier does not rotate** (`edge-qa` DL10). A `destroy` or an accidental `taint` of the `random_string` would change every public name of the environment: `prevent_destroy` and `lifecycle { ignore_changes = all }` on it.
@@ -453,8 +455,8 @@ assert {
   message   = "landing-zone: only prod lives in disasterproject-prod (CLAUDE.md)"
 }
 assert {
-  assertion = tm_alltrue([for k in global.lz.kms_keys : k.location == "europe-west1"])
-  message   = "landing-zone: keys in europe-west1 — the etcd key must be in the cluster's location (S1 §4.14)"
+  assertion = tm_alltrue([for k in global.lz.kms_keys : k.location == (k.ring == "lz" ? global.lz.region : global.lz.env_regions[k.ring])])
+  message   = "landing-zone: each key ring in its owner's region — an environment's etcd key must be in its cluster's location (S1 §4.14)"
 }
 ```
 
@@ -462,7 +464,7 @@ assert {
 |---|---|
 | G3: landing zone IAM at resource level | No `google_project_iam_member` grants an environment identity a role on `disasterproject-lz`; grants on keys, repositories and zones are per resource |
 | G3: Binary Authorization | The plan of `gcp-lz-binauthz` has one rule per cluster declared in the project's bindings, and the default rule is `ALWAYS_DENY` |
-| G3: no project-level `dns.admin` | No `google_project_iam_member` grants `roles/dns.admin` to an environment identity; DNS writes are per zone |
+| G3: no unconditioned project-level `dns.admin` | No `google_project_iam_member` grants `roles/dns.admin` to an environment identity without a condition on its zone prefix; DNS writes outside the environment's zones are refused by `terraform.own_network` (architecture §13.4) |
 | G3: plan identities enumerated | No `tf-plan-*@` holds `roles/viewer`, `roles/editor`, `secretmanager.secretAccessor` or a decrypter outside its own state key |
 | G1: federation coordinates | `ci/check-federation.sh`: no workflow reads `vars.GCP_*`; `ci/federation.env` matches the bootstrap module; every `env` that names an identity is a directory of `environments/` |
 

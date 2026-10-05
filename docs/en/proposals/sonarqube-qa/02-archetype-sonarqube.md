@@ -264,7 +264,7 @@ globals {
 # stacks/archetypes/sonarqube/archetype.tm.hcl
 globals "sonarqube" {
   chart_version  = "0.1.0"                  # the archetype's chart
-  image          = "europe-docker.pkg.dev/disasterproject-lz/platform/sonarqube"
+  image          = "europe-west1-docker.pkg.dev/disasterproject-lz/third-party/sonarqube"
   image_digest   = ""                        # mandatory per instance (assert §7.1)
 
   heap_web_mib    = 2048
@@ -622,7 +622,7 @@ Keys of the official `sonarqube/sonarqube` chart **(verify against the pinned ve
 sonarqube:
   community: { enabled: true }
   image:
-    repository: europe-docker.pkg.dev/disasterproject-lz/platform/sonarqube
+    repository: europe-west1-docker.pkg.dev/disasterproject-lz/third-party/sonarqube
     tag: "@sha256:<digest>"                     # by digest
   replicaCount: 1
   # no nodeSelector or tolerations: system's taint leaves it on apps (GKE proposal §5.3)

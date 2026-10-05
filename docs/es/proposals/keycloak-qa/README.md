@@ -115,7 +115,7 @@ kind: Keycloak
 metadata: { name: keycloak, namespace: keycloak }
 spec:
   instances: 2
-  image: europe-docker.pkg.dev/disasterproject-lz/platform/keycloak@sha256:<digest>
+  image: europe-west1-docker.pkg.dev/disasterproject-lz/third-party/keycloak@sha256:<digest>
   startOptimized: true
   bootstrapAdmin:
     user: { secret: keycloak-admin }                 # §5.4 — break-glass
@@ -152,7 +152,7 @@ spec:
         automountServiceAccountToken: false
         initContainers:
           - name: cloud-sql-proxy                    # sidecar nativo, igual que SonarQube
-            image: europe-docker.pkg.dev/disasterproject-lz/platform/cloud-sql-proxy@sha256:<digest>
+            image: europe-west1-docker.pkg.dev/disasterproject-lz/third-party/cloud-sql-proxy@sha256:<digest>
             restartPolicy: Always
             args: [--private-ip, --port=5432, --structured-logs, --health-check,
                    --http-address=0.0.0.0, --prometheus, --max-sigterm-delay=30s,

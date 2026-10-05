@@ -532,7 +532,8 @@ metadata:
   name: demos
   model: shared
   cloud: gcp
-  region: europe-west1
+  jurisdiction: eu                 # carpeta, proyecto no productivo y bucket de estado (multi-environment DX4)
+  region: europe-west1             # una de las regiones de la jurisdicción
 
 platform:
   landing_zone: disasterproject-gcp-lz
@@ -586,6 +587,8 @@ policy:
 ```
 
 **`network.public_id` es el nombre del entorno hacia fuera.** Siete letras minúsculas aleatorias, generadas una vez por la landing zone y nunca derivadas del nombre del entorno. Todo lo que puede ver alguien sin credenciales lo usa en lugar de `demos`: la zona pública y los hostnames (`dns_suffix` es `<public_id>.disasterproject.com`), el certificado wildcard que queda en los logs de Certificate Transparency, los nombres de bucket, que son globales, y el nombre del realm de Keycloak (que es el mismo, `disasterproject`, en todos los entornos). Los nombres internos —recursos dentro del proyecto, etiquetas, prefijos de KSA, IDs de stack, namespaces— conservan el nombre del entorno, porque quien los ve ya tiene acceso. Cambiarlo es renombrar todo el borde (propuesta `edge-qa`, DL10).
+
+**Un entorno es su binding, y su nombre es una frontera.** El binding es el único fichero escrito a mano por entorno: composición, proveedores, versiones, tamaño, `metadata.jurisdiction` (la carpeta, el proyecto no productivo y el bucket de estado de los que no salen sus datos) y `metadata.region` (una de las regiones de la jurisdicción). Los nombres que no son claims se derivan del nombre del entorno, nunca se copian de otro entorno. Ese nombre es un prefijo —`<env>-` en KSA, zonas DNS y recursos dentro de un proyecto compartido—, así que los nombres de entorno son **libres de prefijo**: ningún `<a>-` es prefijo de `<b>-`, y `sandbox` y `sandbox-eu` no pueden coexistir. G1 comprueba ambas cosas (propuesta `multi-environment`, DX1–DX5).
 
 > **Decisión de diseño: binding tardío mediante expresiones.** `from_stack_id` en un
 > bloque `input` de Terramate acepta una expresión, así que un fichero de contrato por

@@ -252,7 +252,7 @@ Fuente: [`diagrams/05-red.mmd`](diagrams/05-red.mmd)
 | Grafana | Prometheus, Loki | 9090, 3100 | |
 | Grafana | Keycloak | 8443 | Back-channel OIDC por el Service interno (§8.3 de Keycloak) |
 | Loki, Grafana | `storage` / `monitoring.googleapis.com` vía Private Google Access | 443 | |
-| Alertmanager, blackbox | Internet vía Cloud NAT | 443 (y 587 si SMTP) | Receptores y sondas contra las URLs públicas |
+| Alertmanager, blackbox | Internet vía Cloud NAT | 443 (y 587 si SMTP) | Receptores y sondas contra las URLs públicas. La VPC deniega todo puerto de egress salvo 443: 587 es una entrada de `egress_extra` de este arquetipo (`network-qa` §2, DW6) |
 
 ---
 

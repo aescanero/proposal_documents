@@ -109,6 +109,8 @@ Private Google Access is enabled on the node subnet: `gke` creates it, so `gke` 
 
 GKE creates the rule that lets the control plane reach the nodes on **443 and 10250**. That is why every platform webhook listens on 10250 (Gatekeeper RP1, ESO RE3, monitoring VM3, CNPG VO1). The archetype adds no rules: any other webhook port would need one, and each provider's `assert` prevents it **(verify with PSC, VN2)**.
 
+**The other direction.** The VPC denies egress by default (`network-qa` DW6). The nodes reach the control plane through the environment's internal allow: with PSC its private endpoint is an address in the node subnet, inside the `/17` **(verify, VN2)**. A peering-based cluster's `/28` sits outside it, and then this archetype writes the egress allow to it on tcp 443 and **8132** — the konnectivity tunnel through which the control plane reaches webhooks, `logs` and `exec`; without 8132 every admission webhook times out.
+
 ---
 
 ## 3. Node security and identity

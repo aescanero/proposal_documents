@@ -23,7 +23,7 @@ Inside each language folder:
 | `archetype-model.md` | What may be composed with what — manifests, capabilities, traits, pools, CMDB, resolution |
 | `terramate-outputs-sharing-architecture.md` | How it is generated and applied — generators, outputs sharing, IAM, policy, CI/CD, five runtime guides |
 | `developer-guide.md` | For application developers — branching, versioning, build, rollback, and the three languages |
-| `risk-register.md` | 64 risks by domain (61 active), reviewed at each phase gate |
+| `risk-register.md` | 71 risks by domain (68 active), reviewed at each phase gate |
 | `glossary.md` | Every technical term in the documents above, with its definition |
 | `proposals/sonarqube-qa/` | Design proposal, in two stages: elements and dependencies, then the layer-5 `sonarqube` archetype and its implementation plan |
 | `proposals/sonarqube-qa-cloudsql/` | SonarQube's `qa` path with the default `database-platform` provider: its PostgreSQL on its own Cloud SQL instance, through the Auth Proxy sidecar |
@@ -42,6 +42,7 @@ Inside each language folder:
 | `proposals/cmdb-qa/` | The `qa` CMDB, levels 0 and 1 of AM §11: the declared half generated and checked in the PR on `main`, the observed half on its own `cmdb-observed` branch, a private release asset as the read model, and the guards that use it — reference counting by edges before a destroy, broken contracts and blast radius in the PR |
 | `proposals/infra-repo-qa/` | The deployment repository (`disasterproject/infra`): layout, trunk-based branches and why there is no `qa` branch, GitHub Environments per environment, rulesets and CODEOWNERS, and workflow templates — preview, deploy per environment, drift, destroy, CMDB sync, image mirroring |
 | `proposals/appsec-qa/` | Software and AI life-cycle security on `qa`: SonarQube, Trivy, Checkov, OWASP ZAP, Nuclei and A.I.G consolidated in DefectDojo — where each tool runs, when it blocks, how results are imported, the `defectdojo`, `dast` and `aig` archetypes, and the applications' reusable `appsec.yml` workflow |
+| `proposals/multi-environment/` | Many environments that are not copies, in different regions and jurisdictions: an environment is its binding, prefix-free names, jurisdiction folders, projects and state buckets, regional registries, and the G1/G3 rules that check placement |
 | `proposals/landing-zone-qa/` | Layer 0 for `qa`: the one-time bootstrap, folders and projects, org policies, KMS key rings per environment, Artifact Registry and image mirroring, GitHub federation and pipeline identities, the parent zone and the public identifier, and the shared Binary Authorization policy the landing zone must own |
 
 The two halves meet at `binding.tm.hcl`: the resolver writes globals, the generators

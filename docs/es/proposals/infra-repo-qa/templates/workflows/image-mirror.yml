@@ -13,7 +13,25 @@ permissions:
   id-token: write
 
 jobs:
-  mirror:
+  regions:
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.r.outputs.list }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - id: r                                  # la lista de regiones se deriva de los bindings, nunca se escribe aquí
+        run: |
+          list=$(yq '.metadata.region' environments/*/binding.yaml | sort -u | jq -Rnc '[inputs | select(length > 0)]')
+          [ "$list" != "[]" ] || { echo "::error::no region in environments/*/binding.yaml"; exit 1; }
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+
+  mirror:                                    # un registro regional por región distinta de los bindings (multi-environment DX6)
+    needs: regions
+    strategy:
+      fail-fast: false
+      matrix:
+        region: ${{ fromJSON(needs.regions.outputs.list) }}
     runs-on: ubuntu-latest
     environment: image-mirror                  # image-mirror@ solo es suplantable desde aquí
     steps:
@@ -23,11 +41,11 @@ jobs:
         with:
           identity: image-mirror
           env: ""
-      - run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+      - run: gcloud auth configure-docker "${{ matrix.region }}-docker.pkg.dev" --quiet
 
       - name: Copiar por digest y comprobarlo
         env:
-          DEST: europe-west1-docker.pkg.dev/${{ steps.setup.outputs.project }}/third-party
+          DEST: ${{ matrix.region }}-docker.pkg.dev/${{ steps.setup.outputs.project }}/third-party   # el mismo digest en cada región
         run: |
           # images/third-party.yaml: [{source: quay.io/jetstack/cert-manager-controller, tag: v1.16.2, digest: "sha256:…"}]
           yq -o=json '.[]' images/third-party.yaml | jq -c . | while read -r img; do

@@ -431,7 +431,7 @@ capacity:
 | Stack | Contents | Inputs via sharing |
 |---|---|---|
 | `controller` | Namespace `envoy-gateway-system` (PSS `restricted`); `helm_release` of the CRDs (standard channel, `keep`) and of the Envoy Gateway controller (§5.3); xDS `Certificate`; `NetworkPolicy` (§9.3); the `ConstraintTemplate`s for the Gateway API and Envoy Gateway kinds | `cluster_endpoint`, `cluster_ca` |
-| `proxy` | Own chart with `GatewayClass` `envoy-qa`, `EnvoyProxy` `edge-proxy`, `Gateway` `qa`, `ClientTrafficPolicy`, default `BackendTrafficPolicy`, HPA, PDB and the `Constraint`s of §9.2; `prevent_destroy` on the `helm_release` | `cluster_*` |
+| `proxy` | Own chart with `GatewayClass` `envoy-<env>` (`envoy-qa` here, passed by the generator; the chart's defaults are neutral, `multi-environment` DX2), `EnvoyProxy` `edge-proxy`, `Gateway` `qa`, `ClientTrafficPolicy`, default `BackendTrafficPolicy`, HPA, PDB and the `Constraint`s of §9.2; `prevent_destroy` on the `helm_release` | `cluster_*` |
 
 **Why two stacks.** Upgrading Envoy Gateway is routine; deleting the Gateway is not. Deleting it deletes the Service, the NEG controller deletes `eg-qa-neg`, and the GLB is left with no backends, taking the whole environment out of service. With separate stacks, a version PR never plans a change to the Gateway, and destroying it takes an explicit PR that removes `prevent_destroy`. This is the same reasoning as cert-manager's CA, §8.2.
 

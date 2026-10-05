@@ -532,7 +532,8 @@ metadata:
   name: demos
   model: shared
   cloud: gcp
-  region: europe-west1
+  jurisdiction: eu                 # folder, non-production project and state bucket (multi-environment DX4)
+  region: europe-west1             # one of the jurisdiction's regions
 
 platform:
   landing_zone: disasterproject-gcp-lz
@@ -585,6 +586,8 @@ policy:
 ```
 
 **`network.public_id` is the environment's name to the outside world.** Seven random lowercase letters, generated once by the landing zone and never derived from the environment name. Whatever someone without credentials can see uses it instead of `demos`: the public zone and hostnames (`dns_suffix` is `<public_id>.disasterproject.com`), the wildcard certificate that lands in Certificate Transparency logs, globally unique bucket names, and the Keycloak realm name (which is the same, `disasterproject`, in every environment). Internal names — resources inside the project, labels, KSA prefixes, stack IDs, namespaces — keep the environment name, because whoever sees them already has access. Changing it renames the whole edge (`edge-qa` proposal, DL10).
+
+**An environment is its binding, and its name is a boundary.** The binding is the only file written by hand per environment: composition, providers, versions, size, `metadata.jurisdiction` (the folder, non-production project and state bucket its data stays in) and `metadata.region` (one of the jurisdiction's regions). Names that are not claims are derived from the environment name, never copied from another environment. That name is a prefix — `<env>-` on KSAs, DNS zones and resources inside a shared project — so environment names are **prefix-free**: no `<a>-` is a prefix of `<b>-`, and `sandbox` and `sandbox-eu` cannot coexist. G1 checks both (`multi-environment` proposal, DX1–DX5).
 
 > **Design decision: late binding through expressions.** `from_stack_id` in a
 > Terramate `input` block accepts an expression, so one contract file per

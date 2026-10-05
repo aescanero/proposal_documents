@@ -77,11 +77,11 @@ El procedimiento de los pasos 2 y 3 se guarda en el repositorio de despliegue co
 |---|---|---|
 | Proyecto | `disasterproject-lz` | Directamente bajo la organización, no en una carpeta: así ningún stack posterior lo mueve y cambia su herencia de org policies. Cuenta de facturación de la organización |
 | APIs | `storage`, `cloudkms`, `iam`, `iamcredentials`, `sts`, `cloudresourcemanager`, `serviceusage`, `cloudbilling`, `orgpolicy` | Las que usan los propios pasos 2–6. Las de los proyectos de entorno las habilita `gcp-lz-projects` (§2.1) |
-| Bucket de estado | `disasterproject-tfstate-gcp` | `europe-west1`; acceso uniforme; *public access prevention* forzada; versionado, versiones anteriores 30 días; `prevent_destroy` |
+| Bucket de estado | `disasterproject-tfstate-gcp` | `europe-west1`; acceso uniforme; *public access prevention* forzada; versionado, versiones anteriores 30 días; `prevent_destroy`. Es el bucket de la jurisdicción `eu`: cada jurisdicción tiene el suyo, en una de sus regiones (`multi-environment` DX4) |
 | Auditoría de lecturas del estado | `google_project_iam_audit_config` en `disasterproject-lz`, servicio `storage.googleapis.com`, `DATA_READ` y `DATA_WRITE` | Responde *quién leyó el estado*: Cloud Audit Logs, que ningún ajuste del bucket puede desactivar. **No** el access logging de GCS: exige conceder el bucket a `group:cloud-storage-analytics@google.com`, que `iam.allowedPolicyMemberDomains` (§3.1) prohíbe; sin esa concesión un bloque `logging` queda configurado e inerte — nunca se escribe un log y el código parece correcto |
 | Key ring y clave | `lz` / `tofu-state` | `europe-west1`; rotación 90 días; `prevent_destroy`. Los key rings de entorno los crea `gcp-lz-kms` (§4) |
-| Pool y proveedor de federación | `gh-disasterproject-infra` / `github-oidc` | `attribute_condition` sobre el repositorio **y** el `repository_owner_id` numérico (arquitectura §11.2); mapeo de `repository`, `environment` y `ref` |
-| Identidades | `tf-plan-lz@`, `tf-apply-lz@`, `tf-destroy-lz@` | En `disasterproject-lz`. `tf-plan-lz@` ← `attribute.repository/disasterproject/infra`; `tf-apply-lz@` ← `attribute.environment/landing-zone`; `tf-destroy-lz@` ← `attribute.environment/landing-zone-destroy` |
+| Pool y proveedor de federación | `gh-disasterproject-infra` / `github-oidc` | `attribute_condition` sobre el repositorio **y** el `repository_owner_id` numérico (arquitectura §11.2); mapeo de `repository`, `environment`, `ref` y `env_ref` (`multi-environment` DX9) |
+| Identidades | `tf-plan-lz@`, `tf-apply-lz@`, `tf-destroy-lz@` | En `disasterproject-lz`. `tf-plan-lz@` ← `attribute.repository/disasterproject/infra`; `tf-apply-lz@` ← `attribute.env_ref/landing-zone@refs/heads/main`; `tf-destroy-lz@` ← `attribute.env_ref/landing-zone-destroy@refs/heads/main` |
 | Grants de `tf-apply-lz@` | Organización: `resourcemanager.folderCreator` (no `folderAdmin`, que lleva `setIamPolicy` sobre todos los proyectos de la carpeta), `resourcemanager.projectCreator`, `orgpolicy.policyAdmin`, `iam.organizationRoleAdmin`; cuenta de facturación: `billing.user`; `disasterproject-lz`: `cloudkms.admin`, `artifactregistry.admin`, `dns.admin`, `iam.serviceAccountAdmin`; bucket: `storage.admin` | `storage.admin` sobre el bucket, no el proyecto: es lo que le deja poner las condiciones por prefijo a las identidades de entorno (§5.1). En cada proyecto de entorno, `resourcemanager.projectIamAdmin` **acotado por rol** (DZ13): un binding por cada bloque de ≤10 roles de `global.identities`, cada uno con `api.getAttribute('iam.googleapis.com/modifiedGrantsByRole', []).hasOnly([...])`. Puede conceder exactamente los roles que tienen las identidades de la plataforma y nada más — ni `owner`, ni `editor`, ni a sí mismo |
 | Grants de `tf-plan-lz@` | Organización: `browser`, `orgpolicy.policyViewer`, `iam.securityReviewer`; `disasterproject-lz`: la lista de lectura enumerada de §5.1, **nunca `roles/viewer`** (DZ14); bucket: lectura del prefijo `lz/` con la mitad de listado de la condición (§5.1) | Solo lectura, para la preview y el drift de la landing zone |
 | Grants sobre `tofu-state` | `cryptoKeyEncrypterDecrypter` a las tres identidades `lz` | Por clave, nunca por key ring |
@@ -253,6 +253,8 @@ Cada fila es una consecuencia declarada de antemano en lugar de descubierta en e
 
 Las org policies se aplican por carpeta (§3), así que `nonprod` y `prod` pueden diferir sin repetir la lista.
 
+**Jurisdicciones.** Las carpetas `nonprod` y `prod` de arriba son las de la jurisdicción `eu`, bajo una carpeta `eu` que lleva su `gcp.resourceLocations`. Otra jurisdicción es otra carpeta con sus propias `nonprod` y `prod`, su proyecto no productivo y su bucket de estado, todo leído de `global.lz.jurisdictions`, la única lista de ellas (`multi-environment` DX4). `disasterproject-lz` sigue en `platform` y aloja lo que comparten todas las jurisdicciones: rings, registros regionales, federación.
+
 **Cuando el proyecto non-prod llegue a un límite** (cuotas de CPU, de IPs, de SAs por proyecto), se añade `disasterproject-nonprod-2` en la misma carpeta y los entornos nuevos van allí; ninguno se reparte entre dos proyectos (`CLAUDE.md`). El binding del entorno ya lleva `platform.project_id`, así que moverlo es cambiar ese valor y reconstruir, no rediseñar.
 
 ### 2.1 APIs del proyecto non-prod
@@ -280,7 +282,7 @@ Las que lista `network-qa` §1.1, habilitadas por el stack `gcp-lz-projects` con
 | `sql.restrictPublicIp` | Enforce | `nonprod`, `prod` | Cloud SQL solo por PSA |
 | `storage.publicAccessPrevention` | Enforce | Todas | Ningún bucket público, tampoco el de estado |
 | `storage.uniformBucketLevelAccess` | Enforce | Todas | IAM de bucket con condiciones por prefijo (§5.1) |
-| `gcp.resourceLocations` | `in:europe-west1-locations` (y `global` para lo que no es regional) | Todas | Residencia; además KMS y buckets deben coincidir con el cluster (E1 §4.14) |
+| `gcp.resourceLocations` | Las regiones de la jurisdicción — `in:europe-west1-locations` para `eu` — y `global` para lo que no es regional | La carpeta de cada jurisdicción; `platform`, con la unión de todas | Residencia; además KMS y buckets deben coincidir con el cluster (E1 §4.14; `multi-environment` DX4) |
 | `cloudkms.minimumDestroyScheduledDuration` | 30 días | `platform` | Ventana de rescate de una versión de clave (E1 §4.14) |
 | `run.allowedIngress` | `internal-and-cloud-load-balancing` | `nonprod`, `prod` | R14; ver §3.2 |
 
@@ -306,7 +308,7 @@ El diseño de E1 §4.14 se aplica tal cual; aquí queda dónde y quién.
 | Pieza | Valor |
 |---|---|
 | Proyecto | `disasterproject-lz` |
-| Key ring | Uno por entorno: `qa`, en `europe-west1` (la clave de etcd debe estar en la ubicación del cluster). Más `lz`, del bootstrap |
+| Key ring | Uno por entorno, **en la región de ese entorno** (la clave de etcd debe estar en la ubicación del cluster, y un ring tiene una sola ubicación): `qa` en `europe-west1`. Más `lz`, del bootstrap, en `global.lz.region` |
 | Claves de `qa` | `tofu-state`, `gke-secrets`, `cosign` (E1 §4.14). Las opcionales `gcs-cmek` y `secrets-cmek` no se crean en `qa` |
 | Grants | Sobre **cada clave**, nunca sobre el key ring ni el proyecto: `tofu-state` → `tf-plan-qa@`, `tf-apply-qa@`, `tf-destroy-qa@`; `gke-secrets` → agente de GKE de `disasterproject-nonprod`; `cosign` → identidad del build |
 | Protección | `prevent_destroy`; ninguna identidad de entorno tiene `cloudkms.admin`; destrucción de versiones con 30 días mínimos (§3.1) |
@@ -324,11 +326,11 @@ Todas en `disasterproject-lz`, no en el proyecto del entorno: así una identidad
 | Identidad | Principal que la usa (federación) | Permisos, en `disasterproject-nonprod` salvo indicación |
 |---|---|---|
 | `tf-plan-qa@` | `attribute.repository/disasterproject/infra` (cualquier rama) | Una lista de lectura **enumerada** — `compute.viewer`, `compute.networkViewer`, `container.viewer`, `dns.reader`, `iam.serviceAccountViewer`, `iam.roleViewer`, `certificatemanager.viewer`, `cloudkms.viewer`, `secretmanager.viewer` (solo metadatos), `cloudsql.viewer`, `monitoring.viewer`, `serviceusage.serviceUsageViewer` — **nunca `roles/viewer`** (DZ14): esta identidad es alcanzable desde cualquier PR, y `roles/viewer` lee la configuración de todos los servicios. Nunca `secretmanager.secretAccessor`, nunca `cryptoKeyDecrypter` más allá de su propio `tofu-state`. Lectura del prefijo `qa/` del bucket de estado; `tofu-state` de `qa` |
-| `tf-apply-qa@` | `attribute.environment/qa` (solo con el GitHub Environment `qa`) | Los roles de arquitectura §11.2; escritura en el prefijo `qa/`; `dns.admin` **sobre la zona de `qa`**; `tofu-state` de `qa` |
-| `tf-destroy-qa@` | `attribute.environment/qa-destroy` (Environment con otro grupo de aprobadores) | Como `tf-apply-qa@`, más los `delete` que aquel no tiene (arquitectura §11.4) |
+| `tf-apply-qa@` | `attribute.env_ref/qa@refs/heads/main` (solo con el GitHub Environment `qa`, y solo en `main`: `multi-environment` DX9) | Los roles de arquitectura §11.2; escritura en el prefijo `qa/`; `dns.admin` **sobre la zona pública de `qa`**, y sobre el proyecto solo **condicionado al prefijo de zona de `qa`** para sus zonas privadas (`network-qa` §6, DW8); `tofu-state` de `qa` |
+| `tf-destroy-qa@` | `attribute.env_ref/qa-destroy@refs/heads/main` (Environment con otro grupo de aprobadores) | Como `tf-apply-qa@`, más los `delete` que aquel no tiene (arquitectura §11.4) |
 | `tf-plan-lz@` | `attribute.repository/disasterproject/infra` | Lectura de la organización y del prefijo `lz/`; preview y drift de la landing zone (§1.1) |
-| `tf-apply-lz@` | `attribute.environment/landing-zone` | Organización, carpetas, proyectos, KMS, Artifact Registry, zona padre. Solo la landing zone; creada por el bootstrap (§1.1) |
-| `tf-destroy-lz@` | `attribute.environment/landing-zone-destroy` | Como `tf-apply-lz@`, con otro grupo de aprobadores |
+| `tf-apply-lz@` | `attribute.env_ref/landing-zone@refs/heads/main` | Organización, carpetas, proyectos, KMS, Artifact Registry, zona padre. Solo la landing zone; creada por el bootstrap (§1.1) |
+| `tf-destroy-lz@` | `attribute.env_ref/landing-zone-destroy@refs/heads/main` | Como `tf-apply-lz@`, con otro grupo de aprobadores |
 | `cmdb-reader@` | Job de reconciliación (`cmdb-qa` §7) | `cloudasset.viewer` en `disasterproject-nonprod` |
 | `image-mirror@` | Workflow de copia de imágenes (§6.2) | `artifactregistry.writer` sobre el repositorio `third-party` |
 | `image-build@` | Workflow de build | `artifactregistry.writer` sobre `apps`; `signerVerifier` sobre `cosign` |
@@ -338,7 +340,7 @@ Todas en `disasterproject-lz`, no en el proyecto del entorno: así una identidad
 
 **Una lista de roles, leída dos veces.** Los roles de todas las identidades del pipeline y de nodos viven una vez, en `global.identities` (apply, plan, node). `gcp-lz-identities` los concede, y la cota de la administración de IAM de `tf-apply-lz@` (DZ13) se genera de la misma lista: un rol añadido en un sitio y no en el otro falla con un 403, a propósito, en lugar de desviarse. Los roles para alertas basadas en logs son el rol propio `logNotificationRuleEditor` (`logging.notificationRules.*`), nunca `logging.configWriter`, que además crea **sinks** — un canal para exportar todos los logs.
 
-**Coordenadas de federación commiteadas (DZ12).** El pool, el proveedor, el proyecto de la landing zone y su número viven en `ci/federation.env`, revisado por seguridad (CODEOWNERS); los workflows derivan `tf-<rol>-<env>@` del GitHub Environment del job. Son identificadores, no secretos: lo que da acceso es el vínculo de cada identidad con `attribute.environment/<env>`, y lo que produce ese claim es la protección del GitHub Environment. Unas variables guardarían los mismos valores, editables sin revisión ni rastro. G1 falla si un workflow lee `vars.GCP_*`, si el fichero y los módulos no coinciden, o si un `env` usado para una identidad no es un directorio de `environments/`.
+**Coordenadas de federación commiteadas (DZ12).** El pool, el proveedor, el proyecto de la landing zone y su número viven en `ci/federation.env`, revisado por seguridad (CODEOWNERS); los workflows derivan `tf-<rol>-<env>@` del GitHub Environment del job. Son identificadores, no secretos: lo que da acceso es el vínculo de cada identidad con `attribute.env_ref/<env>@refs/heads/main`, que solo produce un job en `main` detrás de ese GitHub Environment (`multi-environment` DX9). Unas variables guardarían los mismos valores, editables sin revisión ni rastro. G1 falla si un workflow lee `vars.GCP_*`, si el fichero y los módulos no coinciden, o si un `env` usado para una identidad no es un directorio de `environments/`.
 
 **Los repositorios de aplicación se federan con un segundo proveedor.** `github-oidc` admite solo `disasterproject/infra` (repositorio e id del propietario). Los repositorios de aplicación usan `github-apps` en el mismo pool: `attribute_condition` sobre `repository_owner_id` **y** `assertion.repository` dentro de una lista permitida generada de `teams.yaml`. Sus únicos vínculos son `image-scan@` (lee `apps`) e `image-build@`, este por repositorio (`attribute.repository/<org>/<app>`). Nunca una identidad del pipeline: un repositorio de aplicación nunca puede suplantar a un `tf-*@`, y una regla G1 falla ante cualquier vínculo de un `tf-*@` que nombre `github-apps`.
 
@@ -364,7 +366,7 @@ Una cuenta de persona con `organizationAdmin`, sin uso diario, con alerta en cad
 | `third-party` | Copias por digest de imágenes de terceros: SonarQube, Keycloak, CNPG y su catálogo, Cloud SQL Auth Proxy, Envoy, Gatekeeper… | `image-mirror@` | SA de nodos de cada entorno |
 | `charts` | Charts OCI propios de los arquetipos | `image-build@` | `tf-apply-<env>@` |
 
-En `europe-docker.pkg.dev`, dentro del perímetro de la zona privada `pkg.dev` de cada VPC (`network-qa` §4). Gatekeeper P2 solo admite imágenes de estos repositorios y por digest.
+Un juego por región distinta de los bindings, en `<region>-docker.pkg.dev/disasterproject-lz/` (`europe-west1-docker.pkg.dev` para `qa`) — nunca una ubicación multirregión como `europe-docker.pkg.dev`, que `gcp.resourceLocations` prohíbe. La SA de nodos de cada entorno lee los repositorios de su región; la réplica copia el mismo digest a cada región (`multi-environment` DX6). Dentro del perímetro de la zona privada `pkg.dev` de cada VPC (`network-qa` §4). Gatekeeper P2 solo admite imágenes de estos repositorios y por digest.
 
 ### 6.2 Copia de imágenes de terceros
 
@@ -391,7 +393,7 @@ La landing zone concede `artifactregistry.reader` a la SA de nodos de `qa` y `cr
 | Zona padre | `disasterproject.com`, en `disasterproject-lz`, con DNSSEC. La registra el registrador del dominio; el `DS` del registrador se actualiza a mano en cada cambio de claves (RL4) |
 | Identificador público | `random_string` de 7 letras minúsculas (sin números ni mayúsculas), uno por entorno, generado por `gcp-lz-environments` (`edge-qa` DL10). Si contiene una palabra de entorno, G1 rechaza el binding y se regenera (`taint`) |
 | Zona del entorno | `<public_id>.disasterproject.com`, creada en `disasterproject-nonprod` con DNSSEC y NSEC3; el recurso se llama `qa-public`. La landing zone escribe en la padre el `NS` y el `DS` de la hija (DL2) |
-| Permiso | `roles/dns.admin` para `tf-apply-qa@` **sobre esa zona**, no sobre el proyecto. Un `dns.admin` de proyecto dejaría a un entorno escribir el apex y las zonas de los demás entornos: toma de subdominios, cambio de sus `CAA`, certificados DNS-01 para sus nombres. Una regla G3 rechaza cualquier `roles/dns.admin` de proyecto para una identidad de entorno |
+| Permiso | `roles/dns.admin` para `tf-apply-qa@` **sobre esa zona**, no sobre el proyecto. Un `dns.admin` de proyecto dejaría a un entorno escribir el apex y las zonas de los demás entornos: toma de subdominios, cambio de sus `CAA`, certificados DNS-01 para sus nombres. Una regla G3 rechaza cualquier `roles/dns.admin` de proyecto para una identidad de entorno. Las zonas privadas (`network-qa` §4, §6) necesitan un permiso de proyecto para crearse: lleva una condición sobre el nombre de zona (`managedZones/<env>-`), nunca ninguna (`network-qa` DW8, VW7) |
 | Cómo llega al binding | La landing zone publica `public_id`, `public_zone` y `dns_suffix` como outputs; el PR que da de alta el entorno los copia al binding (`network.public_id`, `dns_zone`, `dns_suffix`), y G1 comprueba el binding (arquitectura §13.3). Son globals deterministas a partir de ese momento: nadie los lee por outputs sharing |
 
 **El identificador no rota** (`edge-qa` DL10). Un `destroy` o un `taint` accidental del `random_string` cambiaría todos los nombres públicos del entorno: `prevent_destroy` y `lifecycle { ignore_changes = all }` sobre él.
@@ -453,8 +455,8 @@ assert {
   message   = "landing-zone: solo prod vive en disasterproject-prod (CLAUDE.md)"
 }
 assert {
-  assertion = tm_alltrue([for k in global.lz.kms_keys : k.location == "europe-west1"])
-  message   = "landing-zone: claves en europe-west1 — la de etcd debe estar en la ubicación del cluster (E1 §4.14)"
+  assertion = tm_alltrue([for k in global.lz.kms_keys : k.location == (k.ring == "lz" ? global.lz.region : global.lz.env_regions[k.ring])])
+  message   = "landing-zone: cada key ring en la región de su dueño — la clave de etcd de un entorno debe estar en la ubicación de su cluster (E1 §4.14)"
 }
 ```
 
@@ -462,7 +464,7 @@ assert {
 |---|---|
 | G3: IAM de la landing zone a nivel de recurso | Ningún `google_project_iam_member` concede a una identidad de entorno un rol sobre `disasterproject-lz`; los grants de claves, repositorios y zonas son por recurso |
 | G3: Binary Authorization | El plan de `gcp-lz-binauthz` tiene una regla por cada cluster declarado en los bindings del proyecto, y la regla por defecto es `ALWAYS_DENY` |
-| G3: sin `dns.admin` de proyecto | Ningún `google_project_iam_member` concede `roles/dns.admin` a una identidad de entorno; las escrituras DNS son por zona |
+| G3: sin `dns.admin` de proyecto sin condición | Ningún `google_project_iam_member` concede `roles/dns.admin` a una identidad de entorno sin una condición sobre su prefijo de zona; las escrituras DNS fuera de las zonas del entorno las rechaza `terraform.own_network` (arquitectura §13.4) |
 | G3: identidades de plan enumeradas | Ningún `tf-plan-*@` tiene `roles/viewer`, `roles/editor`, `secretmanager.secretAccessor` ni un descifrador fuera de su propia clave de estado |
 | G1: coordenadas de federación | `ci/check-federation.sh`: ningún workflow lee `vars.GCP_*`; `ci/federation.env` coincide con el módulo del bootstrap; todo `env` que nombra una identidad es un directorio de `environments/` |
 

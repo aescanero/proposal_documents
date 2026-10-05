@@ -215,11 +215,11 @@ La tercera es la que convierte R34 en un fallo de CI. Si el generador deja de em
 | Dato | Fuente | Llega a Gatekeeper como |
 |---|---|---|
 | Etiquetas obligatorias | `registry/labels.yaml` | Parámetros de P1 |
-| Registros permitidos | Globals de la landing zone (proyecto y región del Artifact Registry) | Parámetros de P2 |
+| Registros permitidos | Globals de la landing zone: el proyecto del Artifact Registry y los repositorios **de la región del entorno** (`multi-environment` DX6) | Parámetros de P2 |
 | Namespaces con PSS especial | Valores de `policy-gatekeeper` (§5.2) | Parámetros de P7 |
 | Excepciones | `resolution.json` | Parámetros escritos por el stack `exemptions` |
 | Dueños de los pools con taint | Binding del entorno (`cluster.node_pools[].owners`), vía `resolution.json` | Parámetros de P11, escritos por el stack `exemptions` |
-| Prefijos de los demás entornos del proyecto | Los bindings de los entornos que comparten proyecto, vía `resolution.json` | Parámetros de P12 |
+| Prefijos de los demás entornos del proyecto | Los bindings de los entornos que comparten proyecto, vía `resolution.json`. Los nombres son libres de prefijo (G1 `environment.names`), así que ningún prefijo de la lista coincide con las KSA del propio entorno (`multi-environment` DX3) | Parámetros de P12 |
 
 Los tres primeros los genera `registry-generate` en el `values.yaml` del chart (arquitectura §13.8). La prueba de §6.2 corre sobre ese mismo `values.yaml`.
 

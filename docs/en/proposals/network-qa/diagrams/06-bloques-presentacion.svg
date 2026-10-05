@@ -74,7 +74,7 @@
 <circle cx="472" cy="741" r="3" fill="#2563eb"/>
 <text x="482" y="746" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">deny-all with logs</text>
 <circle cx="472" cy="765" r="3" fill="#2563eb"/>
-<text x="482" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">egress: in the cluster</text>
+<text x="482" y="770" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">egress: deny, 443 allowed</text>
 <circle cx="472" cy="789" r="3" fill="#2563eb"/>
 <text x="482" y="794" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">flow logs via a global</text>
 <rect x="720" y="274" width="245" height="170" rx="12" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>
@@ -233,8 +233,8 @@
 <text x="78" y="962" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">NAT · ports · googleapis</text>
 <path d="M408,936 l8,7 l-8,7" fill="none" stroke="#9ca3af" stroke-width="2.5"/>
 <rect x="424" y="906" width="344" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
-<text x="442" y="936" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="17" font-weight="700" fill="#374151" text-anchor="start">G1</text>
-<text x="442" y="962" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">qa.internal · flow logs</text>
+<text x="442" y="936" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="17" font-weight="700" fill="#374151" text-anchor="start">G1 · G3</text>
+<text x="442" y="962" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#4b5563" text-anchor="start">qa.internal · own VPC</text>
 <path d="M772,936 l8,7 l-8,7" fill="none" stroke="#9ca3af" stroke-width="2.5"/>
 <rect x="788" y="906" width="344" height="74" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="806" y="936" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="17" font-weight="700" fill="#374151" text-anchor="start">protected</text>
