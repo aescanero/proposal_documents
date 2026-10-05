@@ -7,7 +7,7 @@
 | **Por qué ahora** | Las propuestas de `qa` describen un entorno. El segundo entorno, en otra región y con otra composición, es el que demuestra si el modelo de arquetipos generaliza o si `qa` estaba escrito a mano con forma de plantilla. Tres cosas del diseño solo funcionaban con un entorno (§3, §6) |
 | **Base** | AM §7 (binding), §9 (pools), §12 (resolución); arquitectura §4.11 (primer despliegue), §12 (gestión de entornos), §13.3–§13.4 (G1, G3); `landing-zone-qa` §2–§6; `gatekeeper-qa` P2, P12; `network-qa` DW8. No se repite lo que ya está allí |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `risk-register.md` |
-| **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano |
+| **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano. `diagrams/02-presentation-blocks.svg` (1920×1080, para presentaciones) se genera con `02-presentation-blocks.py`, no con Mermaid |
 | **Identificadores propios** | Decisiones `DX1…`, riesgos candidatos `RX1…`, verificaciones `VX1…` |
 
 No reabre ninguna decisión de `CLAUDE.md`: `prod` sigue con su proyecto, los no productivos comparten uno — ahora uno **por jurisdicción** —, un proveedor por capacidad y entorno. Encuentra cuatro cosas:
@@ -20,6 +20,10 @@ No reabre ninguna decisión de `CLAUDE.md`: `prod` sigue con su proyecto, los no
 ![Jurisdicciones, regiones y proyectos](diagrams/01-jurisdictions.svg)
 
 Fuente: [`diagrams/01-jurisdictions.mmd`](diagrams/01-jurisdictions.mmd)
+
+![Múltiples entornos, en bloques](diagrams/02-presentation-blocks.svg)
+
+Fuente: [`diagrams/02-presentation-blocks.py`](diagrams/02-presentation-blocks.py) — vista de presentación; el detalle está en §1–§7.
 
 ---
 

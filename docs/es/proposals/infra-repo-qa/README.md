@@ -7,7 +7,7 @@
 | **Por qué ahora** | Este repositorio (`proposal_documents`) es solo documentación y propuestas. Las propuestas de `qa` describen stacks, identidades y guardas, pero ninguna dice dónde viven ni qué workflow los aplica; el workflow de deploy de la arquitectura, además, no podía aplicar `qa` (§5.1) |
 | **Base** | Arquitectura §4.11 (primer despliegue), §11.2–§11.4 (identidades del pipeline), §12.4 (destroy), §14 (CI/CD); `landing-zone-qa` §1, §5, §10; `cmdb-qa` §2–§6; `developer-guide.md` §1, §3; `poc/RESULTS.es.md`. No se repite lo que ya está allí |
 | **Especificación de referencia** | `archetype-model.md` (AM §n), `terramate-outputs-sharing-architecture.md` (§n), `developer-guide.md` (DG §n) |
-| **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano |
+| **Diagramas** | `diagrams/*.mmd` (fuente Mermaid) y `diagrams/*.svg` (renderizados). El SVG se regenera desde el `.mmd`; no se edita a mano. `diagrams/03-presentation-blocks.svg` (1920×1080, para presentaciones) se genera con `03-presentation-blocks.py`, no con Mermaid |
 | **Identificadores propios** | Decisiones `DR1…`, riesgos candidatos `RR1…`, verificaciones `VR1…` |
 
 No reabre ninguna decisión de `CLAUDE.md`. Al llevar la arquitectura a un repositorio real encuentra cuatro cosas:
@@ -16,6 +16,10 @@ No reabre ninguna decisión de `CLAUDE.md`. Al llevar la arquitectura a un repos
 2. **Un proyecto Terramate es un repositorio** (medido, `poc/RESULTS.es.md`). Todo lo que se pasa valores por outputs sharing — la landing zone, las plataformas, los arquetipos y sus instancias — tiene que vivir en el mismo repositorio. Eso choca con la guía de desarrollo, que pone los stacks de una aplicación en el repositorio de la aplicación (DR6, abierta, §8).
 3. **El deploy de la arquitectura era un solo job con `environment: production`**, y la identidad de apply de cada entorno solo es suplantable desde el Environment de ese entorno (arquitectura §11.2). Con ese job no se podía aplicar `qa`. Corregido en la arquitectura §14.2: un job por entorno (§5.1).
 4. **Hechos de Terramate medidos al escribir las plantillas** (0.16.0 y 0.17.3): los tags no admiten `:` (`instance:alpha` rompe la carga de la configuración; ahora `instance/alpha`), `terramate list` no tiene `--json`, y `experimental eval` no expone `after` (el inventario sale de `ci/stacks-json.sh`, sobre `debug show metadata`); los bloques `script` siguen necesitando el experimento `scripts` en 0.17.3 (`poc/RESULTS.md` A8). Corregidos en `CLAUDE.md`, la arquitectura, el glosario y las propuestas afectadas (§12).
+
+![Repositorio de despliegue, en bloques](diagrams/03-presentation-blocks.svg)
+
+Fuente: [`diagrams/03-presentation-blocks.py`](diagrams/03-presentation-blocks.py) — vista de presentación; el detalle está en §1–§8.
 
 ---
 
