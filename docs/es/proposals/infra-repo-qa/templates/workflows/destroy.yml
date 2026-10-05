@@ -5,8 +5,8 @@ on:
     inputs:
       env:
         description: Entorno
-        type: choice
-        options: [qa, prod]
+        type: string                           # se valida abajo; aquí no hay lista de entornos (multi-environment DX8)
+        required: true
       instance:
         description: Id de la instancia (tag instance/<id>)
         type: string
@@ -23,7 +23,9 @@ permissions:
 jobs:
   guards:                                      # sin credenciales: las tres guardas antes de pedir aprobación
     runs-on: ubuntu-latest
+    permissions: { contents: read, actions: read }
     outputs:
+      env: ${{ steps.sel.outputs.env }}
       selector: ${{ steps.sel.outputs.selector }}
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +38,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::destroy solo desde main"; exit 1; }
+          [[ "$ENV" =~ ^[a-z][a-z0-9-]{0,17}[a-z0-9]$ ]] && [ -f "environments/$ENV/binding.yaml" ] \
+            || { echo "::error::'$ENV' no es un entorno"; exit 1; }
+          # un job que nombra un Environment inexistente hace que se cree al vuelo, sin protección (multi-environment DX9)
+          gh api "repos/$GITHUB_REPOSITORY/environments/$ENV-destroy" \
+            --jq '(.protection_rules | length > 0) and (.deployment_branch_policy != null)' | grep -qx true \
+            || { echo "::error::GitHub Environment '$ENV-destroy' no existe o no está protegido"; exit 1; }
           [[ "$INSTANCE" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "::error::id de instancia no válido"; exit 1; }
           [ "$INSTANCE" = "$CONFIRM" ] || { echo "::error::la confirmación no coincide"; exit 1; }
           sel="$ENV:instance/$INSTANCE"          # ":" es Y: el entorno y la instancia
@@ -56,34 +64,36 @@ jobs:
             | map(select($idx.stacks[.].observed.lastApply.outcome != "destroyed"))
             | unique | .[]' index.json)"
           [ -z "$live" ] || { echo "::error::consumidores vivos fuera del set: $live"; exit 1; }
-          echo "selector=$sel" >> "$GITHUB_OUTPUT"
+          { echo "env=$ENV"; echo "selector=$sel"; } >> "$GITHUB_OUTPUT"
 
   destroy:
     needs: guards
     runs-on: ubuntu-latest
-    environment: ${{ inputs.env }}-destroy     # otro grupo de aprobadores; tf-destroy-<env>@
+    environment: ${{ needs.guards.outputs.env }}-destroy     # otro grupo de aprobadores; tf-destroy-<env>@
+    env:
+      SELECTOR: ${{ needs.guards.outputs.selector }}
     concurrency:
-      group: deploy-${{ inputs.env }}          # nunca a la vez que un deploy del mismo entorno
+      group: deploy-${{ needs.guards.outputs.env }}          # nunca a la vez que un deploy del mismo entorno
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
         with:
           identity: tf-destroy
-          env: ${{ inputs.env }}
+          env: ${{ needs.guards.outputs.env }}
       - name: Destroy en orden inverso, sharing activado, sin mocks
         run: |
-          terramate run --tags "${{ needs.guards.outputs.selector }}" --reverse --enable-sharing -- \
+          terramate run --tags "$SELECTOR" --reverse --enable-sharing -- \
             tofu destroy -auto-approve
       - name: Observaciones para la CMDB
         if: ${{ !cancelled() }}
         run: |
-          terramate run --tags "${{ needs.guards.outputs.selector }}" -- \
+          terramate run --tags "$SELECTOR" -- \
             archetypectl cmdb observe --destroyed --out "$RUNNER_TEMP/observed"
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: cmdb-observed-${{ github.run_id }}-${{ inputs.env }}
+          name: cmdb-observed-${{ github.run_id }}-${{ needs.guards.outputs.env }}
           path: ${{ runner.temp }}/observed
 
   cmdb:

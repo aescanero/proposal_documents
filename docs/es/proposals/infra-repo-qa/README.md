@@ -309,11 +309,11 @@ Resumen de quién suplanta a quién; el detalle de roles está en `landing-zone-
 | Principal de federación | Identidad | Desde |
 |---|---|---|
 | `attribute.repository/disasterproject/infra` | `tf-plan-lz@`, `tf-plan-qa@` (y el resto de no productivos) | Cualquier job del repositorio |
-| `attribute.environment/prod-plan`, `attribute.environment/prod-drift` | `tf-plan-prod@` | Environments `prod-plan` (PR, con aprobación) y `prod-drift` (solo `main`) (DR7) |
-| `attribute.environment/<env>` | `tf-apply-<env>@` | Environment `<env>` |
-| `attribute.environment/<env>-destroy` | `tf-destroy-<env>@` | Environment `<env>-destroy` |
-| `attribute.environment/landing-zone` | `tf-apply-lz@` | Environment `landing-zone` |
-| `attribute.environment/image-mirror` | `image-mirror@` | Environment `image-mirror` |
+| `attribute.environment/prod-plan`, `attribute.env_ref/prod-drift@refs/heads/main` | `tf-plan-prod@` | Environments `prod-plan` (PR, con aprobación) y `prod-drift` (solo `main`) (DR7) |
+| `attribute.env_ref/<env>@refs/heads/main` | `tf-apply-<env>@` | Environment `<env>` |
+| `attribute.env_ref/<env>-destroy@refs/heads/main` | `tf-destroy-<env>@` | Environment `<env>-destroy` |
+| `attribute.env_ref/landing-zone@refs/heads/main` | `tf-apply-lz@` | Environment `landing-zone` |
+| `attribute.env_ref/image-mirror@refs/heads/main` | `image-mirror@` | Environment `image-mirror` |
 
 ---
 

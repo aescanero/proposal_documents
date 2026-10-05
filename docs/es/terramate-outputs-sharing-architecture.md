@@ -683,7 +683,7 @@ output se mantengan.
 | | Qué | Quién lo aplica | Dónde se especifica |
 |---|---|---|---|
 | **0a** | **La landing zone existe.** El stack `gcp-lz-bootstrap` (bucket de estado, key ring `lz` con `tofu-state`, el pool de federación, `tf-plan-lz@`, `tf-apply-lz@`, `tf-destroy-lz@`) lo aplica **una vez por organización** una persona, con estado local, y su estado se migra al bucket; después el resto de la landing zone lo aplica el pipeline | Una persona con `organizationAdmin` y `billing.admin`, una vez; después el job `landing-zone` | `landing-zone-qa` §1 |
-| **0b** | **El entorno se da de alta en la landing zone.** Una pull request añade `environments/<env>/binding.yaml`, del que la landing zone descubre el entorno (sin una segunda lista que mantener al paso): key ring de KMS y clave `tofu-state`, el prefijo de estado, `tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@` con sus vínculos de federación, la zona delegada y el `public_id`, el bloque de direcciones del pool global, la regla de Binary Authorization y la SA de nodos del runtime. De `metadata.jurisdiction` y `metadata.region` del binding deriva la carpeta y el proyecto, el bucket de estado y la ubicación del key ring (`multi-environment` DX6). La misma pull request añade `environments/<env>/binding.yaml`. Fuera del repositorio, un administrador crea los GitHub Environments `<env>` y `<env>-destroy` con sus revisores y su política de ramas — sin variables: la identidad se deriva del entorno (`landing-zone-qa` DZ12) | El job `landing-zone` (`tf-apply-lz@`); los GitHub Environments, un administrador del repositorio | `landing-zone-qa` §10; `infra-repo-qa` |
+| **0b** | **El entorno se da de alta en la landing zone.** Una pull request añade `environments/<env>/binding.yaml`, del que la landing zone descubre el entorno (sin una segunda lista que mantener al paso): key ring de KMS y clave `tofu-state`, el prefijo de estado, `tf-plan-<env>@`, `tf-apply-<env>@`, `tf-destroy-<env>@` con sus vínculos de federación, la zona delegada y el `public_id`, el bloque de direcciones del pool global, la regla de Binary Authorization y la SA de nodos del runtime. De `metadata.jurisdiction` y `metadata.region` del binding deriva la carpeta y el proyecto, el bucket de estado y la ubicación del key ring (`multi-environment` DX6). La misma pull request añade `environments/<env>/binding.yaml`. Fuera del repositorio, y **antes de que esa pull request se fusione**, un administrador crea los GitHub Environments `<env>` y `<env>-destroy` con sus revisores y su política de ramas (`multi-environment` DX9) — sin variables: la identidad se deriva del entorno (`landing-zone-qa` DZ12) | El job `landing-zone` (`tf-apply-lz@`); los GitHub Environments, un administrador del repositorio | `landing-zone-qa` §10; `infra-repo-qa` |
 
 La identidad propia del entorno no puede hacer ninguna de las dos: no existe antes de 0b, y después no tiene ningún rol sobre la landing zone. Solo cuando ambas están hechas se ejecuta la secuencia de abajo — desde `first-deploy`, un workflow manual ligado al Environment `<env>`, que escribe el primer marcador de deploy del entorno (§14.2).
 
@@ -2414,6 +2414,9 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "attribute.repository"   = "assertion.repository"
     "attribute.environment"  = "assertion.environment"
     "attribute.ref"          = "assertion.ref"
+    # el Environment Y la rama en un solo valor: una identidad de apply ligada a él es inalcanzable desde
+    # una rama aunque GitHub haya creado el Environment al vuelo, sin protección (multi-environment DX9)
+    "attribute.env_ref"      = "has(assertion.environment) ? assertion.environment + '@' + assertion.ref : 'none'"
   }
 
   # SIN ESTA CONDICIÓN, CUALQUIER REPOSITORIO DE GITHUB EN EL MUNDO PUEDE
@@ -2436,11 +2439,11 @@ resource "google_service_account_iam_member" "plan" {
   member = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/disasterproject/infra"
 }
 
-# Apply: escritura, permitido SOLO desde el GitHub Environment protegido
+# Apply: escritura, permitido SOLO desde el GitHub Environment protegido, en main
 resource "google_service_account_iam_member" "apply" {
   service_account_id = google_service_account.tf_apply_shared_demo.name
   role               = "roles/iam.workloadIdentityUser"
-  member = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.environment/demos"
+  member = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.env_ref/demos@refs/heads/main"
 }
 ```
 
@@ -2453,7 +2456,7 @@ resource "google_service_account_iam_member" "apply" {
 
 **Las coordenadas de la federación se commitean** (`ci/federation.env`), no son variables de repositorio: son identificadores, no secretos, y un fichero revisado no puede desviarse como lo hace una variable editada por un administrador (`landing-zone-qa` DZ12).
 
-El claim `attribute.environment` solo está presente cuando el job del workflow declara `environment:`. Ligar la SA de apply a ese atributo significa que **el rol de apply es inalcanzable desde un job sin la puerta de entorno**, lo que hace que el control de required-reviewers de GitHub sea un límite de seguridad real en lugar de una conveniencia de UI.
+El claim `attribute.environment` solo está presente cuando el job del workflow declara `environment:`. Ligar la SA de apply a ese atributo significa que **el rol de apply es inalcanzable desde un job sin la puerta de entorno**, lo que hace que el control de required-reviewers de GitHub sea un límite de seguridad real en lugar de una conveniencia de UI — **siempre que el Environment exista con sus reglas de protección**. GitHub crea al vuelo, sin protección, un Environment que un job nombra y que no existe, y un Environment sin política de ramas admite cualquier rama: entre que la landing zone federa las identidades de un entorno nuevo y que un administrador crea sus Environments, cualquiera con escritura podría suplantarlas desde una rama. Por eso las identidades de apply y destroy se ligan a `attribute.env_ref/<env>@refs/heads/main`, el Environment y la rama en un solo valor; el alta crea los Environments antes de fusionar el binding (§4.11 0b). La guarda `has()` mantiene el intercambio para los jobs sin entorno, los de plan **(verificar, `multi-environment` VX7)**.
 
 | Identidad | Roles | Alcance |
 |---|---|---|
@@ -2989,6 +2992,9 @@ Los entornos no son copias unos de otros: difieren en composición, proveedor po
 | Compartido, por región | Un registro de imágenes regional por región distinta de los bindings, en el proyecto de la landing zone; promover entre regiones es una copia por digest |
 | Nombres | Los nombres de entorno son libres de prefijo; el entorno nunca se extrae del id de un stack; toda comparación de prefijo lleva su separador (`europe-west1` es prefijo de `europe-west10`) |
 | Valores por defecto | Ningún default de chart o módulo es el valor de un entorno real: un override que falta debe fallar en el primer entorno, no crear en el segundo los nombres del primero |
+| Una lista | `environments/*/` es la única lista de entornos: las entradas de los workflows se validan contra ella, los recuentos y las palabras de nombres públicos se derivan de ella. El árbol de stacks lo emite el resolver, nunca se copia de otro entorno |
+| Clave de estado | `<env>/<stack id>`, nunca la ruta del stack: mover un directorio no es mover estado |
+| Identidades | Las identidades de apply y destroy de un entorno se ligan a su Environment **y** a `main` (§11.2), y sus Environments existen antes de que se fusione su binding |
 | Comprobaciones | G1 `environment.names` y `environment.placement`; G3 `terraform.own_location` y `terraform.own_network` (§13.3, §13.4) |
 
 ## 13. Validación de políticas y seguridad
@@ -3227,7 +3233,9 @@ env_words := {"prod", "prd", "production", "qa", "dev", "develop", "test", "tst"
               "stg", "stage", "staging", "pre", "preprod", "demo", "demos", "sandbox", "sbx",
               "ephemeral", "nonprod"}
 
-words := env_words | {input.metadata.name}
+# El nombre de cada entorno, no solo el de este binding: un nombre público no debe delatar ninguno.
+# ci/g1.sh escribe environments.json ({"environments": {"names": [...]}}) desde environments/*/binding.yaml.
+words := env_words | {n | some n in data.environments.names}
 
 # El identificador público es aleatorio; si una tirada contiene por azar una palabra de entorno, se repite.
 deny contains msg if {
@@ -3298,19 +3306,19 @@ terramate run --changed -- \
   checkov -f plan.json --framework terraform_plan \
           --config-file "${TM_ROOT}/.checkov/${TM_CLOUD}.yaml"
 
-conftest test --policy policy/ --data registry/registry.json --data env.json \
+conftest test --policy policy/ --data registry/registry.json --data env.json --data environments.json \
   --namespace terraform.public_names --namespace terraform.own_network \
   --namespace terraform.own_location plan.json       # un --namespace por paquete de G3
 ```
 
 `--namespace` coincide con un paquete **exactamente**: `--namespace terraform` no coincide con ningún `package terraform.public_names` y el paso pasa con `0 tests` (medido, conftest 0.70.1). G3 nombra cada uno de sus paquetes, en lugar de `--all-namespaces`, para que las reglas de G1 no se ejecuten sobre un plan; y lleva la misma salvaguarda de cero reglas que G1 (§14.4).
 
-En G3 el plan lleva los nombres que G1 no ve. `env_words` se importa del paquete de G1, así que las dos comprobaciones usan la misma lista:
+En G3 el plan lleva los nombres que G1 no ve. `words` —la lista fija más el nombre de cada entorno— se importa del paquete de G1, así que las dos comprobaciones usan el mismo conjunto; con `env_words` solo, un nombre público con el nombre del propio entorno pasaba G3:
 
 ```rego
 package terraform.public_names
 
-import data.environment.public_names.env_words
+import data.environment.public_names.words
 
 # Todo recurso gestionado del plan, a cualquier profundidad de módulo.
 resources contains r if {
@@ -3341,7 +3349,7 @@ public_names contains [r.address, d] if {
 deny contains msg if {
     some [addr, name] in public_names
     some token in split(replace(name, ".", "-"), "-")
-    token in env_words
+    token in words
     msg := sprintf("%s: public name %q carries the environment word %q (edge-qa DL10)", [addr, name, token])
 }
 ```
@@ -3922,7 +3930,7 @@ terramate debug show metadata | jq -Rn '
 
 ## 15. Registro de riesgos
 
-El registro completo — 69 riesgos agrupados por dominio (66 activos; R28 retirado como duplicado de R26, R38 y R39 retirados con el endpoint DNS del plano de control), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
+El registro completo — 71 riesgos agrupados por dominio (68 activos; R28 retirado como duplicado de R26, R38 y R39 retirados con el endpoint DNS del plano de control), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
 
 Los cinco sobre los que actuar primero:
 

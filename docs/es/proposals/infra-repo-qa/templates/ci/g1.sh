@@ -7,13 +7,15 @@ archetypectl resolve --dry-run > resolution.json
 ./ci/stacks-json.sh > stacks.json             # id, ruta, tags, after (arquitectura §14.4)
 archetypectl enrich stacks.json               # añade consumes[] y after_ids[]
 archetypectl cmdb check                       # la mitad declarada de la CMDB está al día (cmdb-qa DI2)
+yq -o=json '.metadata.name' environments/*/binding.yaml | jq -s '{environments: {names: .}}' > environments.json
+jq -e '.environments.names | length > 0' environments.json >/dev/null || { echo "G1: no environment" >&2; exit 1; }   # el nombre de cada entorno, de la única lista que hay (multi-environment DX8): lo leen los nombres públicos y G3
 ./ci/check-federation.sh                      # coordenadas de la federación en un fichero revisado (landing-zone-qa DZ12)
 
 conftest verify --policy policy/              # los tests de las propias políticas
 
 ct() {                                        # conftest que se niega a pasar sin haber evaluado nada (§14.4)
   local out
-  out=$(conftest test --all-namespaces --policy policy/ --data registry/registry.json -o json "$@") \
+  out=$(conftest test --all-namespaces --policy policy/ --data registry/registry.json --data environments.json -o json "$@") \
     || { jq -r '.[] | .filename as $f | .failures[]? | "FAIL \($f): \(.msg)"' <<<"$out"; return 1; }
   jq -e '[.[] | .successes + (.failures // [] | length)] | add > 0' <<<"$out" >/dev/null \
     || { echo "G1: no rule evaluated for $*" >&2; return 1; }

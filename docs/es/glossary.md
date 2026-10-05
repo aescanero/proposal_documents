@@ -366,6 +366,7 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 | **Promoción de entorno (diff de globals)** | Mover la configuración de `demos` → `dev` → `qa` → `prod` es puramente un cambio en los valores del binding (número de nodos, canal de release, protección de borrado, retención de backups) — generadores y contratos idénticos en todas partes. |
 | **Jurisdicción** (`metadata.jurisdiction`) | El territorio del que no salen los datos de un entorno (`eu`, `us`). Elige la carpeta con su `gcp.resourceLocations`, el proyecto no productivo y el bucket de estado; la región es una de las suyas. Se enumeran una vez, en `global.lz.jurisdictions` de la landing zone (`multi-environment` DX4). |
 | **Nombres de entorno libres de prefijo** | Ningún `<nombre>-` de un entorno es prefijo del de otro: `sandbox` y `sandbox-eu` no pueden coexistir, porque `<env>-` es la frontera de KSA, zonas DNS y recursos en un proyecto compartido. Lo comprueba G1 `environment.names` (`multi-environment` DX3). |
+| **`attribute.env_ref`** | Atributo de federación `<entorno>@<ref>`, presente solo cuando el job declara un entorno. Las identidades de apply y destroy se ligan a `attribute.env_ref/<env>@refs/heads/main`, así que un workflow de rama que declara el entorno —aunque GitHub lo haya creado al vuelo, sin protección— no puede suplantarlas (`multi-environment` DX9). |
 | **Un entorno es su binding** | El único fichero escrito a mano por entorno; los nombres que no son claims se derivan de `global.env` y `global.region`, los rangos salen del ledger, y el árbol de stacks solo tiene lo que el binding enlaza (`multi-environment` DX1). |
 | **Integración de CMDB (Terramate)** | `ci/stacks-json.sh` (inventario lógico, previo al apply; Terramate 0.17 no tiene `list --json`) y `terramate run --changed -- tofu show -json` (inventario físico, posterior al apply) como fuentes de datos de la CMDB — mejor que parsear los ficheros de estado directamente. |
 
@@ -555,7 +556,7 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 
 ---
 
-## 26. Registro de riesgos (`risk-register.md`) — 69 riesgos por dominio (66 activos)
+## 26. Registro de riesgos (`risk-register.md`) — 71 riesgos por dominio (68 activos)
 
 Cada riesgo tiene un número R estable y nunca reutilizado, una probabilidad, un impacto y una mitigación ligada a una sección del documento.
 
@@ -614,6 +615,7 @@ Cada riesgo tiene un número R estable y nunca reutilizado, una probabilidad, un
 | **R63–R64** | Una cota de administración de IAM desacompasada de su lista de roles; redes autorizadas huérfanas en la variante de acceso al plano de control con un `/32` por job. Ver `risk-register.md`. |
 | **R65–R66** | En el proyecto non-prod compartido, un recurso de red o DNS de un entorno enlazado al de otro; el egress de la VPC denegado por defecto que bloquea un flujo legítimo, sobre todo el del propio rango del entorno. Ver `risk-register.md`. |
 | **R67–R69** | Muchos entornos: nombres que son prefijo de otros, o un entorno extraído del id de un stack; un recurso fuera de la región o la jurisdicción de su entorno; un valor por defecto igual al de un entorno real. Ver `risk-register.md`. |
+| **R70–R71** | Un entorno copiado de los stacks de otro, o una lista de entornos mantenida a mano; una identidad de entorno federada antes de que exista su GitHub Environment protegido, o sin la rama. Ver `risk-register.md`. |
 
 **Los cinco principales riesgos** (ordenados por probabilidad × impacto, mitigación aún no implantada): 1) R2 (falta `after`), 2) R12 (`sub` comodín OIDC), 3) R26 (rango de pods dimensionado para pocos nodos), 4) R34 (divergencia del registro), 5) R5 (plataforma compartida destruida al desmontar una instancia).
 

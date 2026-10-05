@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposal · revision 1 |
+| **Status** | Proposal · revision 2 · jurisdiction without residency, emitted tree, bounded names, no hand-kept list, state key by id, federation bound to `main` (§1, §3, §4, §7, DX8, DX9); revision 1: an environment is its binding |
 | **Scope** | How the platform carries N environments that are **not copies** of each other: different composition, providers, size, region and jurisdiction. What is written by hand per environment and what is derived; what may vary and what may not; how they are named; what is regional, what belongs to the jurisdiction and what is global; what changes in the landing zone; how location is checked; and how the derivation is introduced without touching `qa` |
 | **Why now** | The `qa` proposals describe one environment. The second environment, in another region and with another composition, is the one that shows whether the archetype model generalises or whether `qa` was written by hand in the shape of a template. Three things in the design only worked with one environment (§3, §6) |
 | **Base** | AM §7 (binding), §9 (pools), §12 (resolution); architecture §4.11 (first deployment), §12 (environment management), §13.3–§13.4 (G1, G3); `landing-zone-qa` §2–§6; `gatekeeper-qa` P2, P12; `network-qa` DW8. What is there is not repeated |
@@ -50,10 +50,12 @@ The only thing written by hand per environment is `environments/<env>/binding.ya
 | Registries admitted by P2 | Derivation: the repositories of the environment's region (§6) | `europe-west1-docker.pkg.dev/disasterproject-lz/{apps,third-party}/` |
 | Foreign prefixes for P12 | Derivation: the other bindings **of the same project** | `dev-`, `demos-`, `sandbox-` |
 | Instance stack ids (`keycloak_data_stack_id`…) | The instance's `binding.tm.hcl` | `gcp-qa-keycloak-main-data` |
+| Each stack's state key | Derivation: `<env>/<stack id>`, **never the stack's path** (DX8) | `qa/gcp-qa-network` |
 
 **Different composition, different tree.** An environment only has the stacks of what it binds: a `sandbox` without `sonarqube` has no SonarQube stacks, no SAML client and no secrets for it. Two consequences for whoever writes archetypes:
 
 - **A platform module does not know its consumers.** The Keycloak realm does not create SonarQube's client: SonarQube declares it as a tenant resource (`keycloak-qa` §6). A module that names a consumer makes that consumer mandatory in every environment.
+- **The stack tree is emitted, never copied.** The resolver emits it from the binding and the manifests' `stacks[]` (AM §12, steps 9 and 17). A scaffolder that copies another environment's `stack.tm.hcl` files and rewrites `"qa"` into `"<env>"` both over- and under-matches (`qa.internal`, prefixes inside values, `ksa_prefix`) and drifts from the original with every later change (RX5).
 - **A contract never carries a literal `from_stack_id`.** It reads `global.platform.*_stack_id` (AM §7, "late binding"). A G1 rule fails on `from_stack_id = "<cloud>-` in `imports/`.
 
 **No default is a real environment's value (DX2).** A chart whose default is `gatewayClassName: envoy-qa` works on `qa` even if the generator does not pass the value, and in the second environment silently creates an `envoy-qa`. Chart and module defaults are neutral placeholders (`envoy`, `gateway`, `eg-neg`, `internal`) or do not exist; the generator always passes the derived value. A missing override shows in the first environment, not the second.
@@ -71,6 +73,7 @@ The only thing written by hand per environment is `environments/<env>/binding.ya
 | Jurisdiction | `metadata.jurisdiction` | Yes | Folder, non-production project and state bucket (§4) |
 | Project | `platform.project_id` | Determined by jurisdiction and tier | G1 checks it (§5) |
 | Size and capacities | `cluster`, `capacity` | Yes | — |
+| Node pools | `cluster.node_pools` | Their size does; **the two pools do not** | `system` and `apps` always exist (`CLAUDE.md`, `gke-qa` DN11): the generator puts layers 2b and 3 on `system`, and Keycloak (layer 4) runs on `apps`. An environment without layer-5 applications shrinks `apps`, it does not drop it |
 | Exposure, Gatekeeper mode, expiry | `policy`, manifests | Yes | Architecture §13.7 |
 | Naming conventions, contracts, generators, G1/G3 rules | The platform | **No** | If an environment needs another convention, it is another platform |
 
@@ -84,6 +87,11 @@ The only thing written by hand per environment is `environments/<env>/binding.ya
 | **Region is an attribute, not part of the name.** An environment in `us-central1` may be called `lab`; if the name includes the region, it is just a name | The name does not change when the region does, and rules do not infer the region from it | — |
 | **The environment is never parsed out of a stack id.** It is read from `global.env` or the environment tag; to pair stacks of the same environment, compare everything before their suffix | `<cloud>-<env>-<capability>` is ambiguous as soon as `<env>` or `<capability>` contains `-` | The corrected `terramate.order` rule and its fixtures (architecture §13.3) |
 | **Every prefix comparison carries its separator.** `<env>-`, `<region>-`, `managedZones/<env>-` | `europe-west1` is a prefix of `europe-west10`; `sandbox` of `sandbox-eu` | In every rule that compares prefixes |
+| **Length ≤ 19 and `^[a-z][a-z0-9-]*[a-z0-9]$`** | A service account id has 6–30 characters: `tf-destroy-<env>` leaves 19 for the name, `<env>-gke-nodes` 20. A longer name passes the binding and fails in the landing zone, halfway through its `apply` | G1 `environment.names` |
+
+**No list of environments is kept by hand (DX8).** The only list is `environments/*/`. Manual workflow inputs are a `string` validated against that directory, not a `choice` whose options must be extended at every onboarding; expected counts are derived; the words forbidden in public names are the fixed ones **plus every binding's name** (architecture §13.3–§13.4), not a list someone adds the new one to. A hand-kept list is a second source that drifts, and the word list drifts silently: a public name carrying another environment's name used to pass.
+
+**An environment has no identity until it has its protected GitHub Environment (DX9).** GitHub creates on the fly, **with no protection rules**, an Environment that a job names and that does not exist. If the landing zone federates `tf-apply-<env>@` with `attribute.environment/<env>` before an administrator creates that Environment, anyone with write access to the repository impersonates it from a workflow on their branch. Two defences: the `apply` and `destroy` identities are bound to the Environment **and** to `refs/heads/main` in the attribute itself (`attribute.env_ref = assertion.environment + "@" + assertion.ref`, architecture §11.2), and onboarding creates the Environments before the binding merges (§4.11 0b). A workflow that receives the environment as text validates it in a job **without** `environment:` before another job names it, and never interpolates it into a script.
 
 ---
 
@@ -109,12 +117,14 @@ globals "lz" {
   region = "europe-west1"                     # the landing zone's region: lz ring, its state, federation
   jurisdictions = {
     eu = {
+      residency       = true
       regions         = ["europe-west1"]
       nonprod_project = "disasterproject-nonprod"        # the existing one: not renamed
       state_bucket    = "disasterproject-tfstate-gcp"
       state_region    = "europe-west1"
     }
     us = {
+      residency       = true
       regions         = ["us-central1"]
       nonprod_project = "disasterproject-nonprod-us"
       state_bucket    = "disasterproject-tfstate-gcp-us"
@@ -127,7 +137,7 @@ globals "lz" {
 | Piece | Where it lives | Why |
 |---|---|---|
 | Subnets, Cloud Router and NAT, cluster, Cloud SQL, the environment's buckets, disks | **The environment's region** | They are the environment |
-| The environment's key ring (`tofu-state`, `gke-secrets`, `cosign`) | **The environment's region**, in `disasterproject-lz` | `gke-secrets` must be in the cluster's location; a key ring has a single location, so the whole ring goes with it |
+| The environment's key ring (`tofu-state`, `gke-secrets`, `cosign`) | **The environment's region**, in `disasterproject-lz` | `gke-secrets` must be in the cluster's location; a key ring has a single location, so the whole ring goes with it. **KMS key rings and keys are never deleted**: their location is decided before the first `apply`, and a mistake leaves an orphan ring forever |
 | The environment's state | **Its jurisdiction's bucket**, prefix `<env>/` | State carries the environment's topology and names; it does not leave the jurisdiction |
 | Non-production project | **One per jurisdiction** (and `-2` inside it when a limit is reached, `landing-zone-qa` §2) | `resourceLocations` applies per folder: a project shared across jurisdictions could only have the union |
 | `prod` | Its project, in its jurisdiction's `prod` folder | As today |
@@ -137,6 +147,10 @@ globals "lz" {
 | `/8` address pool | Global, one ledger | Ranges do not overlap across jurisdictions: a future interconnect needs no renumbering |
 
 **Folders.** `platform` (project `disasterproject-lz`, `resourceLocations` = the union of every jurisdiction's regions, because it hosts the registries and rings of all of them) and one folder per jurisdiction, `eu` and `us`, with `nonprod` and `prod` inside. `gcp.resourceLocations` is set on the jurisdiction's folder with its regions; the other policies on `nonprod` and `prod` as today (`landing-zone-qa` §3).
+
+**A region for latency, not residency.** A region chosen for proximity or cost, not because the data must stay there, creates no jurisdiction: it goes in a jurisdiction with `residency = false`, whose `regions` may span continents, and its state may live in that jurisdiction's bucket even in another region. Its key ring may not: `gke-secrets` follows the cluster. What is not valid is the mix — a region chosen for residency with its state outside it —: either the jurisdiction has residency, with its project, bucket and ring, or it does not and says so.
+
+**Degraded mode.** Where the org policies are not ours (an adopted project with an unrestricted `gcp.resourceLocations`), residency rests on G1 `environment.placement` and G3 `own_location` alone. It is recorded as a deployment assumption, with the date the policy was measured; it is never the default design.
 
 ---
 
@@ -183,6 +197,7 @@ Everything still comes from `environments/*/binding.yaml` and `global.lz.jurisdi
 | Contracts with `global.platform.*` instead of literal ids | The same; G1 fails on a `from_stack_id = "<cloud>-` in `imports/` |
 | `GatewayClass` and the other values passed by the generator; neutral defaults (DX2) | The same (`envoy-qa` now comes from `"envoy-${global.env}"`) |
 | `preview` of `qa` | "No changes" on every stack |
+| State key by id (DX8), if `qa` is already deployed with path keys | **Outside** that pull request: a key change is a state move, one per stack (`tofu init -migrate-state`), in its own pull request with the environment quiet; afterwards, moving a directory changes no `plan` |
 | Fixtures of a **second, different environment** (another jurisdiction, another composition, a name with `-`) in `policy/fixtures/` | G1 and G3 pass with it and fail with its broken variants |
 
 **Fixtures never go in `environments/`.** The landing zone discovers environments there (§6): a test binding would create identities, a key ring and a public zone.
@@ -201,6 +216,7 @@ Everything still comes from `environments/*/binding.yaml` and `global.lz.jurisdi
 | Key ring | `keyRings/qa`, `europe-west1` | `keyRings/lab`, `us-central1` |
 | Registry | `europe-west1-docker.pkg.dev/disasterproject-lz/…` | `us-central1-docker.pkg.dev/disasterproject-lz/…` |
 | P12 foreign prefixes | `dev-`, `demos-`, `sandbox-` | None (the only environment in its project) |
+| Node pools | `system`, `apps` | `system`, `apps`, smaller |
 | What is the same | Generators, contracts, conventions, rules | The same |
 
 ---
@@ -215,6 +231,8 @@ Everything still comes from `environments/*/binding.yaml` and `global.lz.jurisdi
 | RX2 | **A rule that parses the environment out of the stack id** | Certain with names containing `-` | Medium — false positives that block, or a false negative that lets a missing edge through | It is never parsed; fixtures with a second environment and names with `-` (DX3, VX1) |
 | RX3 | **A resource outside its environment's region or jurisdiction** | Medium with several regions | High — data outside its territory; cross-region latency and cost | `resourceLocations` per jurisdiction folder; G3 `own_location`; G1 `environment.placement` (DX4, DX5) |
 | RX4 | **A default equal to a real environment's value**: the missing override does not show until the second environment | High without the rule | Medium — the second environment creates resources with the first one's name, or collides with them | Neutral defaults; acceptance by empty diff and fixtures of a second environment (DX2, DX7) |
+| RX5 | **An environment created by copying another's stacks, or a list of environments kept by hand** | High at the second environment | Medium — copies that drift; a public name carrying another environment's name that passes; a workflow that does not offer the new environment | Tree emitted by the resolver; lists derived from `environments/` (DX1, DX8) |
+| RX6 | **An environment identity federated before its protected GitHub Environment exists**, or federated without binding the branch | Medium at each onboarding | Critical — `tf-apply-<env>@` or `tf-destroy-<env>@` impersonable from any branch: GitHub creates the Environment on the fly, unprotected | `attribute.env_ref` with `@refs/heads/main`; Environments created before the binding merges; validation without `environment:` (DX9, VX7) |
 
 ### 9.2 Verifications
 
@@ -225,6 +243,8 @@ Everything still comes from `environments/*/binding.yaml` and `global.lz.jurisdi
 | VX3 | Introducing the derivation | Empty diff after `terramate generate` and `preview` with no changes for `qa` (§7) |
 | VX4 | `resourceLocations` per folder | A test resource in a region of another jurisdiction is refused in its folder |
 | VX5 | Regional registry | A node in `europe-west1` pulls from `europe-west1-docker.pkg.dev` through the private `pkg.dev` zone (`network-qa` §4); P2 refuses an image from another region's registry |
+| VX6 | State key by id | Move a stack's directory and regenerate: its `plan` does not change |
+| VX7 | Federation bound to `main` | A workflow on a branch with `environment: <env>` gets a token but **cannot** impersonate `tf-apply-<env>@` (`Permission 'iam.serviceAccounts.getAccessToken' denied`); from `main`, it can; a plan job without `environment:` still exchanges its token (the `has()` guard of the mapping) |
 
 ---
 
@@ -241,7 +261,11 @@ Everything still comes from `environments/*/binding.yaml` and `global.lz.jurisdi
 | `gatekeeper-qa` P2, P12 | Registries of the environment's region; prefixes of the environments in the same project, prefix-free | **Applied** |
 | `envoy-gateway-qa` | `GatewayClass` `envoy-<env>`, passed by the generator; neutral defaults | **Applied** (DX2) |
 | `infra-repo-qa` (`image-mirror.yml` template) | A matrix over the bindings' regions | **Applied** (DX6) |
-| Risk register | R67 (RX1, RX2), R68 (RX3), R69 (RX4) | **Applied** |
+| Architecture §11.2 | `attribute.env_ref`; the `apply` and `destroy` identities bound to the Environment and to `main` | **Applied** (DX9) |
+| Architecture §13.3–§13.4 | The words forbidden in public names include every binding's name, in G1 and in G3 | **Applied** (DX8) |
+| `landing-zone-qa` §5.1, `infra-repo-qa` §4.3 | Principals `attribute.env_ref/<env>@refs/heads/main` | **Applied** (DX9) |
+| `infra-repo-qa` (`first-deploy.yml`, `destroy.yml`, `ci/g1.sh` templates) | Environment as text, validated in a job without `environment:`; `environments.json` for G1 and G3 | **Applied** (DX8, DX9) |
+| Risk register | R67 (RX1, RX2), R68 (RX3), R69 (RX4), R70 (RX5), R71 (RX6) | **Applied** |
 
 ---
 
@@ -256,6 +280,8 @@ Everything still comes from `environments/*/binding.yaml` and `global.lz.jurisdi
 | DX5 | Checking location | **Proposed** | G1 `environment.placement` and G3 `own_location`, on top of `resourceLocations` | The org policy alone, which cannot tell regions apart inside the jurisdiction |
 | DX6 | Multi-region landing zone | **Proposed** | Everything derived from the bindings and `global.lz.jurisdictions`; one regional registry per region | A multi-region registry (outside `resourceLocations`) |
 | DX7 | Introducing the derivation | **Proposed** | One pull request whose acceptance criterion is an empty diff and `preview` with no changes; fixtures of a second environment outside `environments/` | Derive and rename at once |
+| DX8 | What derives from the list of environments | **Proposed** | No hand-kept list: workflow inputs validated against `environments/`, derived counts, public-name words with every binding; state key `<env>/<stack id>` | Lists extended at each onboarding; key by path (moving a stack moves its state) |
+| DX9 | Federation of the environment identities | **Proposed** | `apply` and `destroy` bound to `attribute.env_ref/<env>@refs/heads/main`; Environments created before the binding merges | `attribute.environment/<env>` alone: depends on the Environment existing and having a branch policy |
 
 ---
 
@@ -263,7 +289,7 @@ Everything still comes from `environments/*/binding.yaml` and `global.lz.jurisdi
 
 | Phase | Contents | Exit criterion |
 |---|---|---|
-| **1 · Rules** | Corrected `terramate.order`, `environment.names`, `environment.placement`, `own_location`, `from_stack_id` guard; fixtures of the second environment | `conftest verify` green; each rule seen failing with its broken fixture |
+| **1 · Rules** | Corrected `terramate.order`, `environment.names` (with length), `environment.placement`, `own_location`, `public_names` with every binding, `from_stack_id` guard; fixtures of the second environment; `attribute.env_ref` (**VX7**) | `conftest verify` green; each rule seen failing with its broken fixture |
 | **2 · Derivation** | `imports/platform/environment.tm.hcl`; contracts with `global.platform.*`; neutral defaults | **VX3**: empty diff and `preview` with no changes for `qa` |
 | **3 · Landing zone** | `global.lz.jurisdictions`; folders per jurisdiction; rings per region; regional registries; mirroring as a matrix | Landing zone `plan` with no changes for `eu` except the new regional registry; **VX4**, **VX5** |
 | **4 · Second environment** | A real binding in another region or jurisdiction | Its first deployment (architecture §4.11) without editing by hand anything outside `environments/<env>/` and the ledger |

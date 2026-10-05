@@ -366,6 +366,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 | **Environment promotion (globals diff)** | Moving config from `demos` → `dev` → `qa` → `prod` is purely a change in binding values (node counts, release channel, deletion protection, backup retention) — identical generators and contracts everywhere. |
 | **Jurisdiction** (`metadata.jurisdiction`) | The territory an environment's data does not leave (`eu`, `us`). It selects the folder with its `gcp.resourceLocations`, the non-production project and the state bucket; the region is one of its regions. Listed once, in the landing zone's `global.lz.jurisdictions` (`multi-environment` DX4). |
 | **Prefix-free environment names** | No environment's `<name>-` is a prefix of another's: `sandbox` and `sandbox-eu` cannot coexist, because `<env>-` is the boundary for KSAs, DNS zones and resources in a shared project. Checked by G1 `environment.names` (`multi-environment` DX3). |
+| **`attribute.env_ref`** | Federation attribute `<environment>@<ref>`, set only when the job declares an environment. Apply and destroy identities are bound to `attribute.env_ref/<env>@refs/heads/main`, so a branch workflow that declares the environment — even one GitHub created on the fly, unprotected — cannot impersonate them (`multi-environment` DX9). |
 | **An environment is its binding** | The only file written by hand per environment; names that are not claims are derived from `global.env` and `global.region`, ranges come from the ledger, and the stack tree holds only what the binding binds (`multi-environment` DX1). |
 | **CMDB integration (Terramate)** | `ci/stacks-json.sh` (logical, pre-apply inventory; Terramate 0.17 has no `list --json`) and `terramate run --changed -- tofu show -json` (physical, post-apply inventory) as CMDB data sources — better than parsing state files directly. |
 
@@ -555,7 +556,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 
 ---
 
-## 26. Risk register (`risk-register.md`) — 69 risks by domain (66 active)
+## 26. Risk register (`risk-register.md`) — 71 risks by domain (68 active)
 
 Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mitigation tied to a document section.
 
@@ -614,6 +615,7 @@ Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mi
 | **R63–R64** | An IAM-administration bound out of step with its role list; orphan authorised networks in the `/32`-per-job control-plane variant. See `risk-register.md`. |
 | **R65–R66** | In the shared non-prod project, one environment's network or DNS resource bound to another's; VPC egress denied by default blocking a legitimate flow, the environment's own range above all. See `risk-register.md`. |
 | **R67–R69** | Many environments: names that are a prefix of others, or an environment parsed out of a stack id; a resource outside its environment's region or jurisdiction; a default equal to a real environment's value. See `risk-register.md`. |
+| **R70–R71** | An environment copied from another's stacks, or a hand-kept list of environments; an environment identity federated before its protected GitHub Environment exists, or without the branch. See `risk-register.md`. |
 
 **Top five risks** (ranked by likelihood × impact, mitigation not yet in place): 1) R2 (missing `after`), 2) R12 (wildcard OIDC `sub`), 3) R26 (pod range sized for too few nodes), 4) R34 (registry drift), 5) R5 (shared platform destroyed by instance teardown).
 
