@@ -6,7 +6,7 @@
 | [`archetype-model.md`](archetype-model.md) | *Resolve* — qué se puede componer con qué: manifiestos, capabilities, traits, pools, CMDB, resolución |
 | [`terramate-outputs-sharing-architecture.md`](terramate-outputs-sharing-architecture.md) | *Generate* — cómo se genera y se aplica: generadores, outputs sharing, IAM, políticas, CI/CD, cinco guías de runtime |
 | [`developer-guide.md`](developer-guide.md) | La mitad del desarrollador de aplicaciones: ramas, versionado, build, rollback |
-| [`risk-register.md`](risk-register.md) | 71 riesgos por dominio (68 activos), revisados en cada fase |
+| [`risk-register.md`](risk-register.md) | 73 riesgos por dominio (70 activos), revisados en cada fase |
 | [`glossary.md`](glossary.md) | Todos los términos usados arriba, definidos |
 | [`proposals/`](proposals/) | Propuestas de diseño para despliegues concretos. No normativas: cuando una propuesta zanja algo, `CLAUDE.md` lo registra |
 

@@ -6,7 +6,7 @@
 |---|---|
 | **Scope** | Every identified failure mode across generation, resolution, identity, edge, policy and multi-tenancy |
 | **Section references** | `§n` refers to the architecture document unless prefixed `AM §n` (archetype model) |
-| **Identifiers** | R1–R71. R28 is **retired** (duplicate of R26), and R38 and R39 are retired with the control plane DNS endpoint (`landing-zone-qa` DZ4); retired numbers are not reused |
+| **Identifiers** | R1–R73. R28 is **retired** (duplicate of R26), and R38 and R39 are retired with the control plane DNS endpoint (`landing-zone-qa` DZ4); retired numbers are not reused |
 | **Review cadence** | At each roadmap phase gate, and whenever a pinned tool version changes |
 
 Risks are grouped by domain rather than numbered order, because that is how they are reviewed. The original R-numbers are stable identifiers and must not be reused if a risk is retired.
@@ -34,8 +34,9 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R2 | **Missing `after` on a consumer stack** | High without lint | High — wrong values applied | The lint in §14.4, made blocking |
 | R3 | **Mocks leak into a deployment** | Medium | High | Separate `preview` and `deploy` scripts; prefix all mocks with `mock-`; add a post-apply grep for `mock-` in outputs |
 | R4 | **Type-mismatched mocks** | High | Medium — plan passes, apply fails | Code review checklist; mock lists as lists, base64 as valid base64 |
-| R9 | **Generated code edited by hand** | Medium | Medium | G0 gate + `CODEOWNERS` on `stacks/**/_*.tf` requiring platform-team approval |
+| R9 | **Generated code edited by hand** | Medium | Medium | G0 gate + `CODEOWNERS` on `stacks/**/_*.tf` and `stacks/**/_rendered/` requiring platform-team approval |
 | R17 | **State encryption key scoped per stack, blocking outputs sharing** | Medium at rollout | Medium — consumers cannot decrypt producer state | One state-encryption key per **environment**, not per stack (§11.5) |
+| R72 | **What is rendered is not what is applied**: `_rendered/` reviewed in the PR, but `helm_release` renders again at apply — the provider's embedded Helm differs from the CLI, a third-party chart calls `lookup`, or `KUBE_VERSION` is out of step with the cluster | Medium | High — one manifest is reviewed and admitted by `gator`, another reaches the cluster, and nobody knows | Helm, `gator` and `KUBE_VERSION` pinned in `.mise.toml`; after each `helm_release` the deploy compares `helm get manifest` with `_rendered/`, masking `late:*`, fails the step and marks the stack `drifted`; `lookup` forbidden in our charts (§14.5; `source-hydration` DH7, VH1, VH2) |
 
 ## 2. Identity, access and secrets
 
@@ -57,6 +58,7 @@ A risk whose mitigation is a CI gate is only mitigated once that gate is **block
 | R71 | **An environment identity federated before its protected GitHub Environment exists, or bound to the Environment without the branch**: GitHub creates on the fly, with no protection, an Environment a job names and that does not exist | Medium at each onboarding | Critical — `tf-apply-<env>@` or `tf-destroy-<env>@` impersonable from a workflow on any branch by anyone with write access | Apply and destroy identities bound to `attribute.env_ref/<env>@refs/heads/main`; Environments created before the binding merges; manual workflows validate the environment in a job without `environment:` and check the Environment's protection through the API (§11.2; `multi-environment` DX9) |
 | R61 | **State readable through project-level grants when layer 0 adopts an existing project**: identities that already hold `owner`, `editor` or `storage.admin` on the project read and write every state object | High in an adopted project | Critical — every environment's state, the landing zone's included, readable and writable outside the pipeline | Narrowed to resource level before the bootstrap stores state; state per prefix and keys per key; DATA_READ audit on `storage.googleapis.com` (`landing-zone-qa` §1.5, RZ6) |
 | R63 | **The IAM-administration bound out of step with the roles it guards**: the landing zone's apply identity administers project IAM bounded to a role list; a role added without updating the bound, or a privileged role slipped into the list | Medium | High — a 403 (safe) in the first case; an escalation path in the second | One `global.identities` list read by the grantor and by the bound; module validations refuse `owner`, `editor`, IAM administration and token-creator roles in the grantable list; the bootstrap change is reviewed by security (`landing-zone-qa` DZ13, RZ8) |
+| R73 | **A secret value hydrated into git**: a chart rendered into `_rendered/` with a `Secret` carrying `data` or `stringData`, or a values file fed a secret | Low with the rule | Critical — it never leaves the history, and every clone carries it | `split-rendered.py` fails on a `Secret` with a value; secrets materialised only by ESO; values files never receive a secret, only references (§14.5, §11.6; `source-hydration` DH5) |
 
 ## 3. Networking and address planning
 

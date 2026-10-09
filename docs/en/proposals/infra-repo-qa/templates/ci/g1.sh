@@ -24,3 +24,15 @@ ct() {                                        # conftest that refuses to pass ha
 ct resolution.json stacks.json
 for m in archetypes/*/manifest.yaml; do ct "$m"; done
 for b in environments/*/binding.yaml; do ct "$b"; done     # public names: public_id and dns_suffix (§13.3)
+
+# Admission before apply (source-hydration DH6): the library's constraints over each environment's rendering.
+# A rendered P2/P11/P12/P13 violation fails the PR instead of the apply.
+rendered=0
+for b in environments/*/binding.yaml; do
+  env=$(basename "$(dirname "$b")")
+  mapfile -t files < <(terramate list --tags "$env" | while read -r d; do find "$d/_rendered" -maxdepth 1 -name '*.yaml' 2>/dev/null; done)
+  [ "${#files[@]}" -gt 0 ] || continue                     # an environment whose stacks deploy no chart
+  rendered=$((rendered + ${#files[@]}))
+  gator test $(printf -- '--filename=%s ' "${files[@]}")
+done
+[ "$rendered" -gt 0 ] || { echo "G1: no rendered manifest reached gator" >&2; exit 1; }

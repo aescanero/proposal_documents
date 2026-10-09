@@ -3033,12 +3033,12 @@ OPA no vuelve a resolver nada. Valida que lo que el resolver y los generadores p
 
 | Puerta | Cuándo | Comando | Bloqueante |
 |---|---|---|---|
-| **G0 — integridad de la generación** | Cada PR | `terramate generate && git diff --exit-code` | Siempre |
+| **G0 — integridad de la generación** | Cada PR | `terramate generate --detailed-exit-code`; `ci/hydrate.sh` y ningún cambio bajo `_rendered/` (§14.5) | Siempre |
 | **G1 — estructura y composición** | Cada PR | `conftest test --all-namespaces --policy policy/ --data registry/registry.json …` | Siempre |
 | **G2 — escaneo estático de seguridad** | Cada PR | `checkov -d . --framework terraform` | HIGH/CRITICAL |
 | **G3 — escaneo del plan** | Antes del apply | `checkov -f plan.json --framework terraform_plan` + `conftest --namespace terraform.<paquete>` | HIGH/CRITICAL |
 
-G0 existe porque el código generado se commitea. Sin ella, alguien edita a mano un `_main.tf`, el escaneo pasa, y el siguiente `terramate generate` revierte silenciosamente el arreglo.
+G0 existe porque el código generado se commitea. Sin ella, alguien edita a mano un `_main.tf`, el escaneo pasa, y el siguiente `terramate generate` revierte silenciosamente el arreglo. Lo mismo vale para los charts renderizados en `_rendered/` (§14.5): una edición a mano, o un chart subido de versión sin volver a renderizar, hace fallar G0.
 
 **Checkov y OPA son complementarios, no alternativas.** Checkov aporta la biblioteca estándar de malas configuraciones de cloud conocidas — cientos de comprobaciones que nadie de tu equipo tiene que escribir. OPA lleva lo que es específico de esta plataforma y no puede expresarse como una comprobación genérica: el invariante `input`↔`after`, las reglas de composición de capabilities, las reglas de categoría demo, los presupuestos de tenant.
 
@@ -3568,6 +3568,11 @@ jobs:
             echo "::error::El código generado está obsoleto. Ejecuta 'terramate generate' y commitea."
             exit 1
           }
+          ./ci/hydrate.sh                  # helm template de cada helm_release (§14.5)
+          [ -z "$(git status --porcelain -- '*/_rendered/*')" ] || {
+            echo "::error::_rendered/ está obsoleto. Ejecuta ./ci/hydrate.sh y commitea."
+            exit 1
+          }
 
       # --- G1: estructura, composición, orden (§14.4) ---
       - name: Policy
@@ -3626,7 +3631,7 @@ Puntos clave:
 
 - **`terramate script run --changed tofu preview`** usa el script de §4.8, así que `enable_sharing = true` y `mock_on_fail = true` están garantizados. Una invocación cruda de `terramate run` que olvide `--enable-sharing` produce un plan contra variables sin fijar.
 - **`fetch-depth: 0`** — la detección de cambios compara contra `main`; un clon superficial reporta silenciosamente cero stacks cambiados.
-- **G0 es `terramate generate --detailed-exit-code`**: 0 si el código generado está al día, 2 si la generación cambió un fichero, 1 si hay error. No existe la opción `--check` (`poc/RESULTS.es.md`).
+- **G0 es `terramate generate --detailed-exit-code`**: 0 si el código generado está al día, 2 si la generación cambió un fichero, 1 si hay error. No existe la opción `--check` (`poc/RESULTS.es.md`). Su segunda mitad vuelve a renderizar los charts y falla ante cualquier cambio bajo `_rendered/` (§14.5).
 - **Un entorno por job de plan.** Cada stack lleva su entorno como tag (`qa`, `prod`, …) y los de la landing zone llevan `landing-zone`, así que `--tags <env>` selecciona exactamente los stacks de una identidad. Una pull request que cambia un generador compartido toca todos los entornos y recibe un job de plan por entorno, cada uno leyendo solo su propio prefijo de estado. Un job que se autenticara una vez y lo planificara todo necesitaría una identidad que leyera el estado de todos los entornos — justo lo que §11.2 existe para impedir.
 - **Otras nubes.** Un entorno de AWS o Azure cambia el paso de autenticación (`aws-actions/configure-aws-credentials` con `tf-plan-<env>`, `azure/login` con la credencial federada del entorno); la forma del job es la misma. Las plantillas completas, con una acción compuesta que oculta el paso por nube, están en la propuesta `infra-repo-qa`.
 
@@ -3925,12 +3930,29 @@ terramate debug show metadata | jq -Rn '
 
 `archetypectl enrich` es la única pieza a medida: el inventario no expone los bloques `input`, así que el enriquecedor lee los bloques `input` de cada stack — `from_stack_id`, la salida y el `mock` — en `consumes[]`, y resuelve el `after` del inventario (rutas y filtros por tag) en `after_ids[]`; las políticas comparan esos campos. Mantener esa extracción en una pequeña herramienta, en lugar de en la política, mantiene el Rego portable y testable contra fixtures.
 
+G1 ejecuta además `gator test` con la `library` de Gatekeeper sobre el `_rendered/` de cada stack (§14.5): un manifiesto que la admisión rechazaría hace fallar el PR en lugar del apply, y una ejecución que no encontró ningún manifiesto renderizado falla en lugar de pasar.
+
+### 14.5 Un modelo hidratado en la fuente
+
+La plataforma es un **modelo hidratado en la fuente con entrega push**: la intención (manifiestos de arquetipo, `environments/<env>/binding.yaml`, `registry/`) se traduce en el pull request mediante el resolver y los generadores, la traducción (`resolution.json`, `binding.tm.hcl`, el ledger, la mitad declarada de la CMDB, `_*.tf`) se commitea junto a la intención y se revisa, y `deploy` reconcilia en el merge con la identidad del entorno. El GitOps clásico guarda solo la intención y deja la traducción a un controlador en el momento de sincronizar; aquí lo que se revisa es el efecto, no solo el cambio de intención.
+
+| Etapa | ¿Hidratada en `main`? |
+|---|---|
+| Composición, orden, reclamaciones, OpenTofu generado | Sí — G0 comprueba que coincide con su fuente |
+| Manifiestos Kubernetes de cada `helm_release` | Sí — `_rendered/`, escrito por `ci/hydrate.sh`, comprobado por G0 |
+| Valores entre stacks (outputs sharing) | No — enlace tardío; un valor de chart que viene de un `input` se renderiza como la marca `late:<input>`, nunca un mock |
+| El plan | No — se revisa en el PR, no se versiona, porque cambia con el estado |
+
+Cada stack que despliega charts lleva, generados, `_releases.json` (una entrada por release: nombre, namespace, chart, versión, fichero de valores) y `_values-<release>.yaml` (los mismos valores derivados que recibe el `helm_release`). `ci/hydrate.sh` ejecuta `helm template` con el Helm y el `KUBE_VERSION` fijados en `.mise.toml` y escribe, por release, `_rendered/<release>.yaml` (lo que devuelve `helm get manifest`), `.hooks.yaml` (los hooks, que `helm get manifest` omite) y `.crds.sha256` (un nombre y un digest por CRD — las CRDs son ~97 % de un renderizado). Un `Secret` que lleva un valor hace fallar el renderizado: los secretos vienen de ESO, nunca de git.
+
+Lo renderizado solo merece revisarse si es lo que se aplica: tras cada `helm_release` el despliegue compara `helm get manifest` con `_rendered/`, enmascarando `late:*`, y una diferencia hace fallar el paso y marca el stack `drifted` en `cmdb-observed` (R72). La entrega sigue siendo **push**: sin agente pull, porque la identidad de apply de cada entorno está ligada a su Environment y a `main` (§11.2) y un auto-apply continuo sobre infraestructura con estado corrige la deriva destruyendo. Diseño, mediciones y verificaciones: `proposals/source-hydration/`.
+
 
 ---
 
 ## 15. Registro de riesgos
 
-El registro completo — 71 riesgos agrupados por dominio (68 activos; R28 retirado como duplicado de R26, R38 y R39 retirados con el endpoint DNS del plano de control), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
+El registro completo — 73 riesgos agrupados por dominio (70 activos; R28 retirado como duplicado de R26, R38 y R39 retirados con el endpoint DNS del plano de control), con probabilidad, impacto, mitigación y la sección que especifica cada control — se mantiene en su propio documento, `risk-register.md`. Se revisa en cada hito de fase de la hoja de ruta en lugar de leerse de principio a fin.
 
 Los cinco sobre los que actuar primero:
 
@@ -4054,7 +4076,7 @@ Secuenciada para que nada bloquee un despliegue real hasta que se haya observado
 |---|---|---|
 | ID de stack | `<cloud>-<env>-<capability>[-<instance>]` | `aws-demos-eks`, `gcp-prod-disasterproject-app` |
 | Tags de stack | `<cloud>`, `<env>`, `<capability>`, `platform`\|`archetype/<name>`, `instance/<id>`, `producer`\|`consumer`, `protected` | |
-| Ficheros generados | `_<purpose>.tf` | `_main.tf`, `_backend.tf`, `_sharing_generated.tf` |
+| Ficheros generados | `_<purpose>.tf`; por stack con charts `_releases.json`, `_values-<release>.yaml` y `_rendered/<release>.{yaml,hooks.yaml,crds.sha256}` (§14.5) | `_main.tf`, `_backend.tf`, `_sharing_generated.tf`, `_rendered/cert-manager.yaml` |
 | Directorio de generador | `imports/generators/v<N>/gen_<capability>.tm.hcl` | `imports/generators/v1/gen_cluster.tm.hcl` |
 | Fichero de contrato | `imports/contracts/contract_<capability>[_<stack>][_<cloud>].tm.hcl`; `<stack>` nombra un stack interno de un arquetipo de varios stacks, cuyas salidas son internas al arquetipo | `contract_cluster_eks.tm.hcl`, `contract_run_subnet_gcp.tm.hcl` |
 | Valores mock | prefijados `mock-` / `mock` | `mock-endpoint.example.invalid` |

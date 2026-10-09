@@ -17,7 +17,7 @@ A multi-cloud infrastructure platform built on **Terramate CLI + OpenTofu**, wit
 | **Resolve** | `archetype-model.md` | What may be composed with what — manifests, capabilities, traits, pools, CMDB, resolution |
 | **Generate** | `terramate-outputs-sharing-architecture.md` | How it is generated and applied — generators, outputs sharing, IAM, policy, CI/CD, per-cloud guides |
 
-Plus `platform-overview.md` (diagram-led map, read first), `risk-register.md` (71 risks by domain, 68 active), `glossary.md` (every term, defined) and `developer-guide.md` (the application developer's half — branching, versioning, build, rollback). Each of these lives in **two languages**: `docs/en/<file>.md` and `docs/es/<file>.md`. Below, a bare `docs/<file>.md` reference means "that file, in whichever language you are reading" — both copies say the same thing, so the path is language-neutral by design.
+Plus `platform-overview.md` (diagram-led map, read first), `risk-register.md` (73 risks by domain, 70 active), `glossary.md` (every term, defined) and `developer-guide.md` (the application developer's half — branching, versioning, build, rollback). Each of these lives in **two languages**: `docs/en/<file>.md` and `docs/es/<file>.md`. Below, a bare `docs/<file>.md` reference means "that file, in whichever language you are reading" — both copies say the same thing, so the path is language-neutral by design.
 
 **This repository is the normative design specification, and stays so.** It is not frozen, and no deployment repository replaces it. A deployment repository (`disasterproject/infra`, `infra-repo-qa`) implements what is written here and carries a byte-identical copy of `registry/` and `schemas/` pinned to a commit of this one (DR4); it never edits that copy. What implementing the design teaches — a measured tool behaviour, a gate that did not run, a constraint of a real organisation — comes back here as a design change, in both languages, stated as a fact about the design rather than as a report of where it was found.
 
@@ -165,6 +165,8 @@ These are the failure modes that have already been identified. Do not rediscover
 
 **Avoid `kubernetes_manifest`** for Gateway API and Gatekeeper custom resources. It requires the CRD to exist and the API server reachable **at plan time**, which breaks PR previews. Package CRs in the archetype's own Helm chart and deploy with `helm_release`.
 
+**`helm_release` renders the chart at apply, so a chart bump reviewed as one line is a manifest nobody saw.** Review `_rendered/`, never the version number: `ci/hydrate.sh` writes `helm template` of every release next to its stack, G0 fails if it is stale, `gator` evaluates it in G1, and the deploy compares `helm get manifest` with it after apply. Three measured details (Helm 3.19.0): `--skip-crds` does not drop CRDs a chart renders from `templates/` — split by `kind`; CRDs are ~97 % of a render — keep a digest; hooks are in `helm template` but not in `helm get manifest` — keep them apart. A chart value from outputs sharing is rendered as `late:<input>`, never a mock; a `Secret` with a value in a render fails it (`source-hydration` DH2–DH7, R72, R73).
+
 **The Keycloak ↔ Gateway bootstrap cycle.** Keycloak's own `HTTPRoute` carries **no** `SecurityPolicy`, and the Gateway's OIDC discovery resolves through the in-cluster Service, not the public hostname. Without both, a cold environment does not start and the cause is not obvious.
 
 **VPC egress is denied by default, and the environment's own range is egress too.** Without an allow for the `/17`, nothing fails at apply: the cluster is created, and the first admission webhook times out — with `failurePolicy: Fail`, the lock-out below. The allows are 443, the `/17` and the private VIP; a peering-based control plane outside the `/17` needs 443 and 8132 (konnectivity), written by GKE; any other port is an `egress_extra` entry of the archetype that needs it (`network-qa` DW6, R66).
@@ -235,11 +237,12 @@ The generator (`registry-generate`) is **not yet written**. It is the first task
 | Public names | `<app>.<public_id>.<domain>`; buckets `disasterproject-<public_id>-<purpose>` | `sonar.tqbvzkr.disasterproject.com` (`public_id` is an example) |
 | Stack tags | cloud, env, capability, `platform`\|`archetype/<name>`, `instance/<id>`, `producer`\|`consumer`, `protected` | |
 | Generated files | `_<purpose>.tf` | `_main.tf`, `_sharing_generated.tf` |
+| Rendered charts | `_releases.json`, `_values-<release>.yaml` (generated); `_rendered/<release>.yaml`, `.hooks.yaml`, `.crds.sha256` (`ci/hydrate.sh`) | `_rendered/cert-manager.yaml` |
 | Generators | `imports/generators/v<N>/gen_<capability>.tm.hcl` | |
 | Contracts | `imports/contracts/contract_<capability>[_<stack>][_<cloud>].tm.hcl` — `<stack>` for an internal stack of a multi-stack archetype | `contract_run_subnet_gcp.tm.hcl` |
 | Mocks | prefixed `mock-` | `mock-endpoint.example.invalid` |
 
-Generated code **is committed to git**, prefixed with `_`, and covered by `CODEOWNERS`. The `terramate generate --detailed-exit-code` gate (G0) exists because of this: without it, someone hand-edits a `_main.tf`, the scan passes, and the next generate silently reverts the fix.
+Generated code **is committed to git**, prefixed with `_`, and covered by `CODEOWNERS`. The `terramate generate --detailed-exit-code` gate (G0) exists because of this: without it, someone hand-edits a `_main.tf`, the scan passes, and the next generate silently reverts the fix. G0 also re-runs `ci/hydrate.sh` and fails on any change under `_rendered/`.
 
 ---
 

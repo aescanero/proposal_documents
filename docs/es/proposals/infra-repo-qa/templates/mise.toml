@@ -4,10 +4,13 @@ terramate = "0.17.3"                           # poc/ se midió con 0.16.0 y 0.1
 opentofu = "1.10.6"
 checkov = "3"
 conftest = "0.70.1"                            # incluye OPA 1.20.2
-opa = "1.20.2"                                 # opa test de las políticas; gator para Gatekeeper
+opa = "1.20.2"                                 # opa test de las políticas
+helm = "3.19.0"                                # ci/hydrate.sh; el proveedor helm debe incrustar la misma versión (source-hydration VH2)
+"aqua:open-policy-agent/gatekeeper/gator" = "3"  # la versión de Gatekeeper que corre el cluster (gatekeeper-qa)
 crane = "0.20"
 yq = "4"
 "github:disasterproject/platform-tools" = "0.1.0"   # archetypectl y registry-generate, versionados aparte
 
 [env]
 TF_IN_AUTOMATION = "1"
+KUBE_VERSION = "1.33.0"                        # versión del plano de control de los clusters, se sube con el canal (source-hydration DH2)

@@ -6,7 +6,7 @@
 |---|---|
 | **Alcance** | Todos los modos de fallo identificados en generación, resolución, identidad, borde, políticas y multi-tenancy |
 | **Referencias de sección** | `§n` se refiere al documento de arquitectura salvo que lleve el prefijo `AM §n` (modelo de arquetipos) |
-| **Identificadores** | R1–R71. R28 está **retirado** (duplicado de R26), y R38 y R39 se retiran con el endpoint DNS del plano de control (`landing-zone-qa` DZ4); los números retirados no se reutilizan |
+| **Identificadores** | R1–R73. R28 está **retirado** (duplicado de R26), y R38 y R39 se retiran con el endpoint DNS del plano de control (`landing-zone-qa` DZ4); los números retirados no se reutilizan |
 | **Cadencia de revisión** | En cada fase del roadmap, y siempre que cambie la versión fijada de una herramienta |
 
 Los riesgos se agrupan por dominio, no por orden numérico, porque así es como se revisan. Los números R son identificadores estables y no deben reutilizarse si un riesgo se retira.
@@ -34,8 +34,9 @@ Un riesgo cuya mitigación es una puerta de CI solo está mitigado cuando esa pu
 | R2 | **Falta `after` en un stack consumidor** | Alta sin lint | Alta — se aplican valores incorrectos | El lint de §14.4, hecho bloqueante |
 | R3 | **Mocks que se filtran a un despliegue** | Media | Alta | Scripts separados de `preview` y `deploy`; prefijo `mock-` en todos los mocks; grep posterior al apply que busque `mock-` en las salidas |
 | R4 | **Mocks con el tipo equivocado** | Alta | Media — el plan pasa, el apply falla | Checklist de revisión de código; listas de mocks como listas, base64 como base64 válido |
-| R9 | **Código generado editado a mano** | Media | Media | Puerta G0 + `CODEOWNERS` en `stacks/**/_*.tf` que exige aprobación del equipo de plataforma |
+| R9 | **Código generado editado a mano** | Media | Media | Puerta G0 + `CODEOWNERS` en `stacks/**/_*.tf` y `stacks/**/_rendered/` que exige aprobación del equipo de plataforma |
 | R17 | **Clave de cifrado de estado por stack, bloqueando outputs sharing** | Media al desplegar | Media — el consumidor no puede descifrar el estado del productor | Una clave de cifrado de estado por **entorno**, no por stack (§11.5) |
+| R72 | **Lo renderizado no es lo aplicado**: `_rendered/` se revisa en el PR, pero `helm_release` vuelve a renderizar en el apply — el Helm incrustado en el proveedor difiere del CLI, un chart de terceros llama a `lookup`, o `KUBE_VERSION` no va acompasado con el cluster | Media | Alta — se revisa y `gator` admite un manifiesto, llega otro al cluster, y nadie lo sabe | Helm, `gator` y `KUBE_VERSION` fijados en `.mise.toml`; tras cada `helm_release` el despliegue compara `helm get manifest` con `_rendered/`, enmascarando `late:*`, hace fallar el paso y marca el stack `drifted`; `lookup` prohibido en nuestros charts (§14.5; `source-hydration` DH7, VH1, VH2) |
 
 ## 2. Identidad, acceso y secretos
 
@@ -57,6 +58,7 @@ Un riesgo cuya mitigación es una puerta de CI solo está mitigado cuando esa pu
 | R71 | **Una identidad de entorno federada antes de que exista su GitHub Environment protegido, o ligada al Environment sin la rama**: GitHub crea al vuelo, sin protección, un Environment que un job nombra y que no existe | Media en cada alta | Crítico — `tf-apply-<env>@` o `tf-destroy-<env>@` suplantables desde un workflow en cualquier rama por quien tenga escritura | Identidades de apply y destroy ligadas a `attribute.env_ref/<env>@refs/heads/main`; Environments creados antes de fusionar el binding; los workflows manuales validan el entorno en un job sin `environment:` y comprueban por la API la protección del Environment (§11.2; `multi-environment` DX9) |
 | R61 | **Estado legible por concesiones a nivel de proyecto cuando la capa 0 adopta un proyecto existente**: identidades que ya tienen `owner`, `editor` o `storage.admin` sobre el proyecto leen y escriben todos los objetos de estado | Alta en un proyecto adoptado | Crítico — el estado de todos los entornos, el de la landing zone incluido, legible y modificable fuera del pipeline | Reducidas a nivel de recurso antes de que el bootstrap guarde estado; estado por prefijo y claves por clave; auditoría DATA_READ sobre `storage.googleapis.com` (`landing-zone-qa` §1.5, RZ6) |
 | R63 | **La cota de administración de IAM desacompasada de los roles que protege**: la identidad de apply de la landing zone administra el IAM de proyecto acotada a una lista de roles; un rol añadido sin actualizar la cota, o un rol privilegiado colado en la lista | Media | Alto — un 403 (seguro) en el primer caso; un camino de escalada en el segundo | Una sola lista `global.identities` que leen quien concede y la cota; las validaciones del módulo rechazan `owner`, `editor`, administración de IAM y roles de creación de tokens en la lista concedible; el cambio del bootstrap lo revisa seguridad (`landing-zone-qa` DZ13, RZ8) |
+| R73 | **Un valor secreto hidratado en git**: un chart renderizado en `_rendered/` con un `Secret` que lleva `data` o `stringData`, o un fichero de valores que recibe un secreto | Baja con la regla | Crítico — nunca sale del historial, y cada clon lo lleva | `split-rendered.py` falla ante un `Secret` con valor; los secretos solo los materializa ESO; los ficheros de valores nunca reciben un secreto, solo referencias (§14.5, §11.6; `source-hydration` DH5) |
 
 ## 3. Redes y planificación de direcciones
 

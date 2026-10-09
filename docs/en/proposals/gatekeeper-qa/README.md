@@ -198,6 +198,8 @@ Each `Constraint` carries its action in the chart values: `enforcement: { defaul
 
 The third is what turns R34 into a CI failure. If the generator stops emitting a label the `Constraint` still requires, the PR fails before reaching the cluster.
 
+The rendered manifests are the ones committed in each stack's `_rendered/` by `ci/hydrate.sh` (`source-hydration` DH2, DH6), not a render made on the fly: `gator` evaluates exactly what is reviewed and what G0 checks, and a run that finds no rendered manifest fails rather than passing.
+
 ### 6.3 Shared Rego (open question no. 5 of `CLAUDE.md`)
 
 | Piece | Design |

@@ -1,0 +1,40 @@
+flowchart LR
+    subgraph INT["Intención · escrita a mano"]
+        B["environments/&lt;env&gt;/binding.yaml"]
+        M["manifiestos de arquetipo<br/>registry/"]
+    end
+    subgraph TR["Traducción · en el PR"]
+        R["resolver<br/>composición · orden · claims"]
+        G["terramate generate<br/>generadores · contratos"]
+        H["ci/hydrate.sh<br/>helm template fijado"]
+    end
+    subgraph HY["Modelo hidratado · en main, con CODEOWNERS"]
+        RES["resolution.json · binding.tm.hcl<br/>ledger · CMDB declarada"]
+        TF["_*.tf"]
+        RV["_releases.json · _values-*.yaml"]
+        RD["_rendered/<br/>manifiesto · hooks · CRD sha256"]
+    end
+    subgraph GT["Puertas"]
+        G0["G0<br/>generate y hydrate sin diff"]
+        G1["G1 · conftest<br/>gator sobre _rendered/"]
+    end
+    subgraph RC["Reconciliación · push al fusionar"]
+        AP["tofu apply por entorno<br/>identidad env_ref@main"]
+        CMP["helm get manifest = _rendered/<br/>salvo late:*"]
+        DR["drift diario<br/>cmdb-observed"]
+    end
+    B --> R
+    M --> R
+    R --> RES --> G
+    G --> TF
+    G --> RV --> H --> RD
+    TF --> G0
+    RD --> G0
+    RD --> G1
+    G0 --> AP
+    G1 --> AP
+    AP --> CMP
+    AP -.-> DR
+
+    style RD fill:#fff5e6
+    style CMP fill:#fff5e6

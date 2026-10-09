@@ -3023,12 +3023,12 @@ OPA does not re-resolve anything. It validates that what the resolver and the ge
 
 | Gate | When | Command | Blocking |
 |---|---|---|---|
-| **G0 — generation integrity** | Every PR | `terramate generate && git diff --exit-code` | Always |
+| **G0 — generation integrity** | Every PR | `terramate generate --detailed-exit-code`; `ci/hydrate.sh` and no change under `_rendered/` (§14.5) | Always |
 | **G1 — structure and composition** | Every PR | `conftest test --all-namespaces --policy policy/ --data registry/registry.json …` | Always |
 | **G2 — static security scan** | Every PR | `checkov -d . --framework terraform` | HIGH/CRITICAL |
 | **G3 — plan scan** | Before apply | `checkov -f plan.json --framework terraform_plan` + `conftest --namespace terraform.<package>` | HIGH/CRITICAL |
 
-G0 exists because generated code is committed. Without it, someone edits a `_main.tf` by hand, the scan passes, and the next `terramate generate` silently reverts the fix.
+G0 exists because generated code is committed. Without it, someone edits a `_main.tf` by hand, the scan passes, and the next `terramate generate` silently reverts the fix. The same holds for the rendered charts in `_rendered/` (§14.5): a hand edit, or a chart bumped without re-rendering, fails G0.
 
 **Checkov and OPA are complementary, not alternatives.** Checkov brings the standard library of known cloud misconfigurations — hundreds of checks nobody on your team has to write. OPA carries what is specific to this platform and cannot be expressed as a generic check: the `input`↔`after` invariant, capability composition rules, demo-category rules, tenant budgets.
 
@@ -3558,6 +3558,11 @@ jobs:
             echo "::error::Generated code is stale. Run 'terramate generate' and commit."
             exit 1
           }
+          ./ci/hydrate.sh                  # helm template for every helm_release (§14.5)
+          [ -z "$(git status --porcelain -- '*/_rendered/*')" ] || {
+            echo "::error::_rendered/ is stale. Run ./ci/hydrate.sh and commit."
+            exit 1
+          }
 
       # --- G1: structure, composition, ordering (§14.4) ---
       - name: Policy
@@ -3616,7 +3621,7 @@ Key points:
 
 - **`terramate script run --changed tofu preview`** uses the script from §4.8, so `enable_sharing = true` and `mock_on_fail = true` are guaranteed. A raw `terramate run` invocation that forgets `--enable-sharing` produces a plan against unset variables.
 - **`fetch-depth: 0`** — change detection compares against `main`; a shallow clone silently reports zero changed stacks.
-- **G0 is `terramate generate --detailed-exit-code`**: 0 when generated code is current, 2 when generation changed a file, 1 on error. There is no `--check` flag (`poc/RESULTS.md`).
+- **G0 is `terramate generate --detailed-exit-code`**: 0 when generated code is current, 2 when generation changed a file, 1 on error. There is no `--check` flag (`poc/RESULTS.md`). Its second half re-renders the charts and fails on any change under `_rendered/` (§14.5).
 - **One environment per plan job.** Every stack carries its environment as a tag (`qa`, `prod`, …) and the landing zone's carry `landing-zone`, so `--tags <env>` selects exactly one identity's stacks. A pull request that changes a shared generator touches every environment and gets one plan job per environment, each reading only its own state prefix. A job that authenticated once and planned everything would need an identity that reads every environment's state — the very thing §11.2 exists to prevent.
 - **Other clouds.** An AWS or Azure environment swaps the auth step (`aws-actions/configure-aws-credentials` with `tf-plan-<env>`, `azure/login` with the environment's federated credential); the job shape is the same. The complete templates, with a composite action that hides the per-cloud step, are in the `infra-repo-qa` proposal.
 
@@ -3915,12 +3920,29 @@ terramate debug show metadata | jq -Rn '
 
 `archetypectl enrich` is the only custom piece: the inventory does not expose `input` blocks, so the enricher reads each stack's `input` blocks — `from_stack_id`, the output and the `mock` — into `consumes[]`, and resolves the inventory's `after` (paths and tag filters) into `after_ids[]`; the policies compare those fields. Keeping that extraction in one small tool, rather than in the policy, keeps the Rego portable and testable against fixtures.
 
+G1 also runs `gator test` with the Gatekeeper `library` over every stack's `_rendered/` (§14.5): a manifest that admission would reject fails the PR rather than the apply, and a run that found no rendered manifest fails rather than passing.
+
+### 14.5 A source-hydrated model
+
+The platform is a **source-hydrated model with push delivery**: intent (archetype manifests, `environments/<env>/binding.yaml`, `registry/`) is translated in the pull request by the resolver and the generators, the translation (`resolution.json`, `binding.tm.hcl`, the ledger, the CMDB's declared half, `_*.tf`) is committed next to the intent and reviewed, and `deploy` reconciles on merge with the environment's identity. Classic GitOps keeps only the intent and leaves the translation to a controller at sync time; here what is reviewed is the effect, not only the change of intent.
+
+| Stage | Hydrated on `main`? |
+|---|---|
+| Composition, ordering, claims, generated OpenTofu | Yes — G0 checks it equals its source |
+| Kubernetes manifests of every `helm_release` | Yes — `_rendered/`, written by `ci/hydrate.sh`, checked by G0 |
+| Values between stacks (outputs sharing) | No — late-bound; a chart value that comes from an `input` is rendered as the marker `late:<input>`, never a mock |
+| The plan | No — reviewed in the PR, not versioned, because it changes with the state |
+
+Each stack that deploys charts carries, generated, `_releases.json` (one entry per release: name, namespace, chart, version, values file) and `_values-<release>.yaml` (the same derived values the `helm_release` receives). `ci/hydrate.sh` runs `helm template` with the Helm and `KUBE_VERSION` pinned in `.mise.toml` and writes, per release, `_rendered/<release>.yaml` (what `helm get manifest` returns), `.hooks.yaml` (hooks, which `helm get manifest` omits) and `.crds.sha256` (one name and digest per CRD — CRDs are ~97 % of a render). A `Secret` carrying a value fails the render: secrets come from ESO, never from git.
+
+What is rendered is only worth reviewing if it is what is applied: after each `helm_release` the deploy compares `helm get manifest` with `_rendered/`, masking `late:*`, and a difference fails the step and marks the stack `drifted` in `cmdb-observed` (R72). Delivery stays **push**: no pull agent, because each environment's apply identity is bound to its Environment and to `main` (§11.2) and continuous auto-apply on stateful infrastructure corrects drift by destroying. Design, measurements and verifications: `proposals/source-hydration/`.
+
 
 ---
 
 ## 15. Risk register
 
-The full register — 71 risks grouped by domain (68 active; R28 retired as a duplicate of R26, R38 and R39 retired with the control plane DNS endpoint), with likelihood, impact, mitigation and the section that specifies each control — is maintained in its own document, `risk-register.md`. It is reviewed at every roadmap phase gate rather than read end to end.
+The full register — 73 risks grouped by domain (70 active; R28 retired as a duplicate of R26, R38 and R39 retired with the control plane DNS endpoint), with likelihood, impact, mitigation and the section that specifies each control — is maintained in its own document, `risk-register.md`. It is reviewed at every roadmap phase gate rather than read end to end.
 
 The five to act on first:
 
@@ -4044,7 +4066,7 @@ Sequenced so that nothing blocks a real deployment until it has been observed in
 |---|---|---|
 | Stack ID | `<cloud>-<env>-<capability>[-<instance>]` | `aws-demos-eks`, `gcp-prod-disasterproject-app` |
 | Stack tags | `<cloud>`, `<env>`, `<capability>`, `platform`\|`archetype/<name>`, `instance/<id>`, `producer`\|`consumer`, `protected` | |
-| Generated files | `_<purpose>.tf` | `_main.tf`, `_backend.tf`, `_sharing_generated.tf` |
+| Generated files | `_<purpose>.tf`; per chart stack `_releases.json`, `_values-<release>.yaml` and `_rendered/<release>.{yaml,hooks.yaml,crds.sha256}` (§14.5) | `_main.tf`, `_backend.tf`, `_sharing_generated.tf`, `_rendered/cert-manager.yaml` |
 | Generator directory | `imports/generators/v<N>/gen_<capability>.tm.hcl` | `imports/generators/v1/gen_cluster.tm.hcl` |
 | Contract file | `imports/contracts/contract_<capability>[_<stack>][_<cloud>].tm.hcl`; `<stack>` names an internal stack of a multi-stack archetype, whose outputs are intra-archetype | `contract_cluster_eks.tm.hcl`, `contract_run_subnet_gcp.tm.hcl` |
 | Mock values | prefixed `mock-` / `mock` | `mock-endpoint.example.invalid` |

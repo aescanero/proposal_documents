@@ -198,6 +198,8 @@ Cada `Constraint` lleva su acción en los valores del chart: `enforcement: { def
 
 La tercera es la que convierte R34 en un fallo de CI. Si el generador deja de emitir una etiqueta que el `Constraint` aún exige, la PR falla antes de llegar al cluster.
 
+Los manifiestos renderizados son los que `ci/hydrate.sh` commitea en el `_rendered/` de cada stack (`source-hydration` DH2, DH6), no un renderizado hecho al vuelo: `gator` evalúa exactamente lo que se revisa y lo que G0 comprueba, y una ejecución que no encuentra ningún manifiesto renderizado falla en lugar de pasar.
+
 ### 6.3 Rego compartido (pregunta abierta nº 5 de `CLAUDE.md`)
 
 | Pieza | Diseño |
