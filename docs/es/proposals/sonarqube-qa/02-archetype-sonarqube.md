@@ -745,7 +745,7 @@ assert {
 
 ### 7.4 Gatekeeper (admisión, capa 2b)
 
-El catálogo completo, con el dueño de cada regla, está en la propuesta de Gatekeeper (§4); las reglas del núcleo son P1–P12. Esta tabla solo recoge su efecto sobre SonarQube.
+El catálogo completo, con el dueño de cada regla, está en la propuesta de Gatekeeper (§4); las reglas del núcleo son P1–P13. Esta tabla solo recoge su efecto sobre SonarQube.
 
 | Constraint | Efecto sobre `sonarqube` |
 |---|---|

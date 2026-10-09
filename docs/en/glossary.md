@@ -412,7 +412,10 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 | **Deployment workflow** | The merge-to-main pipeline. **One job per environment**, each bound to the GitHub Environment of that name (its reviewers, and the `environment` claim that alone can impersonate `tf-apply-<env>@`): the landing zone first, then non-production environments in parallel, then `prod`. Each runs `terramate script run --changed -B <last successful deploy> --tags <env> tofu deploy` with mocks off, then the CMDB sync, which also moves the environment's deploy marker. Architecture §14.2. |
 | **Drift workflow** | A scheduled job running `tofu plan -detailed-exitcode -lock=false` per environment, with that environment's plan identity, to detect configuration drift without applying. |
 | **Policy gate build inputs** | The chain producing conftest's evaluation inputs: `registry-generate --check` → `archetypectl resolve --dry-run > resolution.json` → `ci/stacks-json.sh > stacks.json` → `archetypectl enrich stacks.json`. |
-| **`mise`** | Tool-version pinning manager (`mise.toml`, `jdx/mise-action`) pinning Terramate, OpenTofu and Checkov versions consistently across developer machines and CI. |
+| **`mise`** | Tool-version pinning manager (`mise.toml`, `jdx/mise-action`) pinning Terramate, OpenTofu, Checkov, Helm and `gator` versions, and `KUBE_VERSION`, consistently across developer machines and CI. |
+| **Source-hydrated model (SHIM)** | A model that keeps in git, versioned and reviewed, the full translation between the intent and what is deployed, made **before** reconciling; classic GitOps keeps only the intent and translates at sync. The platform is one with **push** delivery: binding and manifests → resolver and generators → `resolution.json`, ledger, CMDB declared half, `_*.tf` and `_rendered/` on `main` → `tofu apply` on merge. Architecture §14.5, `source-hydration` proposal. |
+| **`_rendered/`** | Per stack that deploys charts: the output of `helm template` for each `helm_release`, written by `ci/hydrate.sh` from the generated `_releases.json` and `_values-<release>.yaml` — `<release>.yaml` (what `helm get manifest` returns), `.hooks.yaml`, `.crds.sha256` (one name and digest per CRD). Committed, under CODEOWNERS, checked by G0, evaluated by `gator` in G1, compared with `helm get manifest` after apply. |
+| **`late:<input>`** | The marker a chart value that arrives through outputs sharing carries in `_values-<release>.yaml` and `_rendered/`: it resolves only at apply. Never a mock, never the real value; a chart value from an `input` without it fails G1. |
 
 ---
 
@@ -556,7 +559,7 @@ All five runtime guides (GKE, EKS, Cloud Run, ECS Fargate, AKS) follow the same 
 
 ---
 
-## 26. Risk register (`risk-register.md`) — 71 risks by domain (68 active)
+## 26. Risk register (`risk-register.md`) — 73 risks by domain (70 active)
 
 Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mitigation tied to a document section.
 
@@ -616,6 +619,7 @@ Each risk has a stable, never-reused R-number, a likelihood, an impact, and a mi
 | **R65–R66** | In the shared non-prod project, one environment's network or DNS resource bound to another's; VPC egress denied by default blocking a legitimate flow, the environment's own range above all. See `risk-register.md`. |
 | **R67–R69** | Many environments: names that are a prefix of others, or an environment parsed out of a stack id; a resource outside its environment's region or jurisdiction; a default equal to a real environment's value. See `risk-register.md`. |
 | **R70–R71** | An environment copied from another's stacks, or a hand-kept list of environments; an environment identity federated before its protected GitHub Environment exists, or without the branch. See `risk-register.md`. |
+| **R72–R73** | Rendered manifests that are not what is applied; a secret value hydrated into git through `_rendered/`. See `risk-register.md`. |
 
 **Top five risks** (ranked by likelihood × impact, mitigation not yet in place): 1) R2 (missing `after`), 2) R12 (wildcard OIDC `sub`), 3) R26 (pod range sized for too few nodes), 4) R34 (registry drift), 5) R5 (shared platform destroyed by instance teardown).
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generates 03-presentation-blocks.svg (1920x1080, for presentations).
+"""Generates 02-presentation-blocks.svg (1920x1080, for presentations).
 
 Hand-drawn diagram, no Mermaid: this script is the source. To change the SVG,
-edit here and run `python3 03-presentation-blocks.py`.
+edit here and run `python3 02-presentation-blocks.py`.
 Same style as network-qa/diagrams/06-bloques-presentacion.py.
 """
 import os
@@ -40,34 +40,34 @@ def arrow(x1,y1,x2,y2,color='#9ca3af',w=3):
 
 
 T=dict(
- aria="Life-cycle security on qa: blocks",
- arch="archetypes/{defectdojo,dast,aig}", kind="layers 4-5 · vuln-mgmt 1.0.0",
- title="Life-cycle security on qa — DefectDojo, DAST and A.I.G",
- subtitle="four phases · CI scans · DefectDojo, DAST and A.I.G in the cluster · A.I.G's agent on a gVisor pool · nothing against prod",
- left="From the platform", left_sub="layers 1-4",
- caps=[("cluster","apps · gvisor (GKE Sandbox)",False),("database-platform","its own Cloud SQL",False),("oidc-idp","Keycloak · tenant client",False),
-       ("secrets · eso","tokens in Secret Manager",False),("network","NAT · Cloud Armor 800",False)],
- cols=["1 · CI","2 · Consolidate","3 · DAST","4 · AI"],
+ aria="Source-hydrated model: blocks",
+ arch="intent → hydrated model → apply", kind="source-hydration · DH1-DH8",
+ title="The platform as a source-hydrated model",
+ subtitle="the translation is reviewed in the PR, not rendered in flight · Kubernetes too · push delivery · applied is compared with reviewed",
+ left="Intent", left_sub="written by hand",
+ caps=[("binding.yaml","composition · region",False),("manifests","archetypes and charts",False),("registry/","capabilities · traits",False),
+       ("helm at apply","no: rendered before",True),("pull agent","no: push per environment",True)],
+ cols=["1 · Translate","2 · Hydrate","3 · Check","4 · Reconcile"],
  blocks=[
-  [("sonarqube","SAST and quality gate",["scanner in CI","server already proposed","API Import to DefectDojo"]),
-   ("trivy","SCA, secrets, image",["PR: secrets and CRITICAL","nightly on what is deployed","the image is promoted"]),
-   ("checkov","IaC, Dockerfile, Helm",["G1/G2 in infra","blocking checks by list","template in the apps"])],
-  [("defectdojo","Layer 4 · vuln-mgmt",["one product type per team","importer-<team>: Writer","only main and scheduled"]),
-   ("data","Its own Cloud SQL",["qa-defectdojo · 7-day PITR","Valkey: a component","media in a bucket (GCS FUSE)"]),
-   ("access","SSO and tokens",["OIDC with Keycloak","tokens in Secret Manager","dojo.<public_id>…"])],
-  [("zap","Baseline and API",["passive every night","API with OpenAPI","full: on demand"]),
-   ("nuclei","Pinned templates",["weekly, medium or above","no dos, fuzz, intrusive","image per version"]),
-   ("edge","Through the public edge",["Cloud Armor, priority 800","NAT MANUAL_ONLY · 2 IPs","targets from resolution"])],
-  [("gvisor","A GKE Sandbox pool",["agent with SYS_ADMIN","a kernel per pod","0-1 nodes, scaled to zero"]),
-   ("access","No edge",["server on apps, ClusterIP","port-forward with RBAC","no network to the /17"]),
-   ("import","Generic Findings",["scheduled converter","importer-platform-aig","keys with a spend limit"])]],
- right="Provides", right_sub="vuln-mgmt 1.0.0",
- items=[("teams","reusable appsec.yml","a product type per team"),("security","deduplicated findings","SLA and accepted risks"),
-        ("prod","no DefectDojo of its own","engagement deployed-prod"),("nightly","CVEs after the build","on what is deployed")],
+  [("resolver","Composition and claims",["ordering and ledger","resolution.json","binding.tm.hcl"]),
+   ("generate","OpenTofu code",["_*.tf committed","_releases.json","_values-*.yaml"]),
+   ("late:","Values at apply",["outputs sharing","late:<input> marker","never a mock"])],
+  [("hydrate","helm template",["pinned Helm","--include-crds","pinned KUBE_VERSION"]),
+   ("_rendered","Reviewable manifest",["ordered and stable","hooks apart","CRDs as sha256"]),
+   ("secrets","Never in git",["Secret with a value: fails","ESO materialises them","lookup forbidden"])],
+  [("G0","Hydrated = source",["generate with no diff","hydrate with no diff","no hand edits"]),
+   ("G1","Policies",["conftest","gator over _rendered/","late: checked"]),
+   ("review","The effect, not the intent",["replicas: 2 → 3","CODEOWNERS","git blame"])],
+  [("apply","Push on merge",["identity per environment","env_ref@main","tofu apply"]),
+   ("compare","Applied = reviewed",["helm get manifest","except late:*","otherwise: drifted"]),
+   ("drift","Daily",["detects, does not fix","cmdb-observed","decided in a PR"])]],
+ right="What it gives", right_sub="what was reviewed is what is deployed",
+ items=[("audit","git log of the effect","not only of the intent"),("policies","before apply","gator in the PR"),
+        ("debugging","no re-rendering","with pinned versions"),("promotion","diff between environments","of the hydrated model")],
  controls="Controls",
- ctrl=[("assert","database-platform's DB"),("G1","prod does not bind dast"),("Gatekeeper","P2 · P3 · P11"),
-       ("Cloud Armor","rule 800 non-prod only"),("P13","privileges only on gVisor")],
- foot="docs/en/proposals/appsec-qa/README.md")
+ ctrl=[("G0","generate · hydrate"),("G1","conftest · gator"),("DH7","helm get manifest"),
+       ("ESO","secrets out of git"),("mise","Helm and K8s pinned")],
+ foot="docs/en/proposals/source-hydration/README.md")
 
 o.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="{e(T["aria"])}">')
 o.append('<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9ca3af"/></marker>'
@@ -137,4 +137,4 @@ for i,(a,b) in enumerate(T['ctrl']):
     x+=cw
 text(W-60,H-20,T['foot'],13,400,'#9ca3af','end',font=MONO)
 o.append('</svg>')
-open(os.path.join(os.path.dirname(os.path.abspath(__file__)),'03-presentation-blocks.svg'),'w').write('\n'.join(o))
+open(os.path.join(os.path.dirname(os.path.abspath(__file__)),'02-presentation-blocks.svg'),'w').write('\n'.join(o))

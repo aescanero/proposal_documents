@@ -36,6 +36,10 @@ jobs:
             echo "::error::Generated code is stale. Run 'terramate generate' and commit."
             exit 1
           }
+          ./ci/hydrate.sh                      # the charts, rendered as they will be applied (source-hydration DH3)
+          if [ -n "$(git status --porcelain -- '*/_rendered/*')" ]; then
+            echo "::error::_rendered/ is stale. Run ci/hydrate.sh and commit."; git status --short -- '*/_rendered/*'; exit 1
+          fi
 
       - name: G1 — structure, composition, ordering
         run: ./ci/g1.sh

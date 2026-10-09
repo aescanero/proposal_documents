@@ -16,26 +16,31 @@ flowchart LR
                 DD["defectdojo<br/>uwsgi · celery · valkey"]
                 DAST["dast<br/>CronJobs ZAP · Nuclei"]
                 SONAR["sonarqube"]
+                AIGS["aig-server · PVC · ClusterIP<br/>no HTTPRoute"]
+            end
+            subgraph SBX["gvisor pool · GKE Sandbox (gVisor) · 0–1 nodes"]
+                AIGA["aig-agent · SYS_ADMIN<br/>on gVisor's kernel"]
             end
         end
         NAT["Cloud NAT · MANUAL_ONLY<br/>2 reserved IPs"]
-        VM["aig VM · COS · no public IP<br/>server + agent with SYS_ADMIN"]
     end
     SQL[("Cloud SQL<br/>qa-defectdojo")]
     GCS[("GCS · media")]
-    IAP["IAP · appsec-redteam@"]
+    RT["appsec-redteam@<br/>kubectl port-forward"]
     APPS -- "reimport-scan · team token" --> CA
     INFRA -- "reimport-scan" --> CA
     CA --> GLB --> ENV
     ENV --> DD
     ENV --> SONAR
     DAST -- "scan through the edge" --> NAT
-    VM -- "scan and results" --> NAT
+    AIGA -- "scan" --> NAT
+    AIGA -- "tasks and results" --> AIGS
+    AIGS -- "converter · Generic Findings" --> DD
     NAT --> CA
     DAST -- "report · internal Service" --> DD
-    IAP -- "TCP tunnel 8088" --> VM
+    RT -- "port-forward 8088" --> AIGS
     DD --- SQL
     DD --- GCS
 
-    style VM fill:#fff5e6
+    style AIGA fill:#fff5e6
     style DD fill:#eef4ff

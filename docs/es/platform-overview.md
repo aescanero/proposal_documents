@@ -6,7 +6,7 @@ Mapa visual de los dos documentos de referencia. Nada aquí es normativo; cada d
 |---|---|
 | `archetype-model.md` | *¿Qué se puede componer con qué?* Manifiestos, capabilities, traits, pools, CMDB, resolución |
 | `terramate-outputs-sharing-architecture.md` | *¿Cómo se genera y se aplica?* Generadores, outputs sharing, IAM, política, CI/CD, guías por nube |
-| `risk-register.md` | *¿Qué puede salir mal, y el control está realmente implementado?* 71 riesgos por dominio (68 activos), revisados en cada puerta de fase |
+| `risk-register.md` | *¿Qué puede salir mal, y el control está realmente implementado?* 73 riesgos por dominio (70 activos), revisados en cada puerta de fase |
 
 ---
 

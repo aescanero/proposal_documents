@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Generates 03-presentation-blocks.svg (1920x1080, for presentations).
+"""Genera 02-presentation-blocks.svg (1920x1080, orientado a presentación).
 
-Hand-drawn diagram, no Mermaid: this script is the source. To change the SVG,
-edit here and run `python3 03-presentation-blocks.py`.
-Same style as network-qa/diagrams/06-bloques-presentacion.py.
+Diagrama dibujado a mano, sin Mermaid: la fuente es este script. Para cambiar
+el SVG se edita aquí y se ejecuta `python3 02-presentation-blocks.py`.
+Mismo estilo que network-qa/diagrams/06-bloques-presentacion.py.
 """
 import os
 from xml.sax.saxutils import escape as e
@@ -40,34 +40,34 @@ def arrow(x1,y1,x2,y2,color='#9ca3af',w=3):
 
 
 T=dict(
- aria="Life-cycle security on qa: blocks",
- arch="archetypes/{defectdojo,dast,aig}", kind="layers 4-5 · vuln-mgmt 1.0.0",
- title="Life-cycle security on qa — DefectDojo, DAST and A.I.G",
- subtitle="four phases · CI scans · DefectDojo, DAST and A.I.G in the cluster · A.I.G's agent on a gVisor pool · nothing against prod",
- left="From the platform", left_sub="layers 1-4",
- caps=[("cluster","apps · gvisor (GKE Sandbox)",False),("database-platform","its own Cloud SQL",False),("oidc-idp","Keycloak · tenant client",False),
-       ("secrets · eso","tokens in Secret Manager",False),("network","NAT · Cloud Armor 800",False)],
- cols=["1 · CI","2 · Consolidate","3 · DAST","4 · AI"],
+ aria="Modelo de fuente hidratada: bloques",
+ arch="intención → modelo hidratado → apply", kind="source-hydration · DH1-DH8",
+ title="La plataforma como modelo de fuente hidratada",
+ subtitle="la traducción se revisa en el PR, no ocurre en vuelo · Kubernetes también · entrega push · lo aplicado se compara con lo revisado",
+ left="Intención", left_sub="escrita a mano",
+ caps=[("binding.yaml","composición · región",False),("manifiestos","arquetipos y charts",False),("registry/","capacidades · traits",False),
+       ("helm en el apply","no: se renderiza antes",True),("agente pull","no: push por entorno",True)],
+ cols=["1 · Traducir","2 · Hidratar","3 · Comprobar","4 · Reconciliar"],
  blocks=[
-  [("sonarqube","SAST and quality gate",["scanner in CI","server already proposed","API Import to DefectDojo"]),
-   ("trivy","SCA, secrets, image",["PR: secrets and CRITICAL","nightly on what is deployed","the image is promoted"]),
-   ("checkov","IaC, Dockerfile, Helm",["G1/G2 in infra","blocking checks by list","template in the apps"])],
-  [("defectdojo","Layer 4 · vuln-mgmt",["one product type per team","importer-<team>: Writer","only main and scheduled"]),
-   ("data","Its own Cloud SQL",["qa-defectdojo · 7-day PITR","Valkey: a component","media in a bucket (GCS FUSE)"]),
-   ("access","SSO and tokens",["OIDC with Keycloak","tokens in Secret Manager","dojo.<public_id>…"])],
-  [("zap","Baseline and API",["passive every night","API with OpenAPI","full: on demand"]),
-   ("nuclei","Pinned templates",["weekly, medium or above","no dos, fuzz, intrusive","image per version"]),
-   ("edge","Through the public edge",["Cloud Armor, priority 800","NAT MANUAL_ONLY · 2 IPs","targets from resolution"])],
-  [("gvisor","A GKE Sandbox pool",["agent with SYS_ADMIN","a kernel per pod","0-1 nodes, scaled to zero"]),
-   ("access","No edge",["server on apps, ClusterIP","port-forward with RBAC","no network to the /17"]),
-   ("import","Generic Findings",["scheduled converter","importer-platform-aig","keys with a spend limit"])]],
- right="Provides", right_sub="vuln-mgmt 1.0.0",
- items=[("teams","reusable appsec.yml","a product type per team"),("security","deduplicated findings","SLA and accepted risks"),
-        ("prod","no DefectDojo of its own","engagement deployed-prod"),("nightly","CVEs after the build","on what is deployed")],
- controls="Controls",
- ctrl=[("assert","database-platform's DB"),("G1","prod does not bind dast"),("Gatekeeper","P2 · P3 · P11"),
-       ("Cloud Armor","rule 800 non-prod only"),("P13","privileges only on gVisor")],
- foot="docs/en/proposals/appsec-qa/README.md")
+  [("resolver","Composición y claims",["orden y ledger","resolution.json","binding.tm.hcl"]),
+   ("generate","Código OpenTofu",["_*.tf commiteado","_releases.json","_values-*.yaml"]),
+   ("late:","Valores en el apply",["outputs sharing","marcador late:<input>","nunca un mock"])],
+  [("hydrate","helm template",["Helm fijado","--include-crds","KUBE_VERSION fijada"]),
+   ("_rendered","Manifiesto revisable",["ordenado y estable","hooks aparte","CRD como sha256"]),
+   ("secretos","Nunca en git",["Secret con valor: falla","los materializa ESO","lookup prohibido"])],
+  [("G0","Hidratado = fuente",["generate sin diff","hydrate sin diff","sin edición a mano"]),
+   ("G1","Políticas",["conftest","gator sobre _rendered/","late: comprobado"]),
+   ("revisión","El efecto, no la intención",["replicas: 2 → 3","CODEOWNERS","git blame"])],
+  [("apply","Push al fusionar",["identidad por entorno","env_ref@main","tofu apply"]),
+   ("comparar","Aplicado = revisado",["helm get manifest","salvo late:*","si no: drifted"]),
+   ("drift","Diario",["detecta, no corrige","cmdb-observed","se decide en un PR"])]],
+ right="Se obtiene", right_sub="lo revisado es lo desplegado",
+ items=[("auditoría","git log del efecto","no solo de la intención"),("políticas","antes del apply","gator en el PR"),
+        ("depuración","sin re-renderizar","con versiones fijadas"),("promoción","diff entre entornos","del modelo hidratado")],
+ controls="Controles",
+ ctrl=[("G0","generate · hydrate"),("G1","conftest · gator"),("DH7","helm get manifest"),
+       ("ESO","secretos fuera de git"),("mise","Helm y K8s fijados")],
+ foot="docs/es/proposals/source-hydration/README.md")
 
 o.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="{e(T["aria"])}">')
 o.append('<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9ca3af"/></marker>'
@@ -137,4 +137,4 @@ for i,(a,b) in enumerate(T['ctrl']):
     x+=cw
 text(W-60,H-20,T['foot'],13,400,'#9ca3af','end',font=MONO)
 o.append('</svg>')
-open(os.path.join(os.path.dirname(os.path.abspath(__file__)),'03-presentation-blocks.svg'),'w').write('\n'.join(o))
+open(os.path.join(os.path.dirname(os.path.abspath(__file__)),'02-presentation-blocks.svg'),'w').write('\n'.join(o))

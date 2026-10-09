@@ -412,7 +412,10 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 | **Workflow de despliegue** | El pipeline de merge a main. **Un job por entorno**, cada uno ligado al GitHub Environment de ese nombre (sus revisores, y el claim `environment` que es lo único que puede suplantar a `tf-apply-<env>@`): primero la landing zone, después los entornos no productivos en paralelo, después `prod`. Cada uno ejecuta `terramate script run --changed -B <último deploy con éxito> --tags <env> tofu deploy` con los mocks desactivados, y luego la sincronización de la CMDB, que además mueve el marcador de deploy del entorno. Arquitectura §14.2. |
 | **Workflow de drift** | Un job programado que ejecuta `tofu plan -detailed-exitcode -lock=false` por entorno, con la identidad de plan de ese entorno, para detectar drift de configuración sin aplicar. |
 | **Entradas de construcción de la puerta de política** | La cadena que produce las entradas de evaluación de conftest: `registry-generate --check` → `archetypectl resolve --dry-run > resolution.json` → `ci/stacks-json.sh > stacks.json` → `archetypectl enrich stacks.json`. |
-| **`mise`** | Gestor de fijación de versiones de herramientas (`mise.toml`, `jdx/mise-action`) que fija las versiones de Terramate, OpenTofu y Checkov de forma consistente entre las máquinas de los desarrolladores y CI. |
+| **`mise`** | Gestor de fijación de versiones de herramientas (`mise.toml`, `jdx/mise-action`) que fija las versiones de Terramate, OpenTofu, Checkov, Helm y `gator`, y `KUBE_VERSION`, de forma consistente entre las máquinas de los desarrolladores y CI. |
+| **Modelo hidratado en la fuente (SHIM)** | Un modelo que guarda en git, versionada y revisada, la traducción completa entre la intención y lo desplegado, hecha **antes** de reconciliar; el GitOps clásico guarda solo la intención y traduce al sincronizar. La plataforma es uno con entrega **push**: binding y manifiestos → resolver y generadores → `resolution.json`, ledger, mitad declarada de la CMDB, `_*.tf` y `_rendered/` en `main` → `tofu apply` en el merge. Arquitectura §14.5, propuesta `source-hydration`. |
+| **`_rendered/`** | Por stack que despliega charts: la salida de `helm template` de cada `helm_release`, escrita por `ci/hydrate.sh` a partir de los `_releases.json` y `_values-<release>.yaml` generados — `<release>.yaml` (lo que devuelve `helm get manifest`), `.hooks.yaml`, `.crds.sha256` (un nombre y un digest por CRD). Commiteado, bajo CODEOWNERS, comprobado por G0, evaluado por `gator` en G1, comparado con `helm get manifest` tras el apply. |
+| **`late:<input>`** | La marca que lleva en `_values-<release>.yaml` y `_rendered/` un valor de chart que llega por outputs sharing: solo se resuelve en el apply. Nunca un mock, nunca el valor real; un valor de chart que viene de un `input` sin ella hace fallar G1. |
 
 ---
 
@@ -556,7 +559,7 @@ Las cinco guías de runtime (GKE, EKS, Cloud Run, ECS Fargate, AKS) siguen el mi
 
 ---
 
-## 26. Registro de riesgos (`risk-register.md`) — 71 riesgos por dominio (68 activos)
+## 26. Registro de riesgos (`risk-register.md`) — 73 riesgos por dominio (70 activos)
 
 Cada riesgo tiene un número R estable y nunca reutilizado, una probabilidad, un impacto y una mitigación ligada a una sección del documento.
 
@@ -616,6 +619,7 @@ Cada riesgo tiene un número R estable y nunca reutilizado, una probabilidad, un
 | **R65–R66** | En el proyecto non-prod compartido, un recurso de red o DNS de un entorno enlazado al de otro; el egress de la VPC denegado por defecto que bloquea un flujo legítimo, sobre todo el del propio rango del entorno. Ver `risk-register.md`. |
 | **R67–R69** | Muchos entornos: nombres que son prefijo de otros, o un entorno extraído del id de un stack; un recurso fuera de la región o la jurisdicción de su entorno; un valor por defecto igual al de un entorno real. Ver `risk-register.md`. |
 | **R70–R71** | Un entorno copiado de los stacks de otro, o una lista de entornos mantenida a mano; una identidad de entorno federada antes de que exista su GitHub Environment protegido, o sin la rama. Ver `risk-register.md`. |
+| **R72–R73** | Manifiestos renderizados que no son lo que se aplica; un valor secreto hidratado en git a través de `_rendered/`. Ver `risk-register.md`. |
 
 **Los cinco principales riesgos** (ordenados por probabilidad × impacto, mitigación aún no implantada): 1) R2 (falta `after`), 2) R12 (`sub` comodín OIDC), 3) R26 (rango de pods dimensionado para pocos nodos), 4) R34 (divergencia del registro), 5) R5 (plataforma compartida destruida al desmontar una instancia).
 

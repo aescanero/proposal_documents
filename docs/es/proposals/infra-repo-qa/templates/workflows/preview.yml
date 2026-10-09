@@ -36,6 +36,10 @@ jobs:
             echo "::error::El código generado está obsoleto. Ejecuta 'terramate generate' y commitea."
             exit 1
           }
+          ./ci/hydrate.sh                      # los charts, renderizados como se aplicarán (source-hydration DH3)
+          if [ -n "$(git status --porcelain -- '*/_rendered/*')" ]; then
+            echo "::error::_rendered/ está obsoleto. Ejecuta ci/hydrate.sh y commitea."; git status --short -- '*/_rendered/*'; exit 1
+          fi
 
       - name: G1 — estructura, composición, orden
         run: ./ci/g1.sh
