@@ -115,6 +115,20 @@ After each `helm_release`, the deploy compares `helm get manifest` with `_render
 
 The hydrated model separates translation from reconciliation; it does not require a pull agent. The platform keeps push delivery because each `apply` is made by its environment's identity, bound to its GitHub Environment and to `main` (`multi-environment` DX9), and because a continuous, automatic `apply` on stateful infrastructure — databases, keys, networks — corrects drift by destroying. Drift is detected daily and decided in a PR.
 
+### 5.1 Alternatives on Google Cloud
+
+Google Cloud offers pieces that cover part of this design. They were considered and are rejected, except for the first one's idea:
+
+| Product | What it does | Stance | Why |
+|---|---|---|---|
+| kpt | Packages of KRM manifests in git, transformed by functions; distinguishes *dry* configuration (templates, intent) from *wet* (rendered) | **Idea adopted**: `_rendered/` is the wet half, in the same commit as the intent (DH2) | One PR reviews the intent and its effect; a separate wet repository adds one more sync and a second place to review |
+| Config Sync | Pull GitOps agent for GKE; can render Kustomize and Helm inside the cluster | **No** | It is pull: an identity in the cluster that writes, and continuous reconciliation, against the per-environment identity bound to `main` (DX9). Its rendering in the cluster is exactly the in-flight rendering DH2 removes |
+| Policy Controller | Managed Gatekeeper, with a constraint library | **No**: self-managed Gatekeeper | Settled in `CLAUDE.md`: one version and one behaviour on all three clouds; the managed add-on restricts custom templates. `gator` in CI plays the same role before the `apply` (DH6) |
+| Config Connector, Config Controller | GCP resources as Kubernetes objects, continuously reconciled by an operator; Config Controller hosts it alongside Config Sync and Policy Controller | **No** | Duplicates the role of OpenTofu and its state; continuous auto-correction on stateful infrastructure corrects drift by destroying (DH8) |
+| Cloud Deploy (with Skaffold) | Renders the manifests when the release is created, once per target, and promotes that release without rendering again | **No**, with the same principle | "Render once and promote the rendering" is the rule of the image promoted and never rebuilt (`developer-guide.md`) applied to manifests. What this design adds: the rendering is reviewed in the PR and compared with what was applied (DH7) |
+
+Google Cloud's managed path is pull with continuous reconciliation, cloud infrastructure included. The platform hydrates like kpt or Cloud Deploy, but keeps push delivery.
+
 ---
 
 ## 6. Risks and verifications
@@ -161,7 +175,7 @@ The hydrated model separates translation from reconciliation; it does not requir
 | DH5 | What is not hydrated | **Proposed** | CRDs as a hash; never a `Secret` with a value; `lookup` forbidden in our charts | Whole CRDs (97 % of the render) |
 | DH6 | Admission before `apply` | **Proposed** | `gator test` over `_rendered/` in G1 | Admission in the cluster only |
 | DH7 | Applied is reviewed | **Proposed** | Compare `helm get manifest` / `_rendered/` after every `apply` | Assume it |
-| DH8 | Delivery | **Proposed** | Push, as today | A pull agent reconciling continuously |
+| DH8 | Delivery | **Proposed** | Push, as today | A pull agent reconciling continuously (Config Sync, Config Connector; §5.1) |
 
 ---
 

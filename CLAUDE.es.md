@@ -193,6 +193,7 @@ docs/en/, docs/es/      documentos de referencia, en inglés y español (CLAUDE.
 docs/en/proposals/, docs/es/proposals/   propuestas de diseño para deployments concretos (no normativas)
 schemas/                JSON Schema, GENERADO a partir de registry/
 registry/               FUENTE DE VERDAD para capabilities, traits, zones, labels
+talks/                  presentaciones HTML de una hora, solo en inglés; no son especificación (talks/README.md)
 .github/workflows/
 ```
 

@@ -13,6 +13,7 @@ Documentation is **bilingual**: every document exists in English (`docs/en/`) an
 |---|---|
 | [`docs/en/`](docs/en/) | Documentation in **English** |
 | [`docs/es/`](docs/es/) | Documentación en **español** |
+| [`talks/`](talks/) | One-hour HTML slide decks (English): GitOps and SHIM, this platform as a source-hydrated model, the evolution of agent platforms |
 | [`CLAUDE.md`](CLAUDE.md) | Decision log: what is settled, what is open, and the traps. See "Bilingual documentation" for the rule on which language is authored first |
 
 Inside each language folder:
