@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Platforms Evolution</title>
+<!-- Self-contained slide deck. Keys: ←/→ move · N presenter notes · O overview · F fullscreen · P print to PDF. -->
+<style>
+:root {
+  --bg: #0f1419; --panel: #172029; --panel2: #1e2a36; --line: #2e3d4c;
+  --fg: #e8edf2; --muted: #9aabbc; --dim: #6b7d8f;
+  --ok: #4cc38a; --warn: #f0b84a; --bad: #f2716b; --info: #6cb4ff;
+  --mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #05080b; color: var(--fg); font-family: var(--sans); overflow: hidden; }
+#stage { position: absolute; left: 50%; top: 50%; width: 1280px; height: 720px; transform-origin: 0 0; }
+.slide { position: absolute; inset: 0; width: 1280px; height: 720px; padding: 56px 72px 64px; background: var(--bg);
+  display: none; flex-direction: column; overflow: hidden; }
+.slide.active { display: flex; }
+.slide::after { content: attr(data-n); position: absolute; right: 28px; bottom: 18px; font-size: 14px; color: var(--dim); }
+.slide .foot { position: absolute; left: 72px; bottom: 18px; font-size: 14px; color: var(--dim); }
+aside.notes { display: none; }
+
+h1 { font-size: 60px; line-height: 1.08; margin: 0 0 20px; letter-spacing: -0.5px; }
+h2 { font-size: 40px; line-height: 1.15; margin: 0 0 24px; letter-spacing: -0.3px; }
+h2 .k { color: var(--accent); }
+h3 { font-size: 24px; margin: 0 0 10px; color: var(--accent); }
+p, li { font-size: 24px; line-height: 1.4; }
+p { margin: 0 0 14px; }
+ul, ol { margin: 0; padding-left: 28px; }
+li { margin: 0 0 10px; }
+li::marker { color: var(--accent); }
+code { font-family: var(--mono); font-size: 0.88em; background: var(--panel2); padding: 1px 6px; border-radius: 4px; color: #d6e4f0; }
+pre { font-family: var(--mono); font-size: 18px; line-height: 1.45; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 18px 22px; margin: 0; white-space: pre; overflow: hidden; }
+pre code { background: none; padding: 0; font-size: inherit; }
+pre .c { color: var(--dim); } pre .a { color: var(--accent); } pre .g { color: var(--ok); } pre .r { color: var(--bad); }
+em { color: var(--accent); font-style: normal; }
+strong { color: #fff; }
+.muted { color: var(--muted); }
+.small, .small li, .small p { font-size: 20px; }
+.tiny, .tiny li, .tiny p { font-size: 17px; }
+
+/* title & section slides */
+.slide.title { justify-content: center; background: radial-gradient(1200px 600px at 85% 110%, var(--accent-soft), transparent 60%), var(--bg); }
+.slide.title .kicker { font-size: 20px; text-transform: uppercase; letter-spacing: 3px; color: var(--accent); margin-bottom: 18px; }
+.slide.title .sub { font-size: 28px; color: var(--muted); max-width: 980px; }
+.slide.title .meta { margin-top: 48px; font-size: 18px; color: var(--dim); }
+.slide.section { justify-content: center; background: linear-gradient(90deg, var(--accent-soft), transparent 70%), var(--bg); }
+.slide.section .num { font-size: 120px; font-weight: 800; color: var(--accent); opacity: .35; line-height: 1; }
+.slide.section h2 { font-size: 56px; }
+.slide.section p { color: var(--muted); font-size: 26px; max-width: 900px; }
+.slide.statement { justify-content: center; }
+.slide.statement .big { font-size: 46px; line-height: 1.25; font-weight: 650; max-width: 1080px; }
+.slide.statement .big em { color: var(--accent); }
+
+/* layouts */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; align-content: start; }
+.cols.c3 { grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.cols.c64 { grid-template-columns: 1.5fr 1fr; }
+.cols.c46 { grid-template-columns: 1fr 1.5fr; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px 24px; }
+.card h3 { margin-bottom: 8px; }
+.card p, .card li { font-size: 20px; }
+.card.ok { border-top: 4px solid var(--ok); } .card.bad { border-top: 4px solid var(--bad); } .card.warn { border-top: 4px solid var(--warn); }
+.card.acc { border-top: 4px solid var(--accent); }
+.grow { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.callout { margin-top: auto; border-left: 4px solid var(--accent); background: var(--panel); padding: 12px 18px; font-size: 21px; border-radius: 0 8px 8px 0; }
+.callout.bad { border-color: var(--bad); } .callout.ok { border-color: var(--ok); } .callout.warn { border-color: var(--warn); }
+.tag { display: inline-block; font-size: 15px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); margin-right: 6px; }
+.tag.ok { color: var(--ok); border-color: var(--ok); } .tag.bad { color: var(--bad); border-color: var(--bad); } .tag.warn { color: var(--warn); border-color: var(--warn); }
+
+table { border-collapse: collapse; width: 100%; font-size: 19px; }
+th { text-align: left; color: var(--accent); font-weight: 600; border-bottom: 2px solid var(--line); padding: 8px 12px; }
+td { border-bottom: 1px solid var(--line); padding: 8px 12px; vertical-align: top; line-height: 1.35; }
+td:first-child { color: #fff; font-weight: 600; }
+table.compact td, table.compact th { padding: 6px 10px; font-size: 17px; }
+
+/* timeline */
+.tl { display: grid; gap: 0; position: relative; }
+.tl .row { display: grid; grid-template-columns: 120px 1fr; gap: 20px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.tl .yr { font-family: var(--mono); color: var(--accent); font-size: 20px; padding-top: 3px; }
+.tl .row p { font-size: 21px; margin: 0; }
+
+/* svg diagrams */
+svg { max-width: 100%; max-height: 100%; }
+svg text { font-family: var(--sans); fill: var(--fg); font-size: 18px; }
+svg .t-muted { fill: var(--muted); font-size: 15px; }
+svg .t-acc { fill: var(--accent); font-weight: 600; }
+svg .t-mono { font-family: var(--mono); font-size: 15px; }
+svg .box { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+svg .box-acc { fill: var(--panel2); stroke: var(--accent); stroke-width: 2; }
+svg .box-ok { fill: var(--panel); stroke: var(--ok); stroke-width: 2; }
+svg .box-bad { fill: var(--panel); stroke: var(--bad); stroke-width: 2; }
+svg .box-warn { fill: var(--panel); stroke: var(--warn); stroke-width: 2; }
+svg .zone { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 6 5; }
+svg .arrow { stroke: var(--muted); stroke-width: 2; fill: none; marker-end: url(#ah); }
+svg .arrow-acc { stroke: var(--accent); stroke-width: 2.5; fill: none; marker-end: url(#aha); }
+svg .arrow-bad { stroke: var(--bad); stroke-width: 2; fill: none; stroke-dasharray: 6 4; marker-end: url(#ahb); }
+svg .ah { fill: var(--muted); } svg .aha { fill: var(--accent); } svg .ahb { fill: var(--bad); }
+
+/* chrome */
+#progress { position: fixed; left: 0; bottom: 0; height: 4px; background: var(--accent); transition: width .2s; z-index: 5; }
+#help { position: fixed; right: 12px; top: 10px; font-size: 12px; color: #4b5b6b; z-index: 5; }
+body.overview { overflow: auto; }
+body.overview #stage { position: static; transform: none !important; width: auto; height: auto; display: grid;
+  grid-template-columns: repeat(auto-fill, 320px); gap: 16px; padding: 16px; }
+body.overview .slide { display: flex; position: relative; transform: scale(.25); transform-origin: 0 0; margin: 0 -960px -540px 0; cursor: pointer; outline: 2px solid transparent; }
+body.overview .slide.active { outline: 6px solid var(--accent); }
+body.overview #progress, body.overview #help { display: none; }
+
+@media print {
+  @page { size: 1280px 720px; margin: 0; }
+  html, body { overflow: visible; height: auto; background: var(--bg); }
+  #stage { position: static; transform: none !important; width: 1280px; height: auto; }
+  .slide { display: flex !important; position: relative; break-after: page; page-break-after: always; }
+  #progress, #help { display: none; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+.card.ok h3 { color: var(--ok); } .card.bad h3 { color: var(--bad); } .card.warn h3 { color: var(--warn); }
+
+:root { --accent: #c792ea; --accent-soft: rgba(199,146,234,.16); }
+</style>
+</head>
+<body>
+<div id="stage">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+<marker id="aha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="aha" d="M0,0 L10,5 L0,10 z"/></marker>
+<marker id="ahb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ahb" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs></svg>
+<section class="slide title">
+  <div class="kicker">Architecture talk · 60 min</div>
+  <h1>From prompts to agent platforms</h1>
+  <div class="sub">An agnostic history of how LLM applications became agent platforms — and which interfaces to build on so the next model, framework or vendor is a configuration change, not a rewrite.</div>
+  <div class="meta">Status as of October 2026 · Products are examples, never recommendations</div>
+  <aside class="notes"><p>Framing: the field moves monthly. What lasts are patterns and interfaces. Every product named is one example among several; nothing here is an endorsement.</p><p>Follow-up talks in the series: agnostic monitoring of agents, and agent memory models.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Agenda</h2>
+  <div class="cols">
+    <ol>
+      <li>Before agents (2017–2022)</li>
+      <li>Tools become an API (2023)</li>
+      <li>Frameworks and orchestration (2023–2025)</li>
+      <li>Protocols and standards (2024–2026)</li>
+    </ol>
+    <ol start="5">
+      <li>Capabilities that changed the game</li>
+      <li>An agnostic reference architecture</li>
+      <li>Risks and governance</li>
+      <li>What comes next · Q&amp;A</li>
+    </ol>
+  </div>
+  <aside class="notes"><p>Sections 1–3: ~20 min of history, briskly. 4 and 6 are the core (~25 min). 7–8: ~10 min.</p></aside>
+</section>
+
+<section class="slide statement">
+  <div class="big">Models change every few months.<br>Frameworks change every year.<br><em>Interfaces</em> are what you can build a platform on.</div>
+  <aside class="notes"><p>The thesis of the talk. We will judge each era by what interface it left behind.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>What we mean by "agent"</h2>
+  <div class="cols c64">
+    <div>
+      <p>An <em>agent</em> is a model running in a loop: it decides the next action, calls a tool, observes the result, and repeats until a goal is met or a limit is hit.</p>
+<pre style="font-size:17px">while not done and steps &lt; limit:
+    action = model(goal, context, observations)
+    result = tools[action.name](action.args)
+    observations.append(result)</pre>
+    </div>
+    <div class="card"><h3>An agent platform adds</h3><ul class="small"><li>Model access and routing</li><li>Tools with identity and permissions</li><li>State, memory, durability</li><li>Observability and evaluation</li><li>Policy and guardrails</li></ul></div>
+  </div>
+  <aside class="notes"><p>Keep the definition minimal. "Agentic" is a spectrum: from a single tool call to multi-day autonomous work.</p></aside>
+</section>
+
+<!-- 1 -->
+<section class="slide section">
+  <div class="num">01</div>
+  <h2>Before agents</h2>
+  <p>2017–2022: from a new architecture to a chat window.</p>
+  <aside class="notes"><p>~6 minutes.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>The foundations</h2>
+  <div class="tl">
+    <div class="row"><div class="yr">2017</div><p><strong>The Transformer</strong> — attention-only architecture; the basis of every model since.</p></div>
+    <div class="row"><div class="yr">2018–19</div><p><strong>Pre-trained language models</strong> (GPT-1/2, BERT) — pre-train once, adapt to many tasks.</p></div>
+    <div class="row"><div class="yr">2020</div><p><strong>GPT-3 and few-shot prompting</strong> — the task is described in the prompt; no fine-tuning needed. "Prompt engineering" is born.</p></div>
+    <div class="row"><div class="yr">2021</div><p><strong>Code models and browsing research</strong> — models that write code, and early work on models that search the web and cite sources.</p></div>
+  </div>
+  <div class="callout">Interface left behind: <strong>text in, text out</strong>, over an HTTP completion API.</div>
+  <aside class="notes"><p>The completion API is the first lasting interface: almost every later API is a structured variant of it.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>2022: reasoning and acting, in the prompt</h2>
+  <div class="cols">
+    <div class="card acc"><h3>Instruction tuning &amp; RLHF</h3><p>Models trained to follow instructions and preferences. Makes them usable without elaborate prompts.</p></div>
+    <div class="card acc"><h3>Chain of thought</h3><p>"Think step by step": writing intermediate reasoning improves multi-step answers.</p></div>
+    <div class="card acc"><h3>ReAct</h3><p>Interleave <em>Reason</em> and <em>Act</em>: thought → tool call → observation → thought. The template of the agent loop.</p></div>
+    <div class="card acc"><h3>Chat interfaces (Nov 2022)</h3><p>A chat product brings LLMs to the general public; the message list becomes the de facto API shape.</p></div>
+  </div>
+  <aside class="notes"><p>ReAct is the conceptual ancestor of every agent loop. In 2022 it was implemented by parsing text like "Action: search[...]" out of the model's output — fragile, but it worked.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>The parsing era</h2>
+  <div class="cols c64">
+<pre style="font-size:16px">Thought: I need the current price.
+Action: search["ACME share price"]
+<span class="c">--- the app parses this text, runs the tool ---</span>
+Observation: 42.10 USD
+Thought: Now I can answer.
+Final Answer: 42.10 USD</pre>
+    <div class="card bad"><h3>Why it hurt</h3><ul class="small"><li>Regex over free text</li><li>Models drifted from the format</li><li>No types for arguments</li><li>Every library invented its own syntax</li></ul></div>
+  </div>
+  <div class="callout">Lesson: when two systems talk through prose, you need a contract. The next era made it one.</div>
+  <aside class="notes"><p>Same lesson as infrastructure: an implicit interface becomes an explicit schema.</p></aside>
+</section>
+
+<!-- 2 -->
+<section class="slide section">
+  <div class="num">02</div>
+  <h2>Tools become an API</h2>
+  <p>2023: function calling, retrieval, and the first autonomous loops.</p>
+  <aside class="notes"><p>~6 minutes.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>2023, quarter by quarter</h2>
+  <div class="tl">
+    <div class="row"><div class="yr">Q1</div><p><strong>Models that learn to use tools</strong> (research), <strong>chat plugins</strong> (products), and the first <strong>autonomous agent</strong> open-source projects go viral.</p></div>
+    <div class="row"><div class="yr">Q2</div><p><strong>Function calling</strong> in model APIs: tools declared as JSON Schema, calls returned as structured JSON. "Generative agents" simulations with memory and reflection.</p></div>
+    <div class="row"><div class="yr">Q3</div><p><strong>Open-weight models</strong> become competitive enough for real applications; multi-agent conversation frameworks appear.</p></div>
+    <div class="row"><div class="yr">Q4</div><p><strong>Hosted assistant APIs</strong> with threads, retrieval and code execution on the provider's side.</p></div>
+  </div>
+  <aside class="notes"><p>Function calling is the key event: from now on the tool interface is a schema, not a prompt convention. Every major provider and open-weight runtime converged on JSON Schema for tool definitions.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Function calling: the first real contract</h2>
+  <div class="cols">
+<pre style="font-size:15px">{
+  "name": "get_weather",
+  "description": "Current weather for a city",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "city": { "type": "string" },
+      "unit": { "enum": ["c", "f"] }
+    },
+    "required": ["city"]
+  }
+}</pre>
+    <ul class="small">
+      <li>Tools declared with <strong>JSON Schema</strong>.</li>
+      <li>The model returns a structured call; the application executes it.</li>
+      <li>Later: <strong>structured outputs</strong> — responses guaranteed to match a schema.</li>
+      <li>Still per-provider: each API wraps the schema slightly differently.</li>
+    </ul>
+  </div>
+  <div class="callout">Agnostic takeaway: keep tool definitions as plain JSON Schema in your code; adapt to providers at the edge.</div>
+  <aside class="notes"><p>Thin adapters per provider are cheap; tool definitions embedded in one vendor's SDK types are not.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Retrieval-augmented generation (RAG)</h2>
+  <div class="grow">
+    <svg viewBox="0 0 1100 300" width="1100" height="300">
+      <rect class="box" x="20" y="40" width="180" height="70" rx="8"/><text x="110" y="82" text-anchor="middle">Documents</text>
+      <rect class="box" x="250" y="40" width="180" height="70" rx="8"/><text x="340" y="82" text-anchor="middle">Chunk + embed</text>
+      <rect class="box-acc" x="480" y="40" width="200" height="70" rx="8"/><text x="580" y="82" text-anchor="middle" class="t-acc">Vector index</text>
+      <rect class="box" x="20" y="190" width="180" height="70" rx="8"/><text x="110" y="232" text-anchor="middle">Question</text>
+      <rect class="box" x="250" y="190" width="180" height="70" rx="8"/><text x="340" y="232" text-anchor="middle">Retrieve top-k</text>
+      <rect class="box" x="480" y="190" width="200" height="70" rx="8"/><text x="580" y="232" text-anchor="middle">Prompt + context</text>
+      <rect class="box-ok" x="730" y="190" width="180" height="70" rx="8"/><text x="820" y="232" text-anchor="middle">Model</text>
+      <rect class="box" x="950" y="190" width="130" height="70" rx="8"/><text x="1015" y="232" text-anchor="middle">Answer</text>
+      <path class="arrow" d="M200,75 L245,75"/><path class="arrow" d="M430,75 L475,75"/>
+      <path class="arrow" d="M200,225 L245,225"/><path class="arrow" d="M430,225 L475,225"/><path class="arrow" d="M680,225 L725,225"/><path class="arrow" d="M910,225 L945,225"/>
+      <path class="arrow-acc" d="M560,110 L360,185"/>
+    </svg>
+  </div>
+  <p class="small">Grounds answers in your data without retraining. Later evolves into <em>agentic retrieval</em>: the model decides when and what to search, as just another tool.</p>
+  <aside class="notes"><p>Vector stores as examples: pgvector, Qdrant, Weaviate, Milvus, OpenSearch — and many search engines added vector support. Memory, in the follow-up talk, builds on the same machinery.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>The first autonomous loops — and why they stalled</h2>
+  <div class="cols">
+    <div class="card"><h3>The promise</h3><p>Give a goal; the agent plans, creates sub-tasks, calls tools and iterates until done.</p></div>
+    <div class="card bad"><h3>What happened</h3><ul class="small"><li>Loops that never converged</li><li>Costs that grew with every step</li><li>Errors compounding across steps</li><li>No way to measure "better"</li></ul></div>
+  </div>
+  <div class="callout warn">The missing pieces were not cleverness: <strong>evaluation, observability, state and limits</strong>. The rest of the history is about adding them.</div>
+  <aside class="notes"><p>With 90 % per-step reliability, ten steps succeed about a third of the time. Reliability per step, and recovery, matter more than autonomy.</p></aside>
+</section>
+
+<!-- 3 -->
+<section class="slide section">
+  <div class="num">03</div>
+  <h2>Frameworks and orchestration</h2>
+  <p>2023–2025: from chains to graphs to durable workflows.</p>
+  <aside class="notes"><p>~7 minutes. Several examples per category, no ranking.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Three generations of orchestration</h2>
+  <div class="cols c3">
+    <div class="card"><h3>Chains</h3><p>Fixed sequences of prompts and tools; abstractions over prompts, retrievers and parsers.</p><p class="muted small">Examples: LangChain, LlamaIndex, Haystack, Semantic Kernel</p></div>
+    <div class="card"><h3>Graphs &amp; state machines</h3><p>Explicit state, nodes and edges; loops, branches, human-in-the-loop checkpoints.</p><p class="muted small">Examples: LangGraph, LlamaIndex workflows, Google ADK, Pydantic AI graphs</p></div>
+    <div class="card"><h3>Multi-agent</h3><p>Several specialised agents conversing or handing off; a supervisor or a protocol between them.</p><p class="muted small">Examples: AutoGen / Microsoft Agent Framework, CrewAI, provider agent SDKs</p></div>
+  </div>
+  <div class="callout">The trend: from "magic" abstractions to <strong>explicit control flow</strong> that engineers can test and debug.</div>
+  <aside class="notes"><p>Many teams moved from heavy frameworks to small amounts of plain code around a model client. Frameworks earn their keep with state, checkpoints and observability, not with prompt templates.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Workflows vs agents</h2>
+  <div class="cols">
+    <div class="card ok"><h3>Workflow</h3><p>The <strong>code</strong> decides the path; the model fills in steps (classify, extract, summarise, route).</p><p class="small muted">Predictable, cheap, testable. Use first.</p></div>
+    <div class="card warn"><h3>Agent</h3><p>The <strong>model</strong> decides the path; the code provides tools and limits.</p><p class="small muted">Flexible for open-ended tasks; needs evaluation, budgets and guardrails.</p></div>
+  </div>
+  <div class="callout">Most production systems are workflows with one or two agentic steps. Start with the simplest thing that works.</div>
+  <aside class="notes"><p>Common patterns: prompt chaining, routing, parallelisation, orchestrator–workers, evaluator–optimiser. All framework-independent.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Durable execution: agents are long-running processes</h2>
+  <div class="cols">
+    <ul class="small">
+      <li>An agent run can take minutes to days, wait for humans, and call flaky tools.</li>
+      <li>A crash must not mean "start again and pay again".</li>
+      <li>Durable execution engines persist each step and resume after failure.</li>
+    </ul>
+    <div class="card"><h3>Examples</h3><p class="small">Temporal, Restate, DBOS, cloud workflow services, and framework checkpointers backed by a database.</p><p class="small muted">Same idea as any business workflow: idempotent steps, retries, timeouts, compensation.</p></div>
+  </div>
+  <aside class="notes"><p>Platform view: an agent is a workload with state. Treat it like one — retries, idempotency keys, budgets, and a place to inspect a stuck run.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Provider agent SDKs and hosted runtimes</h2>
+  <div class="cols">
+    <div>
+      <p class="small">From 2025, model providers and clouds ship their own agent SDKs and managed runtimes: tool calling, handoffs, tracing, sessions, hosted tools (search, code, browser).</p>
+      <p class="small muted">Examples: provider agent SDKs, cloud agent builders and engines on each hyperscaler, enterprise agent platforms in SaaS suites.</p>
+    </div>
+    <div class="card warn"><h3>Lock-in check</h3><ul class="small"><li>Are tools exposed via an open protocol?</li><li>Are traces exported in an open format?</li><li>Can another model run the same agent?</li><li>Where do state and memory live, and can you export them?</li></ul></div>
+  </div>
+  <aside class="notes"><p>Hosted runtimes are convenient and often the right choice. The agnostic question is not "hosted or not" but "what can I take with me".</p></aside>
+</section>
+
+<!-- 4 -->
+<section class="slide section">
+  <div class="num">04</div>
+  <h2>Protocols and standards</h2>
+  <p>2024–2026: the interfaces that make the stack swappable.</p>
+  <aside class="notes"><p>~10 minutes. The most important section for an agnostic architecture.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>The N × M problem</h2>
+  <div class="cols">
+    <div class="grow">
+      <svg viewBox="0 0 480 300" width="480" height="300">
+        <rect class="box" x="20" y="20" width="120" height="50" rx="6"/><text x="80" y="51" text-anchor="middle">App A</text>
+        <rect class="box" x="20" y="125" width="120" height="50" rx="6"/><text x="80" y="156" text-anchor="middle">App B</text>
+        <rect class="box" x="20" y="230" width="120" height="50" rx="6"/><text x="80" y="261" text-anchor="middle">App C</text>
+        <rect class="box" x="340" y="20" width="120" height="50" rx="6"/><text x="400" y="51" text-anchor="middle">Tool 1</text>
+        <rect class="box" x="340" y="125" width="120" height="50" rx="6"/><text x="400" y="156" text-anchor="middle">Tool 2</text>
+        <rect class="box" x="340" y="230" width="120" height="50" rx="6"/><text x="400" y="261" text-anchor="middle">Tool 3</text>
+        <g stroke="var(--bad)" stroke-width="1.5" opacity=".8">
+          <line x1="140" y1="45" x2="340" y2="45"/><line x1="140" y1="45" x2="340" y2="150"/><line x1="140" y1="45" x2="340" y2="255"/>
+          <line x1="140" y1="150" x2="340" y2="45"/><line x1="140" y1="150" x2="340" y2="150"/><line x1="140" y1="150" x2="340" y2="255"/>
+          <line x1="140" y1="255" x2="340" y2="45"/><line x1="140" y1="255" x2="340" y2="150"/><line x1="140" y1="255" x2="340" y2="255"/>
+        </g>
+      </svg>
+    </div>
+    <div class="grow">
+      <svg viewBox="0 0 480 300" width="480" height="300">
+        <rect class="box" x="20" y="20" width="120" height="50" rx="6"/><text x="80" y="51" text-anchor="middle">App A</text>
+        <rect class="box" x="20" y="125" width="120" height="50" rx="6"/><text x="80" y="156" text-anchor="middle">App B</text>
+        <rect class="box" x="20" y="230" width="120" height="50" rx="6"/><text x="80" y="261" text-anchor="middle">App C</text>
+        <rect class="box-acc" x="190" y="110" width="100" height="80" rx="8"/><text x="240" y="156" text-anchor="middle" class="t-acc">Protocol</text>
+        <rect class="box" x="340" y="20" width="120" height="50" rx="6"/><text x="400" y="51" text-anchor="middle">Tool 1</text>
+        <rect class="box" x="340" y="125" width="120" height="50" rx="6"/><text x="400" y="156" text-anchor="middle">Tool 2</text>
+        <rect class="box" x="340" y="230" width="120" height="50" rx="6"/><text x="400" y="261" text-anchor="middle">Tool 3</text>
+        <g stroke="var(--ok)" stroke-width="1.5">
+          <line x1="140" y1="45" x2="190" y2="130"/><line x1="140" y1="150" x2="190" y2="150"/><line x1="140" y1="255" x2="190" y2="170"/>
+          <line x1="290" y1="130" x2="340" y2="45"/><line x1="290" y1="150" x2="340" y2="150"/><line x1="290" y1="170" x2="340" y2="255"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+  <p class="small">Every application integrating every tool: N × M adapters. A shared protocol: N + M. The same move as LSP for editors and language servers.</p>
+  <aside class="notes"><p>The Language Server Protocol analogy is apt and well known to engineers: before LSP every editor integrated every language; after LSP each side implements the protocol once.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Model Context Protocol (MCP)</h2>
+  <div class="cols c64">
+    <div>
+      <ul class="small">
+        <li>Open protocol, published <strong>November 2024</strong>, connecting AI applications (clients) to tools and data (servers).</li>
+        <li>JSON-RPC messages; local (stdio) and remote (HTTP) transports.</li>
+        <li>Server primitives: <strong>tools</strong>, <strong>resources</strong>, <strong>prompts</strong>. Client features include <strong>elicitation</strong> (ask the user).</li>
+        <li>Authorization for remote servers based on <strong>OAuth 2.1</strong>.</li>
+        <li>Adopted during 2025 by the major model providers, IDEs and agent tools.</li>
+      </ul>
+    </div>
+    <div class="card acc"><h3>Governance</h3><p>Moved to a neutral home in <strong>December 2025</strong>: the Linux Foundation's <strong>Agentic AI Foundation</strong> (AAIF), alongside other agent projects.</p></div>
+  </div>
+  <aside class="notes"><p>The importance of neutral governance: enterprises adopt standards they do not have to bet on one vendor to keep alive.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>MCP in 2026: the stateless revision</h2>
+  <div class="cols">
+    <ul class="small">
+      <li>The <strong>2026-07-28</strong> specification is the largest revision since launch.</li>
+      <li><strong>Stateless core</strong>: no initialisation handshake or protocol sessions; each request carries what the server needs — remote servers scale behind ordinary load balancers.</li>
+      <li>A formal <strong>extensions</strong> model: long-running <strong>Tasks</strong> and interactive <strong>MCP Apps</strong> move out of the core.</li>
+      <li>Stricter OAuth requirements, trace context, a deprecation policy.</li>
+    </ul>
+    <div class="card warn"><h3>Platform impact</h3><p>Breaking changes for implementers: pin protocol versions per server, test clients against both, and treat the MCP SDK like any other dependency with an upgrade plan.</p></div>
+  </div>
+  <aside class="notes"><p>Verify details against the specification itself before quoting fields; secondary write-ups differ on how disruptive the change is. The direction is clear: MCP is becoming ordinary, horizontally scalable HTTP infrastructure.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Agent-to-agent: A2A</h2>
+  <div class="cols c64">
+    <div>
+      <ul class="small">
+        <li>MCP connects an agent to <strong>tools</strong>; A2A connects an agent to <strong>other agents</strong> that may be opaque, run elsewhere, by another team or company.</li>
+        <li>Announced <strong>April 2025</strong>; <strong>Agent Cards</strong> describe an agent's skills and endpoint; tasks with lifecycle and streaming updates.</li>
+        <li>Contributed to the Linux Foundation in <strong>June 2025</strong>; reported in <strong>August 2026</strong> as joining the AAIF alongside MCP.</li>
+      </ul>
+    </div>
+    <div class="card"><h3>Rule of thumb</h3><p><strong>Tool</strong> if you control it and it is deterministic. <strong>Agent</strong> if it has its own reasoning, state and owner.</p></div>
+  </div>
+  <aside class="notes"><p>Other agent-communication proposals existed (e.g. ACP); they have largely converged towards A2A. Watch for consolidation rather than betting on a niche protocol.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Instructions as files: <code>AGENTS.md</code> and skills</h2>
+  <div class="cols">
+    <div class="card acc"><h3><code>AGENTS.md</code></h3><p>A plain Markdown file in a repository telling coding agents how to build, test and follow conventions. Introduced in 2025; part of the AAIF.</p></div>
+    <div class="card acc"><h3>Agent Skills (<code>SKILL.md</code>)</h3><p>A folder with instructions, scripts and resources an agent loads on demand. Published as an open specification in December 2025; adopted by dozens of agent tools by mid-2026.</p></div>
+  </div>
+  <div class="callout">Agnostic win: knowledge and procedures live in <strong>version-controlled text</strong>, not inside one vendor's configuration screen.</div>
+  <aside class="notes"><p>Portability is not perfect — support levels vary between tools — but the format is plain files, so the cost of switching is low.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Observability standard: OpenTelemetry GenAI</h2>
+  <div class="cols">
+    <ul class="small">
+      <li>Semantic conventions for model calls, token usage, tool calls and <strong>agent spans</strong> (create and invoke agent, execute tool).</li>
+      <li>Any OTLP-compatible backend can receive them; many agent frameworks and gateways emit them.</li>
+      <li>Status in October 2026: still marked <strong>Development</strong>, not Stable — attribute names can change.</li>
+    </ul>
+    <div class="card warn"><h3>Practical advice</h3><p>Emit OTel now, pin the convention version you emit, and keep a mapping layer in the collector. That is the next talk.</p></div>
+  </div>
+  <aside class="notes"><p>Cross-reference: the follow-up talk "Agnostic monitoring of agents" builds entirely on this.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Neutral governance, in one table</h2>
+  <table>
+    <tr><th>Standard</th><th>Interface</th><th>Home (Oct 2026)</th></tr>
+    <tr><td>MCP</td><td>Agent ↔ tools and data</td><td>Linux Foundation · AAIF (since Dec 2025)</td></tr>
+    <tr><td>A2A</td><td>Agent ↔ agent</td><td>Linux Foundation (since Jun 2025); reported joining AAIF in Aug 2026</td></tr>
+    <tr><td><code>AGENTS.md</code></td><td>Repository → coding agent</td><td>AAIF</td></tr>
+    <tr><td>Agent Skills</td><td>Packaged procedures</td><td>Open specification</td></tr>
+    <tr><td>OTel GenAI</td><td>Telemetry</td><td>OpenTelemetry (CNCF) — Development status</td></tr>
+    <tr><td>OAuth 2.1 / OIDC</td><td>Identity for tools and agents</td><td>IETF / OpenID Foundation</td></tr>
+  </table>
+  <aside class="notes"><p>Re-check this table before each delivery of the talk; this is the part that changes fastest.</p></aside>
+</section>
+
+<!-- 5 -->
+<section class="slide section">
+  <div class="num">05</div>
+  <h2>Capabilities that changed the game</h2>
+  <p>2024–2026: what models and runtimes can now do.</p>
+  <aside class="notes"><p>~6 minutes.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Six capability shifts</h2>
+  <div class="cols c3">
+    <div class="card acc"><h3>Reasoning models</h3><p>Models that spend compute thinking before answering (from late 2024; open-weight ones in early 2025). Fewer scaffolding tricks needed.</p></div>
+    <div class="card acc"><h3>Long context</h3><p>Hundreds of thousands to millions of tokens. Changes RAG trade-offs; does not remove the need for memory.</p></div>
+    <div class="card acc"><h3>Computer &amp; browser use</h3><p>Agents operating GUIs and browsers through screenshots and actions — any app becomes a tool, slowly and fragilely.</p></div>
+    <div class="card acc"><h3>Coding agents</h3><p>Agents in terminals, IDEs and CI that read repos, run tests and open PRs — the first mass-market agent use case.</p></div>
+    <div class="card acc"><h3>Sandboxes</h3><p>Ephemeral, isolated environments to run agent-written code: micro-VMs, gVisor, containers with no credentials.</p></div>
+    <div class="card acc"><h3>Background agents</h3><p>Long-running agents triggered by events or schedules, working for hours and reporting back.</p></div>
+  </div>
+  <aside class="notes"><p>Coding agents are the reference use case because the domain has a built-in evaluator: tests and CI. Domains without one adopt agents more slowly.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Why coding agents went first</h2>
+  <div class="cols">
+    <ul class="small">
+      <li><strong>Verifiable outcomes</strong>: tests, type checkers, linters, CI.</li>
+      <li><strong>Text-native environment</strong>: files, commands, diffs.</li>
+      <li><strong>Built-in review</strong>: pull requests, code owners.</li>
+      <li><strong>Built-in rollback</strong>: version control.</li>
+    </ul>
+    <div class="card ok"><h3>Pattern to copy elsewhere</h3><p>Give agents an environment with a <strong>verifier</strong>, a <strong>review gate</strong> and <strong>reversibility</strong>. Where you cannot, keep a human in the loop.</p></div>
+  </div>
+  <aside class="notes"><p>This connects to infrastructure: GitOps-style review and gates make infrastructure a good domain for agents too — the agent proposes a PR, the gates and humans decide.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Open-weight and local models</h2>
+  <div class="cols">
+    <div class="card"><h3>Why they matter for agnosticism</h3><ul class="small"><li>Data residency and air-gapped deployments</li><li>Cost control for high-volume steps</li><li>A credible fallback if a provider changes terms</li></ul></div>
+    <div class="card"><h3>Serving layer</h3><p class="small">Inference servers exposing an <strong>OpenAI-compatible</strong> API have become a de facto standard: vLLM, SGLang, llama.cpp, Ollama, TGI and managed endpoints.</p></div>
+  </div>
+  <div class="callout">Agnostic takeaway: route through one model gateway; mix hosted and self-hosted models per step.</div>
+  <aside class="notes"><p>"OpenAI-compatible" here is a wire format, not a vendor choice: most providers and open runtimes accept it, which makes it the practical lowest common denominator.</p></aside>
+</section>
+
+<!-- 6 -->
+<section class="slide section">
+  <div class="num">06</div>
+  <h2>An agnostic reference architecture</h2>
+  <p>Depend on interfaces; make every layer pass the swap test.</p>
+  <aside class="notes"><p>~10 minutes. The slide people will want to photograph is next.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>The layers</h2>
+  <div class="grow">
+    <svg viewBox="0 0 1140 470" width="1140" height="470">
+      <rect class="box-acc" x="20" y="10" width="1100" height="60" rx="8"/><text x="570" y="47" text-anchor="middle" class="t-acc">Channels · UI · APIs · events · schedules</text>
+      <rect class="box" x="20" y="90" width="760" height="110" rx="8"/><text x="400" y="128" text-anchor="middle">Agent runtime</text><text x="400" y="156" text-anchor="middle" class="t-muted">loop · workflows · state · checkpoints · durable execution</text><text x="400" y="182" text-anchor="middle" class="t-muted">instructions as files (AGENTS.md, skills)</text>
+      <rect class="box" x="800" y="90" width="320" height="110" rx="8"/><text x="960" y="128" text-anchor="middle">Other agents</text><text x="960" y="156" text-anchor="middle" class="t-mono">A2A</text>
+      <rect class="box" x="20" y="220" width="360" height="100" rx="8"/><text x="200" y="258" text-anchor="middle">Model gateway</text><text x="200" y="285" text-anchor="middle" class="t-mono">compatible chat API</text>
+      <rect class="box" x="400" y="220" width="360" height="100" rx="8"/><text x="580" y="258" text-anchor="middle">Tool layer</text><text x="580" y="285" text-anchor="middle" class="t-mono">MCP servers · sandboxes</text>
+      <rect class="box" x="780" y="220" width="340" height="100" rx="8"/><text x="950" y="258" text-anchor="middle">Memory &amp; knowledge</text><text x="950" y="285" text-anchor="middle" class="t-muted">vector · graph · documents</text>
+      <rect class="box-warn" x="20" y="340" width="270" height="110" rx="8"/><text x="155" y="380" text-anchor="middle">Observability</text><text x="155" y="408" text-anchor="middle" class="t-mono">OTel GenAI</text>
+      <rect class="box-warn" x="305" y="340" width="270" height="110" rx="8"/><text x="440" y="380" text-anchor="middle">Evaluation</text><text x="440" y="408" text-anchor="middle" class="t-muted">datasets · graders · CI</text>
+      <rect class="box-warn" x="590" y="340" width="270" height="110" rx="8"/><text x="725" y="380" text-anchor="middle">Policy &amp; guardrails</text><text x="725" y="408" text-anchor="middle" class="t-muted">input · tool · output</text>
+      <rect class="box-warn" x="875" y="340" width="245" height="110" rx="8"/><text x="997" y="380" text-anchor="middle">Identity &amp; secrets</text><text x="997" y="408" text-anchor="middle" class="t-mono">OAuth 2.1 · OIDC</text>
+    </svg>
+  </div>
+  <aside class="notes"><p>Top: how work arrives. Middle: the runtime and what it calls. Bottom (amber): cross-cutting concerns that every layer reports to or is constrained by. Next slides take each layer in turn.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Each layer: interface, examples, swap test</h2>
+  <table class="compact">
+    <tr><th>Layer</th><th>Depend on</th><th>Examples</th><th>Swap test</th></tr>
+    <tr><td>Model access</td><td>A compatible chat API behind a gateway</td><td>LiteLLM, Envoy AI Gateway, agentgateway, cloud gateways</td><td>Change provider for one step by config</td></tr>
+    <tr><td>Tools</td><td>MCP</td><td>Your own servers; vendor and community servers</td><td>Same tool from two different agent hosts</td></tr>
+    <tr><td>Agents</td><td>A2A</td><td>Internal and partner agents</td><td>Replace a sub-agent without touching the caller</td></tr>
+    <tr><td>Runtime</td><td>Plain code + durable execution</td><td>Graph frameworks, agent SDKs, workflow engines</td><td>Port one agent to another framework in days</td></tr>
+    <tr><td>Instructions</td><td>Files in git</td><td><code>AGENTS.md</code>, <code>SKILL.md</code></td><td>Another agent tool reads the same files</td></tr>
+    <tr><td>Telemetry</td><td>OTel GenAI over OTLP</td><td>Any OTLP backend, LLM-observability tools</td><td>Change backend without re-instrumenting</td></tr>
+  </table>
+  <aside class="notes"><p>The swap test is the operational definition of "agnostic". Run it for real once per layer — a quarterly game day is enough.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>The model gateway</h2>
+  <div class="cols">
+    <ul class="small">
+      <li>One endpoint for every model: hosted, cloud-hosted and self-hosted.</li>
+      <li>Routing per step: cheap model for classification, strong model for planning.</li>
+      <li>Fallbacks, retries, rate limits, budgets per team or agent.</li>
+      <li>Central place for keys, logging, PII redaction and telemetry.</li>
+    </ul>
+    <div class="card"><h3>Anti-pattern</h3><p>Model names and provider SDKs scattered through application code. Changing models becomes a code change in every service.</p></div>
+  </div>
+  <aside class="notes"><p>This is the cheapest agnostic win: one afternoon to put a gateway in front, and model choice becomes configuration.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>The tool layer</h2>
+  <div class="cols">
+    <ul class="small">
+      <li>Expose internal systems as <strong>MCP servers</strong> owned by the system's team.</li>
+      <li>Remote servers behind your normal ingress, with OAuth and per-tool scopes.</li>
+      <li>A <strong>registry</strong> of approved servers and versions; pin them.</li>
+      <li>Code execution only in <strong>sandboxes</strong> without ambient credentials.</li>
+    </ul>
+    <div class="card warn"><h3>Least privilege per tool</h3><p>An agent should hold the permissions of the <em>task</em>, not of the person or service that started it. Prefer read-only tools; make writes explicit and reviewable.</p></div>
+  </div>
+  <aside class="notes"><p>MCP gateways (proxies in front of many MCP servers) give one place for auth, audit and allow-lists — agentgateway is one open example.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>State, memory and knowledge</h2>
+  <div class="cols c3">
+    <div class="card"><h3>Run state</h3><p>Where the agent is in its task. Checkpoints, durable execution.</p></div>
+    <div class="card"><h3>Memory</h3><p>What it learned across runs: facts, preferences, episodes.</p></div>
+    <div class="card"><h3>Knowledge</h3><p>Your organisation's documents and data, retrieved on demand.</p></div>
+  </div>
+  <div class="callout">Keep all three in stores <strong>you</strong> own and can export. Memory models are the subject of a dedicated follow-up talk.</div>
+  <aside class="notes"><p>Teaser for the memory talk: short-term vs long-term, semantic vs episodic vs procedural memory, write policies, forgetting, and why memory is a data-governance problem.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Evaluation is the steering wheel</h2>
+  <div class="cols">
+    <ul class="small">
+      <li><strong>Datasets</strong> of real tasks with expected outcomes, versioned with the code.</li>
+      <li><strong>Graders</strong>: deterministic checks first, model-based judges second, humans for calibration.</li>
+      <li>Run in <strong>CI</strong> on every prompt, tool or model change — a model upgrade is a PR with an eval report.</li>
+      <li>Track cost and latency next to quality.</li>
+    </ul>
+    <div class="card"><h3>Examples</h3><p class="small">promptfoo, Inspect, DeepEval, Ragas, framework-native evals, LLM-observability platforms with eval features.</p></div>
+  </div>
+  <aside class="notes"><p>Without evaluation, "agnostic" is theoretical: you cannot swap a model if you cannot measure whether the new one is as good.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>A worked example: the swap test in practice</h2>
+  <ol class="small">
+    <li>A support agent uses model A through the gateway, three MCP tools and a skill file.</li>
+    <li>A cheaper model B is released. Add it to the gateway config; route 5 % of the classification step.</li>
+    <li>CI evals run both on the task dataset: quality, cost, latency side by side.</li>
+    <li>Traces in the OTel backend compare tool-call patterns and failures.</li>
+    <li>Promote by config. No change to tools, skills or the runtime.</li>
+  </ol>
+  <div class="callout ok">If any step requires a code change in more than one place, that is where your lock-in lives.</div>
+  <aside class="notes"><p>Walk through slowly; this is the practical summary of the architecture section.</p></aside>
+</section>
+
+<!-- 7 -->
+<section class="slide section">
+  <div class="num">07</div>
+  <h2>Risks and governance</h2>
+  <aside class="notes"><p>~5 minutes.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>The risks that matter</h2>
+  <div class="cols">
+    <div class="card bad"><h3>Prompt injection</h3><p>Any text an agent reads — a web page, an email, a ticket, a tool result — can carry instructions. Untrusted content plus powerful tools is the core risk.</p></div>
+    <div class="card bad"><h3>Excessive agency</h3><p>Tools with broad permissions, no confirmation on writes, credentials inherited from the user.</p></div>
+    <div class="card warn"><h3>Data exposure</h3><p>Context sent to models and tools crosses residency and contract boundaries.</p></div>
+    <div class="card warn"><h3>Runaway cost</h3><p>Loops, retries and long contexts multiply spend without anyone noticing.</p></div>
+  </div>
+  <aside class="notes"><p>Reference lists: the OWASP Top 10 for LLM applications and its agentic follow-ups. The mitigations are architectural, not prompt wording.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Controls, by layer</h2>
+  <table class="compact">
+    <tr><th>Layer</th><th>Control</th></tr>
+    <tr><td>Gateway</td><td>Budgets and rate limits per agent; data-classification routing (which models may see which data); redaction</td></tr>
+    <tr><td>Tools</td><td>Scoped OAuth per tool; read-only by default; human confirmation on irreversible writes; sandboxed execution</td></tr>
+    <tr><td>Runtime</td><td>Step and time limits; separation of untrusted content from instructions; plan review for high-impact tasks</td></tr>
+    <tr><td>Telemetry</td><td>Every tool call traced with the identity it used; alerts on unusual tool patterns</td></tr>
+    <tr><td>Process</td><td>Agents propose, gates and humans approve — the same PR model as infrastructure</td></tr>
+  </table>
+  <aside class="notes"><p>The last row ties back to the earlier talks in this series: review and gates are how platforms already control change. Agents become one more author of changes, not an exception.</p></aside>
+</section>
+
+<!-- 8 -->
+<section class="slide section">
+  <div class="num">08</div>
+  <h2>What comes next</h2>
+  <aside class="notes"><p>~3 minutes, then Q&amp;A.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Trends to watch</h2>
+  <ul>
+    <li><strong>Protocol consolidation</strong> under neutral foundations; HTTP-native, stateless transports.</li>
+    <li><strong>Agent identity</strong>: agents as first-class principals with their own credentials and audit trails.</li>
+    <li><strong>Stable telemetry conventions</strong> for agents, enabling vendor-neutral monitoring.</li>
+    <li><strong>Memory as infrastructure</strong>: shared, governed, exportable.</li>
+    <li><strong>Agents in the change process</strong>: proposing PRs to code and infrastructure, behind the same gates as people.</li>
+  </ul>
+  <aside class="notes"><p>The first two are on public roadmaps (the MCP roadmap lists agent identity and an HTTP-native transport among its priorities). The others are directions, not commitments.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Five things to remember</h2>
+  <ol>
+    <li>Build on <strong>interfaces</strong>: compatible model API, MCP, A2A, OTel, files in git.</li>
+    <li>Prefer <strong>workflows</strong>; add agency where it pays.</li>
+    <li>Put a <strong>gateway</strong> in front of models and tools.</li>
+    <li>No change without <strong>evals</strong>; no agent without <strong>traces</strong>.</li>
+    <li>Run the <strong>swap test</strong> per layer, for real.</li>
+  </ol>
+  <aside class="notes"><p>One-line close: "Pick models for this quarter; pick interfaces for this decade."</p></aside>
+</section>
+
+<section class="slide title">
+  <div class="kicker">Questions</div>
+  <h1>Thank you</h1>
+  <div class="sub">Next in the series: <strong>Agnostic monitoring of agents and models</strong> · <strong>Agent memory models</strong>.</div>
+  <aside class="notes"><p>Seed questions: "Which framework should we use?" (the one that passes your swap test; keep it thin). "Is MCP secure?" (as secure as the auth and scopes you put on it). "Hosted runtime or self-hosted?" (either, if tools, traces and memory stay portable).</p></aside>
+</section>
+
+</div>
+<div id="progress"></div>
+<div id="help">← → · N notes · O overview · F full · P print</div>
+<script>
+(() => {
+  const stage = document.getElementById('stage');
+  const slides = Array.from(document.querySelectorAll('section.slide'));
+  const bar = document.getElementById('progress');
+  const total = slides.length;
+  let cur = 0, presenter = null, started = null;
+  slides.forEach((s, i) => s.dataset.n = (i + 1) + ' / ' + total);
+
+  function fit() {
+    if (document.body.classList.contains('overview')) return;
+    const k = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+    stage.style.transform = 'translate(-50%, -50%) scale(' + k + ')';
+    stage.style.transformOrigin = 'center center';
+  }
+  function title(s) { const h = s && s.querySelector('h1, h2'); return h ? h.textContent.trim() : ''; }
+  function notes(s) { const n = s && s.querySelector('aside.notes'); return n ? n.innerHTML : '<i>No notes.</i>'; }
+
+  function go(i, push) {
+    cur = Math.max(0, Math.min(total - 1, i));
+    slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+    bar.style.width = ((cur + 1) / total * 100) + '%';
+    if (push !== false) history.replaceState(null, '', '#' + (cur + 1));
+    renderPresenter();
+  }
+  function fromHash() { const n = parseInt(location.hash.slice(1), 10); return isNaN(n) ? 0 : n - 1; }
+
+  function renderPresenter() {
+    if (!presenter || presenter.closed) return;
+    const d = presenter.document;
+    d.getElementById('cur').textContent = (cur + 1) + ' / ' + total + ' — ' + title(slides[cur]);
+    d.getElementById('next').textContent = cur + 1 < total ? 'Next: ' + title(slides[cur + 1]) : 'Last slide';
+    d.getElementById('notes').innerHTML = notes(slides[cur]);
+  }
+  function openPresenter() {
+    presenter = window.open('', 'presenter', 'width=900,height=650');
+    if (!presenter) return;
+    started = started || Date.now();
+    const d = presenter.document;
+    d.open();
+    d.write('<!doctype html><meta charset="utf-8"><title>Presenter — ' + document.title + '</title>' +
+      '<style>body{background:#0f1419;color:#e8edf2;font:18px/1.5 system-ui,sans-serif;margin:0;padding:20px 28px}' +
+      '#cur{font-size:22px;font-weight:600}#next{color:#9aabbc;margin:6px 0 14px}#clock{float:right;font:600 28px ui-monospace,monospace;color:#6cb4ff}' +
+      '#notes{font-size:22px;line-height:1.5;border-top:1px solid #2e3d4c;padding-top:14px}#notes p{margin:0 0 12px}code{background:#1e2a36;padding:1px 5px;border-radius:4px}' +
+      '.hint{color:#6b7d8f;font-size:14px;margin-top:20px}</style>' +
+      '<div id="clock">00:00</div><div id="cur"></div><div id="next"></div><div id="notes"></div>' +
+      '<div class="hint">←/→ to move (focus either window) · the timer starts when this window first opens</div>');
+    d.close();
+    d.addEventListener('keydown', key);
+    const tick = () => {
+      if (presenter.closed) return;
+      const s = Math.floor((Date.now() - started) / 1000);
+      d.getElementById('clock').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+      setTimeout(tick, 1000);
+    };
+    tick();
+    renderPresenter();
+  }
+  function toggleOverview() {
+    const on = document.body.classList.toggle('overview');
+    if (on) { stage.style.transform = 'none'; slides[cur].scrollIntoView({ block: 'center' }); } else fit();
+  }
+  function key(e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key;
+    if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'].includes(k)) { e.preventDefault(); go(cur + 1); }
+    else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(k)) { e.preventDefault(); go(cur - 1); }
+    else if (k === 'Home') go(0);
+    else if (k === 'End') go(total - 1);
+    else if (k === 'n' || k === 'N') openPresenter();
+    else if (k === 'o' || k === 'O' || k === 'Escape') toggleOverview();
+    else if (k === 'p' || k === 'P') window.print();
+    else if (k === 'f' || k === 'F') { if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); }
+  }
+  slides.forEach((s, i) => s.addEventListener('click', () => {
+    if (document.body.classList.contains('overview')) { toggleOverview(); go(i); }
+  }));
+  document.addEventListener('keydown', key);
+  window.addEventListener('resize', fit);
+  window.addEventListener('hashchange', () => go(fromHash(), false));
+  fit();
+  go(fromHash(), false);
+  if (new URLSearchParams(location.search).has('print')) setTimeout(() => window.print(), 300);
+})();
+
+</script>
+</body>
+</html>

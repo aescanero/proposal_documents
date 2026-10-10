@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitOps and SHIM</title>
+<!-- Self-contained slide deck. Keys: ←/→ move · N presenter notes · O overview · F fullscreen · P print to PDF. -->
+<style>
+:root {
+  --bg: #0f1419; --panel: #172029; --panel2: #1e2a36; --line: #2e3d4c;
+  --fg: #e8edf2; --muted: #9aabbc; --dim: #6b7d8f;
+  --ok: #4cc38a; --warn: #f0b84a; --bad: #f2716b; --info: #6cb4ff;
+  --mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #05080b; color: var(--fg); font-family: var(--sans); overflow: hidden; }
+#stage { position: absolute; left: 50%; top: 50%; width: 1280px; height: 720px; transform-origin: 0 0; }
+.slide { position: absolute; inset: 0; width: 1280px; height: 720px; padding: 56px 72px 64px; background: var(--bg);
+  display: none; flex-direction: column; overflow: hidden; }
+.slide.active { display: flex; }
+.slide::after { content: attr(data-n); position: absolute; right: 28px; bottom: 18px; font-size: 14px; color: var(--dim); }
+.slide .foot { position: absolute; left: 72px; bottom: 18px; font-size: 14px; color: var(--dim); }
+aside.notes { display: none; }
+
+h1 { font-size: 60px; line-height: 1.08; margin: 0 0 20px; letter-spacing: -0.5px; }
+h2 { font-size: 40px; line-height: 1.15; margin: 0 0 24px; letter-spacing: -0.3px; }
+h2 .k { color: var(--accent); }
+h3 { font-size: 24px; margin: 0 0 10px; color: var(--accent); }
+p, li { font-size: 24px; line-height: 1.4; }
+p { margin: 0 0 14px; }
+ul, ol { margin: 0; padding-left: 28px; }
+li { margin: 0 0 10px; }
+li::marker { color: var(--accent); }
+code { font-family: var(--mono); font-size: 0.88em; background: var(--panel2); padding: 1px 6px; border-radius: 4px; color: #d6e4f0; }
+pre { font-family: var(--mono); font-size: 18px; line-height: 1.45; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 18px 22px; margin: 0; white-space: pre; overflow: hidden; }
+pre code { background: none; padding: 0; font-size: inherit; }
+pre .c { color: var(--dim); } pre .a { color: var(--accent); } pre .g { color: var(--ok); } pre .r { color: var(--bad); }
+em { color: var(--accent); font-style: normal; }
+strong { color: #fff; }
+.muted { color: var(--muted); }
+.small, .small li, .small p { font-size: 20px; }
+.tiny, .tiny li, .tiny p { font-size: 17px; }
+
+/* title & section slides */
+.slide.title { justify-content: center; background: radial-gradient(1200px 600px at 85% 110%, var(--accent-soft), transparent 60%), var(--bg); }
+.slide.title .kicker { font-size: 20px; text-transform: uppercase; letter-spacing: 3px; color: var(--accent); margin-bottom: 18px; }
+.slide.title .sub { font-size: 28px; color: var(--muted); max-width: 980px; }
+.slide.title .meta { margin-top: 48px; font-size: 18px; color: var(--dim); }
+.slide.section { justify-content: center; background: linear-gradient(90deg, var(--accent-soft), transparent 70%), var(--bg); }
+.slide.section .num { font-size: 120px; font-weight: 800; color: var(--accent); opacity: .35; line-height: 1; }
+.slide.section h2 { font-size: 56px; }
+.slide.section p { color: var(--muted); font-size: 26px; max-width: 900px; }
+.slide.statement { justify-content: center; }
+.slide.statement .big { font-size: 46px; line-height: 1.25; font-weight: 650; max-width: 1080px; }
+.slide.statement .big em { color: var(--accent); }
+
+/* layouts */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; align-content: start; }
+.cols.c3 { grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.cols.c64 { grid-template-columns: 1.5fr 1fr; }
+.cols.c46 { grid-template-columns: 1fr 1.5fr; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px 24px; }
+.card h3 { margin-bottom: 8px; }
+.card p, .card li { font-size: 20px; }
+.card.ok { border-top: 4px solid var(--ok); } .card.bad { border-top: 4px solid var(--bad); } .card.warn { border-top: 4px solid var(--warn); }
+.card.acc { border-top: 4px solid var(--accent); }
+.grow { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.callout { margin-top: auto; border-left: 4px solid var(--accent); background: var(--panel); padding: 12px 18px; font-size: 21px; border-radius: 0 8px 8px 0; }
+.callout.bad { border-color: var(--bad); } .callout.ok { border-color: var(--ok); } .callout.warn { border-color: var(--warn); }
+.tag { display: inline-block; font-size: 15px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); margin-right: 6px; }
+.tag.ok { color: var(--ok); border-color: var(--ok); } .tag.bad { color: var(--bad); border-color: var(--bad); } .tag.warn { color: var(--warn); border-color: var(--warn); }
+
+table { border-collapse: collapse; width: 100%; font-size: 19px; }
+th { text-align: left; color: var(--accent); font-weight: 600; border-bottom: 2px solid var(--line); padding: 8px 12px; }
+td { border-bottom: 1px solid var(--line); padding: 8px 12px; vertical-align: top; line-height: 1.35; }
+td:first-child { color: #fff; font-weight: 600; }
+table.compact td, table.compact th { padding: 6px 10px; font-size: 17px; }
+
+/* timeline */
+.tl { display: grid; gap: 0; position: relative; }
+.tl .row { display: grid; grid-template-columns: 120px 1fr; gap: 20px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.tl .yr { font-family: var(--mono); color: var(--accent); font-size: 20px; padding-top: 3px; }
+.tl .row p { font-size: 21px; margin: 0; }
+
+/* svg diagrams */
+svg { max-width: 100%; max-height: 100%; }
+svg text { font-family: var(--sans); fill: var(--fg); font-size: 18px; }
+svg .t-muted { fill: var(--muted); font-size: 15px; }
+svg .t-acc { fill: var(--accent); font-weight: 600; }
+svg .t-mono { font-family: var(--mono); font-size: 15px; }
+svg .box { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+svg .box-acc { fill: var(--panel2); stroke: var(--accent); stroke-width: 2; }
+svg .box-ok { fill: var(--panel); stroke: var(--ok); stroke-width: 2; }
+svg .box-bad { fill: var(--panel); stroke: var(--bad); stroke-width: 2; }
+svg .box-warn { fill: var(--panel); stroke: var(--warn); stroke-width: 2; }
+svg .zone { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 6 5; }
+svg .arrow { stroke: var(--muted); stroke-width: 2; fill: none; marker-end: url(#ah); }
+svg .arrow-acc { stroke: var(--accent); stroke-width: 2.5; fill: none; marker-end: url(#aha); }
+svg .arrow-bad { stroke: var(--bad); stroke-width: 2; fill: none; stroke-dasharray: 6 4; marker-end: url(#ahb); }
+svg .ah { fill: var(--muted); } svg .aha { fill: var(--accent); } svg .ahb { fill: var(--bad); }
+
+/* chrome */
+#progress { position: fixed; left: 0; bottom: 0; height: 4px; background: var(--accent); transition: width .2s; z-index: 5; }
+#help { position: fixed; right: 12px; top: 10px; font-size: 12px; color: #4b5b6b; z-index: 5; }
+body.overview { overflow: auto; }
+body.overview #stage { position: static; transform: none !important; width: auto; height: auto; display: grid;
+  grid-template-columns: repeat(auto-fill, 320px); gap: 16px; padding: 16px; }
+body.overview .slide { display: flex; position: relative; transform: scale(.25); transform-origin: 0 0; margin: 0 -960px -540px 0; cursor: pointer; outline: 2px solid transparent; }
+body.overview .slide.active { outline: 6px solid var(--accent); }
+body.overview #progress, body.overview #help { display: none; }
+
+@media print {
+  @page { size: 1280px 720px; margin: 0; }
+  html, body { overflow: visible; height: auto; background: var(--bg); }
+  #stage { position: static; transform: none !important; width: 1280px; height: auto; }
+  .slide { display: flex !important; position: relative; break-after: page; page-break-after: always; }
+  #progress, #help { display: none; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+.card.ok h3 { color: var(--ok); } .card.bad h3 { color: var(--bad); } .card.warn h3 { color: var(--warn); }
+
+:root { --accent: #6cb4ff; --accent-soft: rgba(108,180,255,.18); }
+</style>
+</head>
+<body>
+<div id="stage">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+<marker id="aha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="aha" d="M0,0 L10,5 L0,10 z"/></marker>
+<marker id="ahb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ahb" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs></svg>
+<section class="slide title">
+  <div class="kicker">Platform engineering talk · 60 min</div>
+  <h1>GitOps and<br>Source-Hydrated Infrastructure Models</h1>
+  <div class="sub">What we keep in git, where the translation from intent to reality happens, and who gets to see it before it runs.</div>
+  <div class="meta">Part 1 of a series · Part 2 applies it to a real multi-cloud platform</div>
+  <aside class="notes"><p>Welcome. One hour: ~45 min content, ~15 min questions. Interrupt at any time.</p><p>Thesis in one line: GitOps made git the source of truth for <em>intent</em>; source hydration makes it the source of truth for the <em>effect</em> too.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Agenda</h2>
+  <div class="cols">
+    <ol>
+      <li>Why this talk</li>
+      <li>From scripts to declarative</li>
+      <li>GitOps: principles and practice</li>
+      <li>The hydration gap</li>
+    </ol>
+    <ol start="5">
+      <li>Source-hydrated models (SHIM)</li>
+      <li>GitOps vs SHIM, side by side</li>
+      <li>Adopting it without hurting yourself</li>
+      <li>Takeaways · Q&amp;A</li>
+    </ol>
+  </div>
+  <aside class="notes"><p>Sections 1–4 are shared vocabulary (~20 min). 5–7 are the substance (~20 min). Keep moving through section 2 if the audience already runs GitOps.</p></aside>
+</section>
+
+<!-- 1 -->
+<section class="slide section">
+  <div class="num">01</div>
+  <h2>Why this talk</h2>
+  <p>Three questions every platform team is asked, usually during an incident.</p>
+  <aside class="notes"><p>~4 minutes for this section.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Three questions you should answer in <span class="k">one minute</span></h2>
+  <div class="cols c3">
+    <div class="card acc"><h3>What is running?</h3><p>Not what the chart says. The actual objects, fields and versions, per environment.</p></div>
+    <div class="card acc"><h3>Why is it like this?</h3><p>Which change, which review, which person approved <em>this exact</em> field value.</p></div>
+    <div class="card acc"><h3>What will this PR do?</h3><p>Before merge. Not "bumps chart 4.2 → 4.3", but the objects that will change.</p></div>
+  </div>
+  <div class="callout">If any answer needs "let me re-render it with the version we had back then", the translation lives outside your history.</div>
+  <aside class="notes"><p>Ask the room: who can answer question 3 for a Helm chart bump today? Usually few hands.</p><p>Everything in this talk is about making those three answers a <code>git</code> command.</p></aside>
+</section>
+
+<section class="slide statement">
+  <div class="big">Most teams version their <em>intent</em>.<br>Few version the <em>translation</em> of that intent.<br>The incident is always in the translation.</div>
+  <aside class="notes"><p>Translation = templating, defaults, overlays, generated code, values merged from three files. That is where the surprises are: a default changed upstream, a template conditional flipped, a CRD grew a field.</p></aside>
+</section>
+
+<!-- 2 -->
+<section class="slide section">
+  <div class="num">02</div>
+  <h2>From scripts to declarative</h2>
+  <p>A short history, so we agree on the words.</p>
+  <aside class="notes"><p>~5 minutes. Skip quickly with an expert audience.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Four generations of change management</h2>
+  <div class="tl">
+    <div class="row"><div class="yr">Scripts</div><p><strong>Imperative.</strong> Run these commands in this order. The state is whatever happened. Re-running is dangerous.</p></div>
+    <div class="row"><div class="yr">Config mgmt</div><p><strong>Convergent.</strong> Describe resources; an agent nudges each host towards them. Idempotent, but per host.</p></div>
+    <div class="row"><div class="yr">IaC</div><p><strong>Declarative + plan.</strong> Desired state in files, a state store, a diff (<code>plan</code>) before change. Usually pushed from CI.</p></div>
+    <div class="row"><div class="yr">GitOps</div><p><strong>Declarative + continuous reconciliation.</strong> Git is the desired state; an agent in the target pulls and corrects drift.</p></div>
+  </div>
+  <div class="callout">Each step moved more of "what should exist" into reviewable files. The next step moves "what it expands to" there too.</div>
+  <aside class="notes"><p>Note the shift: from "steps" to "state", from "once" to "continuously". The plan in IaC was the first time reviewers saw the effect — but it is ephemeral.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>The reconciliation loop</h2>
+  <div class="grow">
+    <svg viewBox="0 0 1100 420" width="1100" height="420">
+      <rect class="box-acc" x="40" y="150" width="230" height="110" rx="10"/>
+      <text x="155" y="198" text-anchor="middle" class="t-acc">Desired state</text>
+      <text x="155" y="226" text-anchor="middle" class="t-muted">files in git</text>
+      <rect class="box" x="435" y="150" width="230" height="110" rx="10"/>
+      <text x="550" y="198" text-anchor="middle">Reconciler</text>
+      <text x="550" y="226" text-anchor="middle" class="t-muted">diff · act · repeat</text>
+      <rect class="box" x="830" y="150" width="230" height="110" rx="10"/>
+      <text x="945" y="198" text-anchor="middle">Actual state</text>
+      <text x="945" y="226" text-anchor="middle" class="t-muted">cluster · cloud</text>
+      <path class="arrow-acc" d="M270,205 L430,205"/>
+      <path class="arrow" d="M665,190 L825,190"/>
+      <path class="arrow" d="M825,225 L670,225"/>
+      <text x="745" y="178" text-anchor="middle" class="t-muted">act</text>
+      <text x="745" y="252" text-anchor="middle" class="t-muted">observe</text>
+      <path class="arrow" d="M600,262 C620,360 480,360 500,268"/>
+      <text x="550" y="385" text-anchor="middle" class="t-muted">every N seconds, and on every change</text>
+      <text x="155" y="120" text-anchor="middle" class="t-muted">what should be</text>
+      <text x="945" y="120" text-anchor="middle" class="t-muted">what is</text>
+    </svg>
+  </div>
+  <aside class="notes"><p>The loop is the same in Kubernetes controllers, config management agents and GitOps operators. The interesting question is: what exactly is "desired state" — the template, or the rendered output?</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Push vs pull delivery</h2>
+  <div class="cols">
+    <div class="card"><h3>Push</h3><ul class="small"><li>CI runs the change on merge (<code>apply</code>, <code>helm upgrade</code>).</li><li>Credentials to the target live in CI.</li><li>Runs once per change; drift is found by a separate job.</li><li>Natural fit for cloud APIs and stateful resources.</li></ul></div>
+    <div class="card"><h3>Pull</h3><ul class="small"><li>An agent inside the target watches git.</li><li>No inbound credentials from CI to the cluster.</li><li>Runs continuously; drift is corrected automatically.</li><li>Natural fit for Kubernetes objects.</li></ul></div>
+  </div>
+  <div class="callout warn">Keep this axis separate in your head: push/pull is about <strong>who reconciles</strong>. Hydration is about <strong>what is stored</strong>. They are independent.</div>
+  <aside class="notes"><p>This is the single most important clarification of the talk. People conflate "GitOps" with "pull", and "SHIM" with "push". SHIM works with either.</p></aside>
+</section>
+
+<!-- 3 -->
+<section class="slide section">
+  <div class="num">03</div>
+  <h2>GitOps: principles and practice</h2>
+  <p>What it gets right, and where it quietly leaves a gap.</p>
+  <aside class="notes"><p>~8 minutes.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>The four OpenGitOps principles</h2>
+  <div class="cols">
+    <div class="card acc"><h3>1 · Declarative</h3><p>The system's desired state is expressed declaratively.</p></div>
+    <div class="card acc"><h3>2 · Versioned and immutable</h3><p>Desired state is stored so it enforces immutability and versioning, with a complete history.</p></div>
+    <div class="card acc"><h3>3 · Pulled automatically</h3><p>Software agents pull the desired state declarations from the source.</p></div>
+    <div class="card acc"><h3>4 · Continuously reconciled</h3><p>Agents observe actual state and attempt to apply the desired state.</p></div>
+  </div>
+  <aside class="notes"><p>These come from the OpenGitOps working group (a CNCF project). Paraphrased, not verbatim.</p><p>Notice what principle 2 says: the <em>desired state</em> is versioned. It does not say which form of it.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>A typical GitOps setup</h2>
+  <div class="grow">
+    <svg viewBox="0 0 1120 400" width="1120" height="400">
+      <rect class="box" x="20" y="60" width="250" height="280" rx="10"/>
+      <text x="145" y="95" text-anchor="middle" class="t-acc">Git repository</text>
+      <text x="145" y="140" text-anchor="middle" class="t-mono">Chart.yaml</text>
+      <text x="145" y="170" text-anchor="middle" class="t-mono">values-prod.yaml</text>
+      <text x="145" y="200" text-anchor="middle" class="t-mono">kustomization.yaml</text>
+      <text x="145" y="230" text-anchor="middle" class="t-mono">overlays/prod/</text>
+      <text x="145" y="300" text-anchor="middle" class="t-muted">intent only</text>
+      <rect class="zone" x="380" y="30" width="720" height="340" rx="14"/>
+      <text x="400" y="58" class="t-muted">cluster</text>
+      <rect class="box-warn" x="420" y="120" width="280" height="160" rx="10"/>
+      <text x="560" y="165" text-anchor="middle">GitOps controller</text>
+      <text x="560" y="200" text-anchor="middle" class="t-muted">fetch → render → diff</text>
+      <text x="560" y="228" text-anchor="middle" class="t-muted">→ apply → watch</text>
+      <text x="560" y="262" text-anchor="middle" class="t-mono" style="fill:var(--warn)">render happens HERE</text>
+      <rect class="box" x="800" y="80" width="260" height="70" rx="8"/><text x="930" y="122" text-anchor="middle">Deployment</text>
+      <rect class="box" x="800" y="165" width="260" height="70" rx="8"/><text x="930" y="207" text-anchor="middle">Service · ConfigMap</text>
+      <rect class="box" x="800" y="250" width="260" height="70" rx="8"/><text x="930" y="292" text-anchor="middle">CRDs · Webhooks</text>
+      <path class="arrow-acc" d="M270,200 L415,200"/>
+      <text x="342" y="188" text-anchor="middle" class="t-muted">pull</text>
+      <path class="arrow" d="M700,170 L795,115"/><path class="arrow" d="M700,200 L795,200"/><path class="arrow" d="M700,230 L795,285"/>
+    </svg>
+  </div>
+  <aside class="notes"><p>The controller fetches, renders Helm or Kustomize with its own embedded engine version, diffs against the cluster and applies. The rendered output exists only in the controller's memory and, eventually, in the cluster.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>What GitOps gets right</h2>
+  <div class="cols">
+    <ul>
+      <li><strong>One source of truth</strong> for intent, reviewed via PR.</li>
+      <li><strong>Drift correction</strong> without humans.</li>
+      <li><strong>No CI → cluster credentials</strong> in the pull model.</li>
+      <li><strong>Rollback</strong> = revert a commit.</li>
+      <li><strong>Audit</strong> of who changed the intent, and when.</li>
+    </ul>
+    <div class="card ok"><h3>Where it shines</h3><p>Stateless workloads on Kubernetes, many clusters, fleets that must converge to the same baseline, teams that want "merge = deployed" with no pipeline glue.</p></div>
+  </div>
+  <aside class="notes"><p>Be fair here — GitOps solved real problems: snowflake clusters, kubectl-from-laptops, unknown state. Nothing in this talk argues against those wins.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Where the gap opens</h2>
+  <div class="cols">
+    <div class="card bad"><h3>Reviewed diff ≠ effect</h3><p>The PR shows <code>version: 4.2.0 → 4.3.0</code>. The effect is hundreds of changed lines nobody saw.</p></div>
+    <div class="card bad"><h3>Engine version decides</h3><p>The controller's embedded Helm/Kustomize version shapes the output. Upgrade the controller, change every app.</p></div>
+    <div class="card bad"><h3>Not reproducible later</h3><p>"What did we deploy on the 3rd?" needs the same chart, values, engine and cluster capabilities as on the 3rd.</p></div>
+    <div class="card bad"><h3>Policy sees it last</h3><p>Admission control is the first thing that evaluates the real objects — at deploy time, not at review time.</p></div>
+  </div>
+  <aside class="notes"><p>None of these are bugs in a specific tool. They follow from "render at sync time".</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Two more limits, outside Kubernetes</h2>
+  <div class="cols">
+    <div class="card warn"><h3>Cloud infrastructure</h3><p>To reconcile VPCs, databases and IAM by pull, you need an operator per cloud API, running with powerful credentials inside a cluster that the same infrastructure hosts.</p></div>
+    <div class="card warn"><h3>Stateful resources</h3><p>Continuous correction is perfect for a Deployment. For a database, a key or a network, "correct the drift" can mean <strong>destroy and recreate</strong>. Some drift must be decided by a human.</p></div>
+  </div>
+  <div class="callout">Continuous self-healing is a feature for cattle and a risk for pets.</div>
+  <aside class="notes"><p>This is why many organisations run GitOps for apps and a push pipeline for infrastructure, and then struggle to explain one model to auditors.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Secrets: every model's sore spot</h2>
+  <ul>
+    <li>Git must <strong>never</strong> hold a secret value — encrypted or not, the history is forever and every clone carries it.</li>
+    <li>GitOps answers: sealed/encrypted secrets in git, or references resolved in-cluster (external secret operators).</li>
+    <li>References win: git holds <em>which</em> secret, the runtime identity reads <em>what</em>.</li>
+  </ul>
+  <div class="callout warn">Keep this in mind: the moment you store rendered output in git, a chart that renders a <code>Secret</code> with data becomes a leak. Hydration needs a guard here.</div>
+  <aside class="notes"><p>This becomes a hard rule in the SHIM section: a rendered Secret carrying a value fails the render.</p></aside>
+</section>
+
+<!-- 4 -->
+<section class="slide section">
+  <div class="num">04</div>
+  <h2>The hydration gap</h2>
+  <p>Intent → translation → output. Where does the middle step live?</p>
+  <aside class="notes"><p>~5 minutes.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Three layers of any configuration</h2>
+  <div class="grow">
+    <svg viewBox="0 0 1120 330" width="1120" height="330">
+      <rect class="box-acc" x="20" y="80" width="300" height="170" rx="12"/>
+      <text x="170" y="125" text-anchor="middle" class="t-acc">Intent</text>
+      <text x="170" y="160" text-anchor="middle" class="t-muted">"3 replicas, prod size,</text>
+      <text x="170" y="184" text-anchor="middle" class="t-muted">public hostname, EU"</text>
+      <text x="170" y="225" text-anchor="middle" class="t-mono">values, overlays</text>
+      <rect class="box-warn" x="410" y="80" width="300" height="170" rx="12"/>
+      <text x="560" y="125" text-anchor="middle" style="fill:var(--warn)">Translation</text>
+      <text x="560" y="160" text-anchor="middle" class="t-muted">templates, defaults,</text>
+      <text x="560" y="184" text-anchor="middle" class="t-muted">generators, engine version</text>
+      <text x="560" y="225" text-anchor="middle" class="t-mono">helm · kustomize · codegen</text>
+      <rect class="box-ok" x="800" y="80" width="300" height="170" rx="12"/>
+      <text x="950" y="125" text-anchor="middle" style="fill:var(--ok)">Output</text>
+      <text x="950" y="160" text-anchor="middle" class="t-muted">concrete objects,</text>
+      <text x="950" y="184" text-anchor="middle" class="t-muted">every field resolved</text>
+      <text x="950" y="225" text-anchor="middle" class="t-mono">YAML · .tf · JSON</text>
+      <path class="arrow" d="M320,165 L405,165"/><path class="arrow" d="M710,165 L795,165"/>
+      <text x="170" y="290" text-anchor="middle" class="t-muted">small · human</text>
+      <text x="560" y="290" text-anchor="middle" class="t-muted">where surprises live</text>
+      <text x="950" y="290" text-anchor="middle" class="t-muted">large · exact</text>
+    </svg>
+  </div>
+  <aside class="notes"><p>Vocabulary: "dry" configuration is the intent plus templates; "wet" or "hydrated" configuration is the output. "Hydrating" = running the translation and keeping the result.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Worked example: a one-line chart bump</h2>
+  <div class="cols c46">
+    <div>
+      <p class="small muted">What the reviewer sees</p>
+<pre><span class="c"># values/prod.yaml</span>
+ chart: ingress-controller
+<span class="r">-version: 4.2.0</span>
+<span class="g">+version: 4.3.0</span></pre>
+      <p class="small" style="margin-top:16px">1 line. Approved in 30 seconds.</p>
+    </div>
+    <div>
+      <p class="small muted">What actually changes in the cluster</p>
+<pre class="tiny" style="font-size:15px"><span class="c"># Deployment/ingress-controller</span>
+<span class="r">-        image: …/controller:v1.9.6@sha256:…</span>
+<span class="g">+        image: …/controller:v1.10.1@sha256:…</span>
+<span class="g">+        - --enable-annotation-validation=true</span>
+<span class="c"># ClusterRole/ingress-controller</span>
+<span class="g">+  - apiGroups: ["discovery.k8s.io"]</span>
+<span class="g">+    resources: ["endpointslices"]</span>
+<span class="c"># ValidatingWebhookConfiguration</span>
+<span class="r">-    failurePolicy: Ignore</span>
+<span class="g">+    failurePolicy: Fail</span>
+<span class="c"># … 280 more lines across 14 objects</span></pre>
+    </div>
+  </div>
+  <div class="callout bad">A changed RBAC rule and a webhook that now fails closed — reviewed by nobody.</div>
+  <aside class="notes"><p>Illustrative example, not a specific chart release. The pattern is real: minor chart bumps routinely change RBAC, webhooks, defaults and probes.</p><p>The question is not "was the bump wrong" but "did a human decide on these 280 lines".</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Where can the translation run?</h2>
+  <table>
+    <tr><th>Where</th><th>Who sees the output</th><th>When</th></tr>
+    <tr><td>In the controller, at sync</td><td>The controller, then the cluster</td><td>After merge</td></tr>
+    <tr><td>In CI, discarded</td><td>A log, if anyone reads it</td><td>Before merge, not kept</td></tr>
+    <tr><td>In CI, committed to a separate "wet" repo</td><td>Reviewers of a second PR</td><td>After the first merge</td></tr>
+    <tr><td><strong>In CI, committed in the same PR</strong></td><td><strong>The reviewer of the change</strong></td><td><strong>Before merge, kept forever</strong></td></tr>
+  </table>
+  <div class="callout">Only the last row answers all three questions from slide 4 with <code>git log</code> and <code>git diff</code>.</div>
+  <aside class="notes"><p>The separate wet repo is a legitimate design (it keeps the dry repo small), but it splits review in two and needs its own sync automation. We'll come back to this trade-off.</p></aside>
+</section>
+
+<!-- 5 -->
+<section class="slide section">
+  <div class="num">05</div>
+  <h2>Source-Hydrated Infrastructure Models</h2>
+  <p>SHIM: keep the fully translated state in git, before reconciling.</p>
+  <aside class="notes"><p>~10 minutes. The core of the talk.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Definition</h2>
+  <p style="font-size:30px;line-height:1.35;max-width:1100px">A <em>source-hydrated infrastructure model</em> keeps in version control, reviewed and immutable, the <strong>fully translated state</strong> that sits between the abstract intent and what is deployed — and produces it <strong>before</strong> reconciliation, not during it.</p>
+  <div class="cols c3" style="margin-top:20px">
+    <div class="card acc"><h3>Hydrated</h3><p>Every field resolved: no template left to evaluate at deploy time.</p></div>
+    <div class="card acc"><h3>In the source</h3><p>Committed next to the intent, in the same change, under the same review.</p></div>
+    <div class="card acc"><h3>Model</h3><p>The whole system's declared state, not one app's manifest.</p></div>
+  </div>
+  <aside class="notes"><p>"Model" matters: it is not only Kubernetes YAML. It can include generated IaC, resolved dependency graphs, address allocations — anything derived from intent.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>The pipeline, end to end</h2>
+  <div class="grow">
+    <svg viewBox="0 0 1140 380" width="1140" height="380">
+      <rect class="zone" x="10" y="20" width="760" height="300" rx="14"/>
+      <text x="30" y="48" class="t-muted">pull request — reviewed together</text>
+      <rect class="box-acc" x="40" y="90" width="200" height="120" rx="10"/>
+      <text x="140" y="140" text-anchor="middle" class="t-acc">Intent</text>
+      <text x="140" y="170" text-anchor="middle" class="t-muted">dry config</text>
+      <rect class="box-warn" x="300" y="90" width="200" height="120" rx="10"/>
+      <text x="400" y="140" text-anchor="middle" style="fill:var(--warn)">Translate</text>
+      <text x="400" y="170" text-anchor="middle" class="t-muted">pinned tools, in CI</text>
+      <rect class="box-ok" x="560" y="90" width="190" height="120" rx="10"/>
+      <text x="655" y="140" text-anchor="middle" style="fill:var(--ok)">Hydrated</text>
+      <text x="655" y="170" text-anchor="middle" class="t-muted">committed output</text>
+      <path class="arrow" d="M240,150 L295,150"/><path class="arrow" d="M500,150 L555,150"/>
+      <rect class="box" x="300" y="240" width="450" height="56" rx="8"/>
+      <text x="525" y="274" text-anchor="middle">Gates: re-render = committed? · policy on output</text>
+      <path class="arrow" d="M655,210 L655,236"/>
+      <rect class="box" x="850" y="60" width="270" height="90" rx="10"/>
+      <text x="985" y="100" text-anchor="middle">main</text>
+      <text x="985" y="126" text-anchor="middle" class="t-muted">intent + hydrated, one commit</text>
+      <rect class="box" x="850" y="200" width="270" height="110" rx="10"/>
+      <text x="985" y="240" text-anchor="middle">Reconcile</text>
+      <text x="985" y="268" text-anchor="middle" class="t-muted">push or pull —</text>
+      <text x="985" y="290" text-anchor="middle" class="t-muted">a separate concern</text>
+      <path class="arrow-acc" d="M770,105 L845,105"/><text x="808" y="92" text-anchor="middle" class="t-muted">merge</text>
+      <path class="arrow" d="M985,150 L985,195"/>
+    </svg>
+  </div>
+  <aside class="notes"><p>Translation and reconciliation are separated by a merge. The thing that gets reconciled is exactly the thing that was reviewed.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Principle 1 · Translation is separated from reconciliation</h2>
+  <div class="cols">
+    <ul>
+      <li>The translator runs in CI with <strong>pinned versions</strong> (template engine, target API version).</li>
+      <li>The reconciler never translates: it applies objects, or diffs objects.</li>
+      <li>Upgrading the reconciler no longer changes what gets deployed.</li>
+    </ul>
+    <div class="card"><h3>Consequence</h3><p>You can switch reconcilers — a pull agent, a CI job, an IaC tool — without changing a single committed object. The model is the contract; the reconciler is replaceable.</p></div>
+  </div>
+  <aside class="notes"><p>This is the property that makes SHIM delivery-agnostic.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Principle 2 · An integrity gate proves hydrated = source</h2>
+<pre><span class="c"># in every PR, without cloud credentials</span>
+./render-all.sh                      <span class="c"># translate with pinned tools</span>
+<span class="a">git status --porcelain -- '*/rendered/*'</span>   <span class="c"># must be empty</span></pre>
+  <ul style="margin-top:20px">
+    <li>A hand edit in the hydrated output → fails.</li>
+    <li>A template or version bump without re-rendering → fails.</li>
+    <li>The gate must <strong>prove it ran</strong>: rendering zero files is a failure, not a pass.</li>
+  </ul>
+  <div class="callout warn">A gate that cannot run is worse than no gate: it reports success.</div>
+  <aside class="notes"><p>The last bullet is learned the hard way: a glob that matches nothing, a policy namespace that evaluates nothing — all exit 0. Every gate should count what it checked and fail on zero.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Principle 3 · Policy runs on the output, in the PR</h2>
+  <div class="cols">
+    <div>
+      <p>Admission policies (Gatekeeper/OPA, Kyverno…) can evaluate the <strong>hydrated objects</strong> offline:</p>
+<pre style="font-size:16px">gator test --filename=policies/ \
+           --filename=stack/rendered/
+conftest test rendered/ --policy policy/</pre>
+    </div>
+    <div class="card ok"><h3>Effect</h3><p>"This pod tolerates a node pool it does not own", "this image has no digest", "this service account carries another environment's prefix" — fail the <strong>PR</strong>, not the deploy.</p><p class="muted">Admission stays as the last line of defence; the PR becomes the first.</p></div>
+  </div>
+  <aside class="notes"><p>Without hydration, offline policy checks need someone to render on the fly — which is the same in-flight rendering we are trying to remove.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Principle 4 · Promotion is a diff</h2>
+  <div class="cols">
+    <div>
+      <p>With every environment's model hydrated, promoting from <code>qa</code> to <code>prod</code> is visible as:</p>
+<pre style="font-size:16px">diff -r envs/qa/rendered envs/prod/rendered</pre>
+      <p class="small" style="margin-top:14px">The only differences should be the ones you <em>intend</em>: size, region, hostnames.</p>
+    </div>
+    <div class="card"><h3>What it catches</h3><ul class="small"><li>An environment that silently diverged.</li><li>A default that equals one environment's real value.</li><li>A copy-pasted environment carrying the old name.</li></ul></div>
+  </div>
+  <aside class="notes"><p>Same idea as "promote the image digest, never rebuild": what was tested is byte-identical to what is promoted, except for the declared differences.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Principle 5 · Late-bound values are named, never faked</h2>
+  <div class="cols c64">
+    <div>
+      <p>Some values only exist at apply time: an IP allocated by another stack, a generated ID.</p>
+<pre style="font-size:16px">spec:
+  loadBalancerIP: <span class="a">late:edge.ip_address</span>
+  replicas: 3</pre>
+      <p class="small" style="margin-top:14px">The reviewer sees <strong>exactly which fields</strong> are not known yet.</p>
+    </div>
+    <div class="card bad"><h3>Never a mock</h3><p>A realistic-looking fake (<code>10.0.0.5</code>) passes review as if it were real. A named marker cannot be mistaken for a value.</p></div>
+  </div>
+  <aside class="notes"><p>The marker is masked when comparing rendered vs applied after deploy. Everything else must match exactly.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Principle 6 · Some things are never hydrated</h2>
+  <table>
+    <tr><th>What</th><th>Why</th><th>Instead</th></tr>
+    <tr><td>Secret values</td><td>Git history is forever; every clone is a copy</td><td>Render fails on a Secret with data; secrets come from a runtime store by reference</td></tr>
+    <tr><td>Bulky CRDs</td><td>Often &gt;90 % of a render; unreadable diffs</td><td>A digest per CRD — a change shows as a changed hash</td></tr>
+    <tr><td>Cluster lookups</td><td>Templates that read the live cluster render differently offline</td><td>Forbidden in your own templates; tracked per third-party chart</td></tr>
+    <tr><td>The plan</td><td>Depends on current state; stale in minutes</td><td>Reviewed in the PR, not versioned</td></tr>
+  </table>
+  <aside class="notes"><p>Part 2 shows measured numbers for the CRD point on a real chart: about 97 % of the rendered bytes were CRDs.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Principle 7 · Prove that applied = reviewed</h2>
+  <div class="cols">
+    <ul>
+      <li>After each apply, fetch what the target actually holds (e.g. the release manifest) and compare it with the committed output.</li>
+      <li>Mask only the named late-bound fields.</li>
+      <li>A difference fails the step and is recorded as drift.</li>
+    </ul>
+    <div class="card warn"><h3>Catches</h3><ul class="small"><li>A deploy tool embedding a different engine version than CI.</li><li>Templates that consult the cluster.</li><li>A target API version out of step with the pinned one.</li></ul></div>
+  </div>
+  <div class="callout">Without this check, the hydrated output is a claim nobody verifies.</div>
+  <aside class="notes"><p>This closes the loop: review the output, gate the output, apply, and prove the output is what landed.</p></aside>
+</section>
+
+<!-- 6 -->
+<section class="slide section">
+  <div class="num">06</div>
+  <h2>GitOps vs SHIM, side by side</h2>
+  <p>Not competitors: SHIM changes what is stored; GitOps describes how it is reconciled.</p>
+  <aside class="notes"><p>~7 minutes.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Comparison</h2>
+  <table class="compact">
+    <tr><th></th><th>Classic GitOps</th><th>Source-hydrated</th></tr>
+    <tr><td>Git holds</td><td>Intent: charts, overlays, values</td><td>Intent <strong>and</strong> its translation, raw</td></tr>
+    <tr><td>Translation runs</td><td>In the controller, at sync</td><td>In CI, before merge; result committed</td></tr>
+    <tr><td>Reviewer sees</td><td>The change of intent</td><td>The change of intent and its exact effect</td></tr>
+    <tr><td>"Why did X happen?"</td><td>Re-render with the engine of the time</td><td><code>git log -p</code> on the object</td></tr>
+    <tr><td>Policy</td><td>At admission</td><td>On the output in the PR, and at admission</td></tr>
+    <tr><td>Reconciliation</td><td>Pull agent, continuous, self-healing</td><td>Independent: push or pull</td></tr>
+    <tr><td>Engine upgrade</td><td>Changes every app at once</td><td>A normal PR with a visible diff</td></tr>
+  </table>
+  <aside class="notes"><p>Walk the table row by row; it is the summary slide people photograph.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Trade-offs, honestly</h2>
+  <div class="cols">
+    <div class="card ok"><h3>SHIM gives you</h3><ul class="small"><li>Review of the effect, not the intention</li><li>Nothing rendered in flight</li><li>Full audit trail per field</li><li>Policy before deployment</li><li>Promotion as a diff</li><li>Reconciler independence</li></ul></div>
+    <div class="card bad"><h3>SHIM costs you</h3><ul class="small"><li>Large diffs and noisy PRs</li><li>Merge conflicts in generated files</li><li>An integrity gate you must maintain</li><li>A secret-leak risk to guard</li><li>More CI time</li><li>Values known only at apply stay unknown</li></ul></div>
+  </div>
+  <aside class="notes"><p>Mitigations for the costs: CRDs as digests, stable ordering of objects, regenerate on conflict instead of hand-merging, CODEOWNERS on generated paths so reviewers know where to look.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Push or pull under SHIM?</h2>
+  <div class="cols">
+    <div class="card"><h3>SHIM + pull</h3><p>A GitOps agent syncs the <strong>hydrated</strong> path, with its own rendering disabled. Keeps self-healing; the agent never translates.</p><p class="muted small">Good for: fleets of stateless clusters.</p></div>
+    <div class="card"><h3>SHIM + push</h3><p>CI applies the hydrated model on merge with a per-environment identity; drift is detected on a schedule and decided in a PR.</p><p class="muted small">Good for: cloud infrastructure, stateful resources, strict identity boundaries.</p></div>
+  </div>
+  <div class="callout">Choose the reconciler per resource class. The hydrated model is the same either way.</div>
+  <aside class="notes"><p>Part 2 explains why one platform chose push for everything, including Kubernetes, and what it gave up.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Tooling families (neutral examples)</h2>
+  <table class="compact">
+    <tr><th>Family</th><th>Examples</th><th>Role in a SHIM</th></tr>
+    <tr><td>Configuration as data</td><td>kpt (dry/wet packages), Kustomize, Jsonnet, CUE</td><td>Translators whose output is committed</td></tr>
+    <tr><td>Template engines</td><td><code>helm template</code>, Timoni, cdk8s</td><td>Render in CI with a pinned version</td></tr>
+    <tr><td>IaC generators</td><td>Terramate, CDK for Terraform, Pulumi programs</td><td>Generate committed IaC from higher-level intent</td></tr>
+    <tr><td>Render-once release tools</td><td>Release managers that render per target and promote the release</td><td>Same principle, outside git</td></tr>
+    <tr><td>Offline policy</td><td><code>gator</code>, conftest, kubeconform, Kyverno CLI</td><td>Gate the hydrated output in the PR</td></tr>
+    <tr><td>Reconcilers</td><td>Argo CD, Flux (rendering off), CI <code>apply</code>, IaC apply</td><td>Apply what was hydrated</td></tr>
+  </table>
+  <aside class="notes"><p>No recommendation implied. Any of these can participate; the question is only whether the output is committed and gated.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Separate wet repo, or same commit?</h2>
+  <div class="cols">
+    <div class="card"><h3>Separate wet repository</h3><ul class="small"><li>Dry repo stays small and readable</li><li>Wet repo can be the pull agent's source</li><li class="muted">Two PRs, a sync bot, and reviewers who see the effect only after the intent was merged</li></ul></div>
+    <div class="card acc"><h3>Same commit</h3><ul class="small"><li>One PR: intent and effect reviewed together</li><li>One history: <code>git log</code> answers everything</li><li class="muted">Larger repository; generated paths need CODEOWNERS and diff filters</li></ul></div>
+  </div>
+  <aside class="notes"><p>If you start today, start with the same commit. Split later only if size becomes a real problem.</p></aside>
+</section>
+
+<!-- 7 -->
+<section class="slide section">
+  <div class="num">07</div>
+  <h2>Adopting it without hurting yourself</h2>
+  <p>A minimum viable path and the anti-patterns that make it fail.</p>
+  <aside class="notes"><p>~6 minutes.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>A minimum viable path</h2>
+  <ol>
+    <li><strong>Pin the translators</strong> — engine versions and target API version in one tool manifest.</li>
+    <li><strong>Render in CI</strong> into a predictable path next to each unit, with stable object ordering.</li>
+    <li><strong>Commit and gate</strong> — re-render must equal committed; zero files rendered fails.</li>
+    <li><strong>Guard secrets</strong> — a rendered Secret with data fails the render.</li>
+    <li><strong>Policy on output</strong> — run your admission rules offline in the PR.</li>
+    <li><strong>Compare after apply</strong> — applied must equal rendered, minus named late values.</li>
+  </ol>
+  <aside class="notes"><p>Steps 1–4 can be done in a week. 5 depends on how many policies you have. 6 is what makes it trustworthy.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Anti-patterns</h2>
+  <div class="cols">
+    <div class="card bad"><h3>Hand-merging generated files</h3><p>On a conflict, re-render from the merged intent. A hand-merged output passes the gate only by accident.</p></div>
+    <div class="card bad"><h3>Mocks that look real</h3><p>A fake IP or ID in the committed output is indistinguishable from a real one. Use named markers.</p></div>
+    <div class="card bad"><h3>Silent gates</h3><p>Globs that match nothing, policy runs that evaluate zero rules, loops over empty lists — all exit 0.</p></div>
+    <div class="card bad"><h3>Unpinned engines</h3><p>"latest" in CI and a different version in the deploy tool means rendered ≠ applied.</p></div>
+  </div>
+  <aside class="notes"><p>Every one of these has been seen in practice. The silent gate is the most common and the most dangerous.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Making large diffs reviewable</h2>
+  <ul>
+    <li><strong>Stable ordering</strong>: sort objects by kind, namespace, name — otherwise every render reshuffles.</li>
+    <li><strong>Split by concern</strong>: manifests, hooks, CRD digests in separate files.</li>
+    <li><strong>Ownership</strong>: CODEOWNERS on generated paths; platform reviews engine bumps.</li>
+    <li><strong>Diff tooling</strong>: mark generated paths so the review UI collapses them by default, and summarise changes per object in a PR comment.</li>
+  </ul>
+  <div class="callout">The goal is not to read every line every time. It is that every line <em>can</em> be read, and the unusual ones get read.</div>
+  <aside class="notes"><p>A bot comment like "3 objects changed: ClusterRole (+2 rules), Webhook (failurePolicy), Deployment (image)" gets most of the value with little reading.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>When SHIM is <em>not</em> worth it</h2>
+  <ul>
+    <li>A single team, a handful of apps, no compliance requirement, charts you own and rarely bump.</li>
+    <li>Highly dynamic output that depends on runtime state by design.</li>
+    <li>Teams without the discipline to keep gates green — a red gate everyone ignores is worse than no gate.</li>
+  </ul>
+  <div class="callout ok">It pays off with scale: many environments, third-party charts, auditors, and incidents where "what changed?" must be answered fast.</div>
+  <aside class="notes"><p>Be pragmatic. SHIM is a cost you pay up front to make incidents and audits cheap.</p></aside>
+</section>
+
+<!-- 8 -->
+<section class="slide section">
+  <div class="num">08</div>
+  <h2>Takeaways</h2>
+  <aside class="notes"><p>~2 minutes, then Q&amp;A.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Five things to remember</h2>
+  <ol>
+    <li>GitOps versions the <em>intent</em>; SHIM versions the <em>effect</em> as well.</li>
+    <li>Push vs pull is <strong>who reconciles</strong>; hydration is <strong>what is stored</strong>. Independent choices.</li>
+    <li>Gate the hydrated output: re-render = committed, policy on output, applied = reviewed.</li>
+    <li>Never hydrate secrets; name late-bound values; digest the bulk.</li>
+    <li>Every gate must prove it evaluated something.</li>
+  </ol>
+  <aside class="notes"><p>If people remember only one: "review the effect, not the version number".</p></aside>
+</section>
+
+<section class="slide title">
+  <div class="kicker">Questions</div>
+  <h1>Thank you</h1>
+  <div class="sub">Next: <strong>Part 2 — a multi-cloud platform as a source-hydrated model</strong>: how intent, translation, gates and push delivery fit together in practice.</div>
+  <aside class="notes"><p>Good seed questions if the room is quiet: "Does this replace Argo/Flux?" (no — it changes what they sync). "How big do repos get?" (CRD digests keep it manageable). "What about Helm hooks?" (rendered separately; part 2).</p></aside>
+</section>
+
+</div>
+<div id="progress"></div>
+<div id="help">← → · N notes · O overview · F full · P print</div>
+<script>
+(() => {
+  const stage = document.getElementById('stage');
+  const slides = Array.from(document.querySelectorAll('section.slide'));
+  const bar = document.getElementById('progress');
+  const total = slides.length;
+  let cur = 0, presenter = null, started = null;
+  slides.forEach((s, i) => s.dataset.n = (i + 1) + ' / ' + total);
+
+  function fit() {
+    if (document.body.classList.contains('overview')) return;
+    const k = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+    stage.style.transform = 'translate(-50%, -50%) scale(' + k + ')';
+    stage.style.transformOrigin = 'center center';
+  }
+  function title(s) { const h = s && s.querySelector('h1, h2'); return h ? h.textContent.trim() : ''; }
+  function notes(s) { const n = s && s.querySelector('aside.notes'); return n ? n.innerHTML : '<i>No notes.</i>'; }
+
+  function go(i, push) {
+    cur = Math.max(0, Math.min(total - 1, i));
+    slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+    bar.style.width = ((cur + 1) / total * 100) + '%';
+    if (push !== false) history.replaceState(null, '', '#' + (cur + 1));
+    renderPresenter();
+  }
+  function fromHash() { const n = parseInt(location.hash.slice(1), 10); return isNaN(n) ? 0 : n - 1; }
+
+  function renderPresenter() {
+    if (!presenter || presenter.closed) return;
+    const d = presenter.document;
+    d.getElementById('cur').textContent = (cur + 1) + ' / ' + total + ' — ' + title(slides[cur]);
+    d.getElementById('next').textContent = cur + 1 < total ? 'Next: ' + title(slides[cur + 1]) : 'Last slide';
+    d.getElementById('notes').innerHTML = notes(slides[cur]);
+  }
+  function openPresenter() {
+    presenter = window.open('', 'presenter', 'width=900,height=650');
+    if (!presenter) return;
+    started = started || Date.now();
+    const d = presenter.document;
+    d.open();
+    d.write('<!doctype html><meta charset="utf-8"><title>Presenter — ' + document.title + '</title>' +
+      '<style>body{background:#0f1419;color:#e8edf2;font:18px/1.5 system-ui,sans-serif;margin:0;padding:20px 28px}' +
+      '#cur{font-size:22px;font-weight:600}#next{color:#9aabbc;margin:6px 0 14px}#clock{float:right;font:600 28px ui-monospace,monospace;color:#6cb4ff}' +
+      '#notes{font-size:22px;line-height:1.5;border-top:1px solid #2e3d4c;padding-top:14px}#notes p{margin:0 0 12px}code{background:#1e2a36;padding:1px 5px;border-radius:4px}' +
+      '.hint{color:#6b7d8f;font-size:14px;margin-top:20px}</style>' +
+      '<div id="clock">00:00</div><div id="cur"></div><div id="next"></div><div id="notes"></div>' +
+      '<div class="hint">←/→ to move (focus either window) · the timer starts when this window first opens</div>');
+    d.close();
+    d.addEventListener('keydown', key);
+    const tick = () => {
+      if (presenter.closed) return;
+      const s = Math.floor((Date.now() - started) / 1000);
+      d.getElementById('clock').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+      setTimeout(tick, 1000);
+    };
+    tick();
+    renderPresenter();
+  }
+  function toggleOverview() {
+    const on = document.body.classList.toggle('overview');
+    if (on) { stage.style.transform = 'none'; slides[cur].scrollIntoView({ block: 'center' }); } else fit();
+  }
+  function key(e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key;
+    if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'].includes(k)) { e.preventDefault(); go(cur + 1); }
+    else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(k)) { e.preventDefault(); go(cur - 1); }
+    else if (k === 'Home') go(0);
+    else if (k === 'End') go(total - 1);
+    else if (k === 'n' || k === 'N') openPresenter();
+    else if (k === 'o' || k === 'O' || k === 'Escape') toggleOverview();
+    else if (k === 'p' || k === 'P') window.print();
+    else if (k === 'f' || k === 'F') { if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); }
+  }
+  slides.forEach((s, i) => s.addEventListener('click', () => {
+    if (document.body.classList.contains('overview')) { toggleOverview(); go(i); }
+  }));
+  document.addEventListener('keydown', key);
+  window.addEventListener('resize', fit);
+  window.addEventListener('hashchange', () => go(fromHash(), false));
+  fit();
+  go(fromHash(), false);
+  if (new URLSearchParams(location.search).has('print')) setTimeout(() => window.print(), 300);
+})();
+
+</script>
+</body>
+</html>

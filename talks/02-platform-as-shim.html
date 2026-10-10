@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Platform as SHIM</title>
+<!-- Self-contained slide deck. Keys: ←/→ move · N presenter notes · O overview · F fullscreen · P print to PDF. -->
+<style>
+:root {
+  --bg: #0f1419; --panel: #172029; --panel2: #1e2a36; --line: #2e3d4c;
+  --fg: #e8edf2; --muted: #9aabbc; --dim: #6b7d8f;
+  --ok: #4cc38a; --warn: #f0b84a; --bad: #f2716b; --info: #6cb4ff;
+  --mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #05080b; color: var(--fg); font-family: var(--sans); overflow: hidden; }
+#stage { position: absolute; left: 50%; top: 50%; width: 1280px; height: 720px; transform-origin: 0 0; }
+.slide { position: absolute; inset: 0; width: 1280px; height: 720px; padding: 56px 72px 64px; background: var(--bg);
+  display: none; flex-direction: column; overflow: hidden; }
+.slide.active { display: flex; }
+.slide::after { content: attr(data-n); position: absolute; right: 28px; bottom: 18px; font-size: 14px; color: var(--dim); }
+.slide .foot { position: absolute; left: 72px; bottom: 18px; font-size: 14px; color: var(--dim); }
+aside.notes { display: none; }
+
+h1 { font-size: 60px; line-height: 1.08; margin: 0 0 20px; letter-spacing: -0.5px; }
+h2 { font-size: 40px; line-height: 1.15; margin: 0 0 24px; letter-spacing: -0.3px; }
+h2 .k { color: var(--accent); }
+h3 { font-size: 24px; margin: 0 0 10px; color: var(--accent); }
+p, li { font-size: 24px; line-height: 1.4; }
+p { margin: 0 0 14px; }
+ul, ol { margin: 0; padding-left: 28px; }
+li { margin: 0 0 10px; }
+li::marker { color: var(--accent); }
+code { font-family: var(--mono); font-size: 0.88em; background: var(--panel2); padding: 1px 6px; border-radius: 4px; color: #d6e4f0; }
+pre { font-family: var(--mono); font-size: 18px; line-height: 1.45; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 18px 22px; margin: 0; white-space: pre; overflow: hidden; }
+pre code { background: none; padding: 0; font-size: inherit; }
+pre .c { color: var(--dim); } pre .a { color: var(--accent); } pre .g { color: var(--ok); } pre .r { color: var(--bad); }
+em { color: var(--accent); font-style: normal; }
+strong { color: #fff; }
+.muted { color: var(--muted); }
+.small, .small li, .small p { font-size: 20px; }
+.tiny, .tiny li, .tiny p { font-size: 17px; }
+
+/* title & section slides */
+.slide.title { justify-content: center; background: radial-gradient(1200px 600px at 85% 110%, var(--accent-soft), transparent 60%), var(--bg); }
+.slide.title .kicker { font-size: 20px; text-transform: uppercase; letter-spacing: 3px; color: var(--accent); margin-bottom: 18px; }
+.slide.title .sub { font-size: 28px; color: var(--muted); max-width: 980px; }
+.slide.title .meta { margin-top: 48px; font-size: 18px; color: var(--dim); }
+.slide.section { justify-content: center; background: linear-gradient(90deg, var(--accent-soft), transparent 70%), var(--bg); }
+.slide.section .num { font-size: 120px; font-weight: 800; color: var(--accent); opacity: .35; line-height: 1; }
+.slide.section h2 { font-size: 56px; }
+.slide.section p { color: var(--muted); font-size: 26px; max-width: 900px; }
+.slide.statement { justify-content: center; }
+.slide.statement .big { font-size: 46px; line-height: 1.25; font-weight: 650; max-width: 1080px; }
+.slide.statement .big em { color: var(--accent); }
+
+/* layouts */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; align-content: start; }
+.cols.c3 { grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.cols.c64 { grid-template-columns: 1.5fr 1fr; }
+.cols.c46 { grid-template-columns: 1fr 1.5fr; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px 24px; }
+.card h3 { margin-bottom: 8px; }
+.card p, .card li { font-size: 20px; }
+.card.ok { border-top: 4px solid var(--ok); } .card.bad { border-top: 4px solid var(--bad); } .card.warn { border-top: 4px solid var(--warn); }
+.card.acc { border-top: 4px solid var(--accent); }
+.grow { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.callout { margin-top: auto; border-left: 4px solid var(--accent); background: var(--panel); padding: 12px 18px; font-size: 21px; border-radius: 0 8px 8px 0; }
+.callout.bad { border-color: var(--bad); } .callout.ok { border-color: var(--ok); } .callout.warn { border-color: var(--warn); }
+.tag { display: inline-block; font-size: 15px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); margin-right: 6px; }
+.tag.ok { color: var(--ok); border-color: var(--ok); } .tag.bad { color: var(--bad); border-color: var(--bad); } .tag.warn { color: var(--warn); border-color: var(--warn); }
+
+table { border-collapse: collapse; width: 100%; font-size: 19px; }
+th { text-align: left; color: var(--accent); font-weight: 600; border-bottom: 2px solid var(--line); padding: 8px 12px; }
+td { border-bottom: 1px solid var(--line); padding: 8px 12px; vertical-align: top; line-height: 1.35; }
+td:first-child { color: #fff; font-weight: 600; }
+table.compact td, table.compact th { padding: 6px 10px; font-size: 17px; }
+
+/* timeline */
+.tl { display: grid; gap: 0; position: relative; }
+.tl .row { display: grid; grid-template-columns: 120px 1fr; gap: 20px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.tl .yr { font-family: var(--mono); color: var(--accent); font-size: 20px; padding-top: 3px; }
+.tl .row p { font-size: 21px; margin: 0; }
+
+/* svg diagrams */
+svg { max-width: 100%; max-height: 100%; }
+svg text { font-family: var(--sans); fill: var(--fg); font-size: 18px; }
+svg .t-muted { fill: var(--muted); font-size: 15px; }
+svg .t-acc { fill: var(--accent); font-weight: 600; }
+svg .t-mono { font-family: var(--mono); font-size: 15px; }
+svg .box { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+svg .box-acc { fill: var(--panel2); stroke: var(--accent); stroke-width: 2; }
+svg .box-ok { fill: var(--panel); stroke: var(--ok); stroke-width: 2; }
+svg .box-bad { fill: var(--panel); stroke: var(--bad); stroke-width: 2; }
+svg .box-warn { fill: var(--panel); stroke: var(--warn); stroke-width: 2; }
+svg .zone { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 6 5; }
+svg .arrow { stroke: var(--muted); stroke-width: 2; fill: none; marker-end: url(#ah); }
+svg .arrow-acc { stroke: var(--accent); stroke-width: 2.5; fill: none; marker-end: url(#aha); }
+svg .arrow-bad { stroke: var(--bad); stroke-width: 2; fill: none; stroke-dasharray: 6 4; marker-end: url(#ahb); }
+svg .ah { fill: var(--muted); } svg .aha { fill: var(--accent); } svg .ahb { fill: var(--bad); }
+
+/* chrome */
+#progress { position: fixed; left: 0; bottom: 0; height: 4px; background: var(--accent); transition: width .2s; z-index: 5; }
+#help { position: fixed; right: 12px; top: 10px; font-size: 12px; color: #4b5b6b; z-index: 5; }
+body.overview { overflow: auto; }
+body.overview #stage { position: static; transform: none !important; width: auto; height: auto; display: grid;
+  grid-template-columns: repeat(auto-fill, 320px); gap: 16px; padding: 16px; }
+body.overview .slide { display: flex; position: relative; transform: scale(.25); transform-origin: 0 0; margin: 0 -960px -540px 0; cursor: pointer; outline: 2px solid transparent; }
+body.overview .slide.active { outline: 6px solid var(--accent); }
+body.overview #progress, body.overview #help { display: none; }
+
+@media print {
+  @page { size: 1280px 720px; margin: 0; }
+  html, body { overflow: visible; height: auto; background: var(--bg); }
+  #stage { position: static; transform: none !important; width: 1280px; height: auto; }
+  .slide { display: flex !important; position: relative; break-after: page; page-break-after: always; }
+  #progress, #help { display: none; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+.card.ok h3 { color: var(--ok); } .card.bad h3 { color: var(--bad); } .card.warn h3 { color: var(--warn); }
+
+:root { --accent: #4cc38a; --accent-soft: rgba(76,195,138,.16); }
+</style>
+</head>
+<body>
+<div id="stage">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+<marker id="aha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="aha" d="M0,0 L10,5 L0,10 z"/></marker>
+<marker id="ahb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ahb" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs></svg>
+<section class="slide title">
+  <div class="kicker">Platform engineering talk · 60 min · Part 2</div>
+  <h1>A multi-cloud platform<br>as a source-hydrated model</h1>
+  <div class="sub">How intent, translation, gates and push delivery fit together in a Terramate + OpenTofu platform — and how the Kubernetes layer joins the hydrated model.</div>
+  <div class="meta">Builds on Part 1: GitOps and Source-Hydrated Infrastructure Models</div>
+  <aside class="notes"><p>Recap in one sentence for those who missed part 1: SHIM = commit the fully translated state before reconciling; push vs pull is a separate choice.</p><p>Section references (§n, AM §n, DHn, DXn) point at the design specification, for anyone who wants to read further.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Agenda</h2>
+  <div class="cols">
+    <ol>
+      <li>The platform in one picture</li>
+      <li>Intent: the binding</li>
+      <li>Translation: resolver and generators</li>
+      <li>The hydrated model on <code>main</code></li>
+    </ol>
+    <ol start="5">
+      <li>Hydrating Kubernetes</li>
+      <li>Gates that prove they ran</li>
+      <li>Reconciliation stays push</li>
+      <li>Open items, lessons, Q&amp;A</li>
+    </ol>
+  </div>
+  <aside class="notes"><p>Sections 1–4 show that the infrastructure side already was a hydrated model. 5 closes the remaining gap. 6–7 are how it is enforced and delivered.</p></aside>
+</section>
+
+<section class="slide statement">
+  <div class="big">The platform was already a source-hydrated model for <em>infrastructure</em>.<br>It was not one for <em>Kubernetes</em>.<br>This talk is about both halves.</div>
+  <aside class="notes"><p>Set the expectation: we did not adopt SHIM as a buzzword; we noticed we already were one, and found exactly where we were not.</p></aside>
+</section>
+
+<!-- 1 -->
+<section class="slide section">
+  <div class="num">01</div>
+  <h2>The platform in one picture</h2>
+  <p>Layers, archetypes, environments.</p>
+  <aside class="notes"><p>~5 minutes.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Six layers, one direction of dependency</h2>
+  <div class="grow">
+    <svg viewBox="0 0 1100 470" width="1100" height="470">
+      <g>
+        <rect class="box" x="40" y="10" width="1020" height="58" rx="8"/><text x="70" y="46" class="t-acc">5</text><text x="110" y="46">Applications</text><text x="1030" y="46" text-anchor="end" class="t-muted">webapp-3tier · event-driven · demos</text>
+        <rect class="box" x="40" y="78" width="1020" height="58" rx="8"/><text x="70" y="114" class="t-acc">4</text><text x="110" y="114">Middleware</text><text x="1030" y="114" text-anchor="end" class="t-muted">kafka · keycloak · postgres (managed or operator)</text>
+        <rect class="box" x="40" y="146" width="1020" height="58" rx="8"/><text x="70" y="182" class="t-acc">3</text><text x="110" y="182">Platform services</text><text x="1030" y="182" text-anchor="end" class="t-muted">gateway · certs · secrets · monitoring</text>
+        <rect class="box-warn" x="40" y="214" width="1020" height="58" rx="8"/><text x="62" y="250" class="t-acc">2b</text><text x="110" y="250">Policy</text><text x="1030" y="250" text-anchor="end" class="t-muted">Gatekeeper — admission precedes what it governs</text>
+        <rect class="box" x="40" y="282" width="1020" height="58" rx="8"/><text x="70" y="318" class="t-acc">2</text><text x="110" y="318">Runtime</text><text x="1030" y="318" text-anchor="end" class="t-muted">GKE · EKS · AKS · Cloud Run · Fargate — creates its own subnets</text>
+        <rect class="box" x="40" y="350" width="1020" height="58" rx="8"/><text x="70" y="386" class="t-acc">1</text><text x="110" y="386">Environment</text><text x="1030" y="386" text-anchor="end" class="t-muted">network · edge · a /17 per environment</text>
+        <rect class="box-acc" x="40" y="418" width="1020" height="48" rx="8"/><text x="70" y="449" class="t-acc">0</text><text x="110" y="449">Landing zone</text><text x="1030" y="449" text-anchor="end" class="t-muted">projects · KMS · registries · federation · identities</text>
+      </g>
+    </svg>
+  </div>
+  <aside class="notes"><p>Each layer only depends on layers below it. One known upward edge (the edge load balancer needs the gateway's NEG name) is handled by a deterministic name and a dedicated G1 rule.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Building blocks</h2>
+  <div class="cols c3">
+    <div class="card acc"><h3>Archetype</h3><p>A versioned package of stacks that provides <strong>capabilities</strong> and requires others. Deploys a shared service with a multi-tenant contract.</p></div>
+    <div class="card acc"><h3>Stack</h3><p>A Terramate stack: one OpenTofu root module with its own state, generated from the archetype's generators.</p></div>
+    <div class="card acc"><h3>Environment</h3><p><code>prod</code>, <code>qa</code>, <code>dev</code>, <code>demos</code>, <code>sandbox</code>, <code>ephemeral-*</code>. Each is its own VPC, cluster and edge; <code>prod</code> shares nothing.</p></div>
+  </div>
+  <div class="callout">Tooling: <strong>Terramate CLI</strong> for orchestration, change detection and code generation; <strong>OpenTofu</strong> for apply; <strong>outputs sharing</strong> to pass values between stacks.</div>
+  <aside class="notes"><p>Why Terramate over Terragrunt: change detection at scale, and generated code is real <code>.tf</code> that security scanners read without plan indirection. That last point is already a hydration argument.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>The PR flow, at a glance</h2>
+  <div class="grow">
+    <svg viewBox="0 0 1140 300" width="1140" height="300">
+      <rect class="box-acc" x="10" y="110" width="140" height="80" rx="8"/><text x="80" y="146" text-anchor="middle" class="t-acc">Intent</text><text x="80" y="170" text-anchor="middle" class="t-muted">binding</text>
+      <rect class="box-warn" x="190" y="110" width="150" height="80" rx="8"/><text x="265" y="146" text-anchor="middle">Resolve</text><text x="265" y="170" text-anchor="middle" class="t-muted">17 steps</text>
+      <rect class="box-warn" x="380" y="110" width="150" height="80" rx="8"/><text x="455" y="146" text-anchor="middle">Generate</text><text x="455" y="170" text-anchor="middle" class="t-muted">+ hydrate</text>
+      <rect class="box" x="570" y="110" width="150" height="80" rx="8"/><text x="645" y="146" text-anchor="middle">G0 · G1 · G2</text><text x="645" y="170" text-anchor="middle" class="t-muted">no credentials</text>
+      <rect class="box" x="760" y="110" width="150" height="80" rx="8"/><text x="835" y="146" text-anchor="middle">Plan · G3</text><text x="835" y="170" text-anchor="middle" class="t-muted">per env, read-only</text>
+      <rect class="box-ok" x="950" y="110" width="180" height="80" rx="8"/><text x="1040" y="146" text-anchor="middle" style="fill:var(--ok)">Merge → apply</text><text x="1040" y="170" text-anchor="middle" class="t-muted">per env identity</text>
+      <path class="arrow" d="M150,150 L185,150"/><path class="arrow" d="M340,150 L375,150"/><path class="arrow" d="M530,150 L565,150"/><path class="arrow" d="M720,150 L755,150"/><path class="arrow-acc" d="M910,150 L945,150"/>
+      <rect class="zone" x="180" y="60" width="550" height="180" rx="12"/>
+      <text x="455" y="88" text-anchor="middle" class="t-muted">everything here is committed and reviewed</text>
+      <text x="1040" y="225" text-anchor="middle" class="t-muted">CMDB observed half</text>
+      <path class="arrow" d="M1040,190 L1040,205"/>
+    </svg>
+  </div>
+  <aside class="notes"><p>Keep this picture in mind: the next three sections zoom into the boxes left to right.</p></aside>
+</section>
+
+<!-- 2 -->
+<section class="slide section">
+  <div class="num">02</div>
+  <h2>Intent: the binding</h2>
+  <p>One hand-written file per environment.</p>
+  <aside class="notes"><p>~5 minutes.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>An environment <span class="k">is</span> its binding</h2>
+  <div class="cols c46">
+<pre style="font-size:16px"><span class="c"># environments/qa/binding.yaml</span>
+metadata:
+  name: qa
+  jurisdiction: eu
+  region: europe-west1
+providers:
+  database-platform: postgres-cloudsql
+  secrets: secrets-eso-gsm
+  gateway: gateway-envoy-gke
+archetypes:
+  - keycloak
+  - sonarqube
+sizes:
+  runtime: medium</pre>
+    <ul class="small">
+      <li>The <strong>only</strong> hand-written file for an environment (DX1).</li>
+      <li>Composition, providers, versions, size, region and jurisdiction vary; generators, contracts and rules do not.</li>
+      <li>Every name that is not a claim is <strong>derived</strong>: KSA prefixes, state keys, zones, bucket names.</li>
+      <li>One provider per capability per environment — resolution is a lookup, not a search.</li>
+    </ul>
+  </div>
+  <aside class="notes"><p>Illustrative binding, simplified from the schema. The point: everything else about an environment is a function of this file plus the archetype manifests and the registry.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>The rest of the intent</h2>
+  <table>
+    <tr><th>Source</th><th>Holds</th><th>Written by</th></tr>
+    <tr><td><code>archetypes/*/manifest.yaml</code></td><td>What an archetype provides, requires, its stacks and traits</td><td>Archetype owners</td></tr>
+    <tr><td><code>registry/*.yaml</code></td><td>Capabilities, traits, zones, mandatory labels — the vocabulary</td><td>Platform team, in the spec repo</td></tr>
+    <tr><td><code>environments/*/binding.yaml</code></td><td>Which archetypes and providers an environment uses</td><td>Environment owners</td></tr>
+    <tr><td>Generators and contracts</td><td>How a capability becomes OpenTofu; what a stack publishes</td><td>Platform team</td></tr>
+  </table>
+  <div class="callout">The registry is a single source of truth. Schema enums, the policy data bundle and Gatekeeper parameters are <strong>generated</strong> from it — itself a small hydration.</div>
+  <aside class="notes"><p>The registry drift risk (R34): a label the generator stopped emitting while the admission constraint still requires it blocks deployments at admission. Generation from one source prevents it.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>An environment is emitted, never copied</h2>
+  <div class="cols">
+    <div class="card bad"><h3>Copy and rename</h3><p>Copy <code>qa</code>'s stacks, replace "qa" with "sandbox". Over-matches (<code>qa.internal</code>), under-matches (prefixes inside values), and drifts with every later change.</p></div>
+    <div class="card ok"><h3>Emit from intent</h3><p>The resolver writes the stack tree from binding + manifests. A new environment is a new binding; the diff shows everything it creates.</p></div>
+  </div>
+  <div class="callout">No hand-kept lists either: workflow inputs, counts and forbidden public-name words are derived from <code>environments/*/</code> (DX8).</div>
+  <aside class="notes"><p>This is the "promotion as a diff" property from part 1, applied to environment creation.</p></aside>
+</section>
+
+<!-- 3 -->
+<section class="slide section">
+  <div class="num">03</div>
+  <h2>Translation: resolver and generators</h2>
+  <p>From "what I want" to OpenTofu, in the pull request.</p>
+  <aside class="notes"><p>~7 minutes.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>The resolver: 17 steps, fails closed</h2>
+  <div class="cols c3">
+    <div class="card"><h3>Load · Graph</h3><ul class="small"><li>Manifests, components, binding</li><li>Transitive closure, cycles</li><li>Capability → single provider</li></ul></div>
+    <div class="card"><h3>Validate</h3><ul class="small"><li>Versions, traits, runtime</li><li>Conflicts, stack conditions</li><li>Output contracts, tenant resources</li></ul></div>
+    <div class="card"><h3>Allocate · Emit</h3><ul class="small"><li>Address claims, idempotent by (pool, owner, purpose)</li><li>Firewall selectors, capacity budgets</li><li>Topological order → <code>resolution.json</code>, <code>binding.tm.hcl</code></li></ul></div>
+  </div>
+  <div class="callout">The seam between the halves is <code>binding.tm.hcl</code>: the resolver writes globals, the generators consume them. Neither knows the other's internals.</div>
+  <aside class="notes"><p>AM §12. Step 4 is a lookup because there is exactly one provider per capability per environment; that keeps resolution linear and its errors explainable.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>What the resolver hydrates</h2>
+  <table>
+    <tr><th>Artefact</th><th>Content</th><th>Why it is committed</th></tr>
+    <tr><td><code>resolution.json</code></td><td>The resolved graph: providers, versions, order</td><td>Reviewers see a new dependency in the diff</td></tr>
+    <tr><td><code>binding.tm.hcl</code></td><td>Globals the generators read</td><td>The seam, versioned</td></tr>
+    <tr><td>Address ledger</td><td>Every CIDR claim, by owner and purpose</td><td>Idempotent allocation; a new range is visible</td></tr>
+    <tr><td>CMDB, declared half</td><td>Stacks, edges, claims</td><td>Blast radius and destroy guards read edges, not names</td></tr>
+  </table>
+  <aside class="notes"><p>All four are produced in the PR and checked like G0: re-generate and compare. The CMDB observed half is different — it is written after apply, to its own branch.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Generators: real <code>.tf</code>, committed</h2>
+  <div class="cols c64">
+<pre style="font-size:15px"><span class="c"># imports/generators/v1/gen_cluster.tm.hcl (sketch)</span>
+generate_hcl "_main.tf" {
+  content {
+    module "cluster" {
+      source        = "../../modules/gke"
+      name          = global.platform.cluster_name
+      region        = global.env_region
+      node_pools    = global.platform.node_pools
+    }
+  }
+}
+<span class="c"># → stacks/platforms/gcp/qa/gke/_main.tf</span></pre>
+    <ul class="small">
+      <li>Files prefixed <code>_</code>: <code>_main.tf</code>, <code>_backend.tf</code>, <code>_sharing_generated.tf</code>.</li>
+      <li>Committed to git, covered by CODEOWNERS.</li>
+      <li>Checkov scans them directly (G2): no plan needed.</li>
+      <li>One generator per capability; versioned (<code>v1</code>, <code>v2</code>) so a generator change is explicit.</li>
+    </ul>
+  </div>
+  <aside class="notes"><p>Sketch, not the real generator. The point is the shape: globals in, concrete HCL out, committed.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Outputs sharing: the late-bound part</h2>
+  <div class="cols">
+    <div>
+      <p class="small">Some values only exist after a producer applies: a VPC id, a cluster endpoint, an IP.</p>
+<pre style="font-size:15px">input "network_id" {
+  backend       = "default"
+  from_stack_id = "gcp-qa-network"
+  value         = outputs.network_id.value
+  mock          = "projects/mock-project/…"
+}</pre>
+    </div>
+    <div>
+      <ul class="small">
+        <li>The hydrated code carries the <strong>reference</strong>, not the value.</li>
+        <li>Values arrive at apply time as <code>TF_VAR_*</code> — so <strong>never share secrets</strong>; share references.</li>
+        <li>Prefer globals whenever the value is known before any apply.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout warn">Mocks are allowed only in preview, are prefixed or contain <code>mock</code>, and are type-correct. A mock that reaches a deploy is nonsense applied.</div>
+  <aside class="notes"><p>This is the honest limit of hydration on the infrastructure side: some fields are only known at apply. The design makes them visible rather than pretending.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>The top risk: an input without an <code>after</code></h2>
+  <div class="cols">
+    <div class="card bad"><h3>R2 — silent and stale</h3><p>Outputs sharing does <strong>not</strong> create execution order. A consumer with an <code>input</code> and no <code>after</code> generates cleanly, plans cleanly, and may apply before its producer — with yesterday's value and no error.</p></div>
+    <div class="card ok"><h3>The rule</h3><p>G1 requires the <strong>producer itself</strong> in <code>after</code>. A transitive path through another stack fails on purpose: it holds only until someone reorders the middle stack.</p></div>
+  </div>
+  <aside class="notes"><p>Measured: globals in <code>stack.after</code> are a parse error, so the resolver writes literal tag filters. The silent failure is a forgotten <code>after</code>, and only G1 catches it.</p></aside>
+</section>
+
+<!-- 4 -->
+<section class="slide section">
+  <div class="num">04</div>
+  <h2>The hydrated model on <code>main</code></h2>
+  <p>What is hydrated, what is late-bound, what is not.</p>
+  <aside class="notes"><p>~4 minutes.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Hydrated, late-bound, not hydrated</h2>
+  <table class="compact">
+    <tr><th>Stage</th><th>In the platform</th><th>Hydrated on main?</th></tr>
+    <tr><td>Intent</td><td>Manifests, bindings, registry</td><td>It is the source</td></tr>
+    <tr><td>Translated model</td><td><code>resolution.json</code>, <code>binding.tm.hcl</code>, ledger, CMDB declared half, <code>_*.tf</code></td><td><span class="tag ok">yes</span> same commit, CODEOWNERS</td></tr>
+    <tr><td>Integrity gate</td><td>G0, CMDB check</td><td>—</td></tr>
+    <tr><td>Values between stacks</td><td>Outputs sharing</td><td><span class="tag warn">late-bound</span> reference, not value</td></tr>
+    <tr><td>Kubernetes manifests</td><td><code>helm_release</code> renders at apply</td><td><span class="tag bad">no</span> — the gap</td></tr>
+    <tr><td>Plan</td><td>Per environment, in the PR</td><td><span class="tag warn">reviewed</span> not versioned</td></tr>
+    <tr><td>Reconciliation</td><td>Push on merge; daily drift detection</td><td>—</td></tr>
+  </table>
+  <aside class="notes"><p>DH1. This table is the honest self-assessment. Everything is hydrated except the Kubernetes layer, which is the next section.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>G0: hydrated equals source</h2>
+<pre><span class="c"># G0, every PR, no cloud credentials</span>
+terramate generate <span class="a">--detailed-exit-code</span>   <span class="c"># 0 current · 2 drift · 1 error</span>
+./ci/hydrate.sh
+[ -z "$(git status --porcelain -- '*/_rendered/*')" ]</pre>
+  <ul style="margin-top:18px" class="small">
+    <li>Without G0, someone hand-edits a <code>_main.tf</code>, the scan passes, and the next generate silently reverts the fix.</li>
+    <li><code>--check</code> does not exist in Terramate (it fails with "unknown flag"); measured, not assumed.</li>
+    <li>G0 cannot see a wrong-typed mock: it changes no generated file. G1 checks mock shapes against the contract.</li>
+  </ul>
+  <aside class="notes"><p>Architecture §13.2, §14.1. The second half of G0 is new with Kubernetes hydration — next section.</p></aside>
+</section>
+
+<!-- 5 -->
+<section class="slide section">
+  <div class="num">05</div>
+  <h2>Hydrating Kubernetes</h2>
+  <p>Closing the last gap: charts rendered in the PR.</p>
+  <aside class="notes"><p>~10 minutes. The new part.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>The gap: <code>helm_release</code> renders at apply</h2>
+  <div class="cols">
+    <div>
+      <p class="small">Platform services and middleware are Helm charts applied by OpenTofu's <code>helm_release</code>. In the PR the reviewer sees:</p>
+<pre style="font-size:16px"><span class="r">-  version = "v1.16.1"</span>
+<span class="g">+  version = "v1.16.2"</span></pre>
+    </div>
+    <div class="card bad"><h3>Not seen until apply</h3><ul class="small"><li>The rendered manifests</li><li>RBAC, webhooks, probes, defaults</li><li>Whether Gatekeeper will admit them</li></ul></div>
+  </div>
+  <div class="callout">Exactly the in-flight rendering from part 1 — inside an otherwise hydrated platform.</div>
+  <aside class="notes"><p>Why <code>helm_release</code> and not <code>kubernetes_manifest</code>: the latter needs CRDs and the API server at plan time, which breaks PR previews. So charts stay; we hydrate their output.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>What is written, and where (DH2)</h2>
+  <table class="compact">
+    <tr><th>File (next to the stack)</th><th>Content</th><th>Written by</th></tr>
+    <tr><td><code>_releases.json</code></td><td>One entry per release: name, namespace, chart, version, values file</td><td>The generator</td></tr>
+    <tr><td><code>_values-&lt;release&gt;.yaml</code></td><td>The derived values the <code>helm_release</code> receives — the same ones</td><td>The generator</td></tr>
+    <tr><td><code>_rendered/&lt;release&gt;.yaml</code></td><td>What <code>helm get manifest</code> will return, minus CRDs, sorted by kind/namespace/name</td><td><code>ci/hydrate.sh</code></td></tr>
+    <tr><td><code>_rendered/&lt;release&gt;.hooks.yaml</code></td><td>Hooks: in <code>helm template</code>, not in <code>helm get manifest</code></td><td><code>ci/hydrate.sh</code></td></tr>
+    <tr><td><code>_rendered/&lt;release&gt;.crds.sha256</code></td><td>One line per CRD: name and digest</td><td><code>ci/hydrate.sh</code></td></tr>
+  </table>
+  <div class="callout">Helm, <code>gator</code> and <code>KUBE_VERSION</code> are pinned in <code>.mise.toml</code> — the same versions on a laptop and in CI.</div>
+  <aside class="notes"><p>The values file is the key design point: the generator writes it once, and both <code>helm_release</code> and <code>hydrate.sh</code> read the same file. Two sources of values would make the render a guess.</p></aside>
+</section>
+
+<section class="slide">
+  <h2><code>ci/hydrate.sh</code>, the core</h2>
+<pre style="font-size:15.5px">mapfile -t release_files &lt; &lt;(git ls-files -co --exclude-standard '*/_releases.json')
+[ "${#release_files[@]}" -gt 0 ] || { echo "hydrate: nothing would be rendered" &gt;&amp;2; <span class="r">exit 1</span>; }
+for rf in "${release_files[@]}"; do
+  dir=$(dirname "$rf"); out="$dir/_rendered"; mkdir -p "$out"
+  find "$out" -maxdepth 1 -type f -delete          <span class="c"># a removed release leaves nothing behind</span>
+  jq -c '.[]' "$rf" | while read -r rel; do
+    <span class="c"># name, namespace, chart, version, values from the entry; name validated</span>
+    helm template "$name" "$chart" --version "$version" --namespace "$ns" \
+      --values "$dir/$values" --include-crds --kube-version "${KUBE_VERSION:?pinned}" \
+      | python3 -I ci/split-rendered.py "$out" "$name"
+  done
+done</pre>
+  <p class="small" style="margin-top:14px"><code>split-rendered.py</code> separates manifests, hooks and CRD digests, sorts objects, and <strong>fails</strong> on a <code>Secret</code> with a value or on a chart that rendered nothing.</p>
+  <aside class="notes"><p>Template in the deployment repository proposal. Tested on a fixture: deterministic across runs; a <code>replicaCount</code> change from 2 to 3 shows in the diff exactly as <code>replicas: 2 → 3</code>.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Three measured findings</h2>
+  <p class="small muted">Helm 3.19.0, a real certificate-management chart (v1.16.2)</p>
+  <div class="cols c3">
+    <div class="card warn"><h3><code>--skip-crds</code> is not enough</h3><p>With CRDs enabled through values, the chart renders its 6 CRDs from <code>templates/</code>, and <code>--skip-crds</code> still emits them. Split by <code>kind</code>.</p></div>
+    <div class="card warn"><h3>CRDs are ~97 %</h3><p>1.25 MB of a 1.29 MB render. The reviewable rest is ~38 KB. Keep CRDs as a digest per CRD, not whole.</p></div>
+    <div class="card warn"><h3>Hooks differ</h3><p>The four post-install hook objects come out of <code>helm template</code> but not <code>helm get manifest</code>. Keep them in a separate file.</p></div>
+  </div>
+  <aside class="notes"><p>These are the kind of facts you only learn by measuring. Each one changed the design: split by kind, digest the CRDs, separate hooks so the post-apply comparison compares like with like.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Late-bound values: <code>late:&lt;input&gt;</code> (DH4)</h2>
+  <div class="cols c64">
+    <div>
+<pre style="font-size:16px"><span class="c"># _values-envoy-gateway.yaml</span>
+service:
+  loadBalancerIP: <span class="a">late:edge_ip_address</span>
+deployment:
+  replicas: 3</pre>
+      <ul class="small" style="margin-top:16px">
+        <li>A chart value that comes from an outputs-sharing <code>input</code> is written as a named marker.</li>
+        <li>The generator passes the real value as a <code>set</code> entry at apply.</li>
+        <li>G1 rejects a chart value from an <code>input</code> <strong>without</strong> the marker.</li>
+      </ul>
+    </div>
+    <div class="card bad"><h3>Never a mock here</h3><p>Preview mocks are fine for a plan that is thrown away. In a committed, reviewed render, a realistic fake is indistinguishable from a real value.</p></div>
+  </div>
+  <aside class="notes"><p>The post-apply comparison masks exactly these fields and nothing else.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>What is not hydrated, on purpose (DH5)</h2>
+  <table>
+    <tr><th>What</th><th>Why</th><th>How</th></tr>
+    <tr><td>CRDs</td><td>97 % of the render; whole, the diff is unreadable</td><td><code>name sha256</code> per CRD — a change is a different hash</td></tr>
+    <tr><td><code>Secret</code> with data</td><td>A secret in git never leaves its history</td><td>The render fails; secrets are materialised by ESO from the secret store</td></tr>
+    <tr><td>Charts using <code>lookup</code></td><td>Render differently without a cluster</td><td>Forbidden in our charts (G1); recorded per third-party chart, watched after apply</td></tr>
+  </table>
+  <div class="callout bad">R73: a secret value hydrated into git is critical — every clone carries it forever. The render-time check is the guard.</div>
+  <aside class="notes"><p>The values file never receives a secret either — only references (a secret name, a key path). That rule predates hydration: outputs sharing already forbids sharing secrets.</p></aside>
+</section>
+
+<!-- 6 -->
+<section class="slide section">
+  <div class="num">06</div>
+  <h2>Gates that prove they ran</h2>
+  <p>G0–G3, admission before apply, and applied = reviewed.</p>
+  <aside class="notes"><p>~7 minutes.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Four gates</h2>
+  <table class="compact">
+    <tr><th>Gate</th><th>When</th><th>What</th><th>Blocking</th></tr>
+    <tr><td>G0 — integrity</td><td>Every PR</td><td><code>terramate generate --detailed-exit-code</code>; <code>hydrate.sh</code> and no change under <code>_rendered/</code></td><td>Always</td></tr>
+    <tr><td>G1 — structure</td><td>Every PR</td><td>conftest over resolution, stacks, manifests, bindings; <code>gator test</code> over <code>_rendered/</code></td><td>Always</td></tr>
+    <tr><td>G2 — static scan</td><td>Every PR</td><td>Checkov on the generated HCL</td><td>HIGH/CRITICAL</td></tr>
+    <tr><td>G3 — plan scan</td><td>Per environment</td><td>Checkov + conftest on <code>plan.json</code></td><td>HIGH/CRITICAL</td></tr>
+  </table>
+  <div class="callout">G0, G1 and G2 need <strong>no cloud credentials</strong>. G3 runs with a read-only identity per environment, one job per environment the PR touches.</div>
+  <aside class="notes"><p>The plan identity never holds a broad viewer role: a PR from any branch can reach it, so it gets an enumerated read list.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Admission before apply (DH6)</h2>
+  <div class="cols">
+    <div>
+<pre style="font-size:16px"><span class="c"># in ci/g1.sh, per environment</span>
+for d in $(terramate list --tags "$env"); do
+  find "$d/_rendered" -name '*.yaml'
+done | xargs gator test \
+  --filename=policy/gatekeeper/ ...
+<span class="c"># zero rendered files → fail</span></pre>
+    </div>
+    <div class="card ok"><h3>Caught in the PR</h3><ul class="small"><li>A pod tolerating the <code>system</code> pool it does not own (P11)</li><li>Privileges outside the gVisor sandbox pool (P13)</li><li>An image without a digest</li><li>A service account with another environment's prefix (P12)</li></ul></div>
+  </div>
+  <div class="callout">Admission stays the last line of defence; the PR becomes the first.</div>
+  <aside class="notes"><p>Same ConstraintTemplates and Constraints the cluster runs, with the environment's parameters. This is what turns the registry-drift risk into a CI failure.</p></aside>
+</section>
+
+<section class="slide statement">
+  <div class="big">A gate that cannot run is worse than an absent one, <em>because it reports success</em>.</div>
+  <aside class="notes"><p>Measured examples: conftest without <code>--all-namespaces</code> evaluates only <code>package main</code> and passes with 0 tests; <code>--data registry/</code> leaves the data path empty so an unknown trait passes; a nullglob loop over nothing exits 0. Every gate here counts what it evaluated and fails on zero.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Applied = reviewed (DH7)</h2>
+  <div class="cols">
+    <ul class="small">
+      <li>After each <code>helm_release</code>, the deploy compares <code>helm get manifest</code> with <code>_rendered/&lt;release&gt;.yaml</code>, and <code>helm get hooks</code> with <code>.hooks.yaml</code>.</li>
+      <li>Only <code>late:*</code> fields are masked.</li>
+      <li>A difference fails the step and marks the stack <code>drifted</code> in the CMDB's observed half.</li>
+    </ul>
+    <div class="card warn"><h3>R72 — rendered ≠ applied</h3><ul class="small"><li>The provider embeds a Helm version different from the CLI</li><li>A third-party chart calls <code>lookup</code></li><li><code>KUBE_VERSION</code> out of step with the cluster</li></ul></div>
+  </div>
+  <aside class="notes"><p>Without this comparison the hydrated output is a claim nobody checks. With it, review, policy and deploy all refer to the same bytes.</p></aside>
+</section>
+
+<!-- 7 -->
+<section class="slide section">
+  <div class="num">07</div>
+  <h2>Reconciliation stays push</h2>
+  <p>SHIM separates translation from reconciliation. We chose push, deliberately.</p>
+  <aside class="notes"><p>~6 minutes.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Deploy: one job per environment</h2>
+  <div class="grow">
+    <svg viewBox="0 0 1100 320" width="1100" height="320">
+      <rect class="box-acc" x="20" y="120" width="160" height="80" rx="8"/><text x="100" y="156" text-anchor="middle" class="t-acc">merge to main</text><text x="100" y="180" text-anchor="middle" class="t-muted">hydrated model</text>
+      <rect class="box" x="240" y="120" width="180" height="80" rx="8"/><text x="330" y="156" text-anchor="middle">landing zone</text><text x="330" y="180" text-anchor="middle" class="t-muted">first</text>
+      <rect class="box" x="490" y="30" width="190" height="70" rx="8"/><text x="585" y="72" text-anchor="middle">qa</text>
+      <rect class="box" x="490" y="125" width="190" height="70" rx="8"/><text x="585" y="167" text-anchor="middle">dev · demos</text>
+      <rect class="box" x="490" y="220" width="190" height="70" rx="8"/><text x="585" y="262" text-anchor="middle">sandbox · ephemeral-*</text>
+      <rect class="box-warn" x="760" y="120" width="160" height="80" rx="8"/><text x="840" y="156" text-anchor="middle">prod</text><text x="840" y="180" text-anchor="middle" class="t-muted">last, own reviewers</text>
+      <rect class="box-ok" x="960" y="120" width="120" height="80" rx="8"/><text x="1020" y="156" text-anchor="middle" style="fill:var(--ok)">CMDB</text><text x="1020" y="180" text-anchor="middle" class="t-muted">observed</text>
+      <path class="arrow" d="M180,160 L235,160"/>
+      <path class="arrow" d="M420,150 L485,70"/><path class="arrow" d="M420,160 L485,160"/><path class="arrow" d="M420,170 L485,250"/>
+      <path class="arrow" d="M680,65 L755,145"/><path class="arrow" d="M680,160 L755,160"/><path class="arrow" d="M680,255 L755,175"/>
+      <path class="arrow" d="M920,160 L955,160"/>
+    </svg>
+  </div>
+  <p class="small">Each job binds to its GitHub Environment and impersonates <code>tf-apply-&lt;env&gt;@</code>, reachable only from <code>&lt;env&gt;@refs/heads/main</code> (DX9).</p>
+  <aside class="notes"><p>Ordering: the landing zone first, non-production in parallel, prod last. Each job reads only its own state prefix. The CMDB sync writes the observed half to its own branch, never to main (that would need a protection bypass and re-trigger deploy).</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Why not a pull agent (DH8)</h2>
+  <div class="cols">
+    <div class="card"><h3>Identity</h3><p>Each environment's apply identity is bound to its Environment <strong>and</strong> to <code>main</code>. A pull agent is a powerful identity inside a cluster that the same infrastructure hosts.</p></div>
+    <div class="card"><h3>Stateful infrastructure</h3><p>Databases, keys, networks: continuous auto-apply corrects drift by destroying. Drift is detected daily and <strong>decided in a PR</strong>.</p></div>
+  </div>
+  <div class="callout">Because the model is hydrated, switching a resource class to pull later would change the reconciler, not a single committed object.</div>
+  <aside class="notes"><p>This is the delivery-independence property from part 1. Push is a choice for today, not a constraint of the model.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>GitHub's on-the-fly Environments</h2>
+  <div class="cols">
+    <div class="card bad"><h3>The trap</h3><p>A job that names a non-existent Environment gets one created on the fly — no reviewers, no branch policy — and its token carries <code>environment: &lt;env&gt;</code>. An identity bound to that claim alone is impersonable from any branch.</p></div>
+    <div class="card ok"><h3>The fix</h3><p>Bind apply and destroy identities to <code>env_ref = &lt;env&gt;@refs/heads/main</code>; create Environments before the binding merges; validate manual workflow inputs in a job without <code>environment:</code>.</p></div>
+  </div>
+  <aside class="notes"><p>R71. A detail, but it is the difference between "merge = deploy" and "any branch can deploy".</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Alternatives considered on Google Cloud</h2>
+  <table class="compact">
+    <tr><th>Product</th><th>Stance</th><th>Why</th></tr>
+    <tr><td>kpt (dry/wet)</td><td><span class="tag ok">idea adopted</span></td><td><code>_rendered/</code> is the wet half, in the same commit as the intent</td></tr>
+    <tr><td>Config Sync</td><td><span class="tag bad">no</span></td><td>Pull, and renders inside the cluster — the in-flight rendering DH2 removes</td></tr>
+    <tr><td>Policy Controller</td><td><span class="tag bad">no</span></td><td>Self-managed Gatekeeper: one version on three clouds; <code>gator</code> in CI plays the same role</td></tr>
+    <tr><td>Config Connector / Controller</td><td><span class="tag bad">no</span></td><td>Duplicates OpenTofu; continuous auto-correction on stateful infrastructure</td></tr>
+    <tr><td>Cloud Deploy</td><td><span class="tag warn">same principle</span></td><td>Render once, promote the render; we add PR review and the post-apply comparison</td></tr>
+  </table>
+  <aside class="notes"><p>The managed path on that cloud is pull with continuous reconciliation, including cloud infrastructure. The platform hydrates like kpt or Cloud Deploy, but keeps push. Equivalent reasoning applies to the other two clouds.</p></aside>
+</section>
+
+<!-- 8 -->
+<section class="slide section">
+  <div class="num">08</div>
+  <h2>Open items and lessons</h2>
+  <aside class="notes"><p>~4 minutes, then Q&amp;A.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Still to verify</h2>
+  <table>
+    <tr><th>#</th><th>Verification</th><th>Closes when</th></tr>
+    <tr><td>VH1</td><td>Rendered equals applied</td><td>For each platform chart on <code>qa</code>, <code>helm get manifest</code> equals <code>_rendered/</code>, masking <code>late:*</code></td></tr>
+    <tr><td>VH2</td><td>The provider's Helm version</td><td>The Helm embedded in the pinned provider matches the CLI in <code>.mise.toml</code></td></tr>
+    <tr><td>VH3</td><td><code>gator</code> over the render</td><td>A chart with a <code>system</code> toleration from a foreign namespace fails G1 on P11</td></tr>
+    <tr><td>VH4</td><td><code>hydrate.sh</code></td><td><span class="tag ok">done</span> deterministic; splits CRDs and hooks; fails on no input and on a Secret with data</td></tr>
+  </table>
+  <aside class="notes"><p>Being explicit about what is designed vs measured is part of the method. Three of these need a real cluster.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Lessons</h2>
+  <ol class="small">
+    <li><strong>Check whether you already are a SHIM.</strong> Committed generated code plus an integrity gate is most of it.</li>
+    <li><strong>Find the one place you render in flight.</strong> For us, <code>helm_release</code>; for others, a GitOps controller's Helm.</li>
+    <li><strong>One values file, two readers.</strong> The thing you render and the thing you apply must read the same input.</li>
+    <li><strong>Measure the tooling.</strong> Three of our assumptions about Helm were wrong until measured.</li>
+    <li><strong>Every gate counts what it checked.</strong> Zero is a failure.</li>
+    <li><strong>Choose the reconciler per resource class.</strong> The model doesn't care.</li>
+  </ol>
+  <aside class="notes"><p>If someone asks "what would you do differently": hydrate Kubernetes from day one, and put the post-apply comparison in before the first production deploy.</p></aside>
+</section>
+
+<section class="slide">
+  <h2>Summary</h2>
+  <div class="grow">
+    <svg viewBox="0 0 1100 300" width="1100" height="300">
+      <rect class="box-acc" x="20" y="100" width="220" height="100" rx="10"/><text x="130" y="140" text-anchor="middle" class="t-acc">Intent</text><text x="130" y="168" text-anchor="middle" class="t-muted">binding · manifests · registry</text>
+      <rect class="box-warn" x="300" y="100" width="220" height="100" rx="10"/><text x="410" y="140" text-anchor="middle">Translation</text><text x="410" y="168" text-anchor="middle" class="t-muted">resolver · generators · helm</text>
+      <rect class="box-ok" x="580" y="100" width="220" height="100" rx="10"/><text x="690" y="140" text-anchor="middle" style="fill:var(--ok)">Hydrated on main</text><text x="690" y="168" text-anchor="middle" class="t-muted">_*.tf · _rendered/ · CMDB</text>
+      <rect class="box" x="860" y="100" width="220" height="100" rx="10"/><text x="970" y="140" text-anchor="middle">Push reconcile</text><text x="970" y="168" text-anchor="middle" class="t-muted">per env · compared after</text>
+      <path class="arrow" d="M240,150 L295,150"/><path class="arrow" d="M520,150 L575,150"/><path class="arrow-acc" d="M800,150 L855,150"/>
+      <text x="550" y="250" text-anchor="middle" class="t-muted">G0 · G1 (+gator) · G2 · G3 — each proves it evaluated something</text>
+    </svg>
+  </div>
+  <aside class="notes"><p>One picture to leave on screen during questions.</p></aside>
+</section>
+
+<section class="slide title">
+  <div class="kicker">Questions</div>
+  <h1>Thank you</h1>
+  <div class="sub">Design references: architecture §13–§14.5 · archetype model §12 · source-hydration DH1–DH8 · multi-environment DX1, DX8, DX9.</div>
+  <aside class="notes"><p>Seed questions: "Why not Argo CD with rendering disabled?" (possible later, per resource class; identity model is the reason today). "How big is <code>_rendered/</code>?" (tens of KB per release once CRDs are digests). "What about Helm hooks on rollback?" (separate file; rollback is by redeploying a previous digest, not helm rollback).</p></aside>
+</section>
+
+</div>
+<div id="progress"></div>
+<div id="help">← → · N notes · O overview · F full · P print</div>
+<script>
+(() => {
+  const stage = document.getElementById('stage');
+  const slides = Array.from(document.querySelectorAll('section.slide'));
+  const bar = document.getElementById('progress');
+  const total = slides.length;
+  let cur = 0, presenter = null, started = null;
+  slides.forEach((s, i) => s.dataset.n = (i + 1) + ' / ' + total);
+
+  function fit() {
+    if (document.body.classList.contains('overview')) return;
+    const k = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+    stage.style.transform = 'translate(-50%, -50%) scale(' + k + ')';
+    stage.style.transformOrigin = 'center center';
+  }
+  function title(s) { const h = s && s.querySelector('h1, h2'); return h ? h.textContent.trim() : ''; }
+  function notes(s) { const n = s && s.querySelector('aside.notes'); return n ? n.innerHTML : '<i>No notes.</i>'; }
+
+  function go(i, push) {
+    cur = Math.max(0, Math.min(total - 1, i));
+    slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+    bar.style.width = ((cur + 1) / total * 100) + '%';
+    if (push !== false) history.replaceState(null, '', '#' + (cur + 1));
+    renderPresenter();
+  }
+  function fromHash() { const n = parseInt(location.hash.slice(1), 10); return isNaN(n) ? 0 : n - 1; }
+
+  function renderPresenter() {
+    if (!presenter || presenter.closed) return;
+    const d = presenter.document;
+    d.getElementById('cur').textContent = (cur + 1) + ' / ' + total + ' — ' + title(slides[cur]);
+    d.getElementById('next').textContent = cur + 1 < total ? 'Next: ' + title(slides[cur + 1]) : 'Last slide';
+    d.getElementById('notes').innerHTML = notes(slides[cur]);
+  }
+  function openPresenter() {
+    presenter = window.open('', 'presenter', 'width=900,height=650');
+    if (!presenter) return;
+    started = started || Date.now();
+    const d = presenter.document;
+    d.open();
+    d.write('<!doctype html><meta charset="utf-8"><title>Presenter — ' + document.title + '</title>' +
+      '<style>body{background:#0f1419;color:#e8edf2;font:18px/1.5 system-ui,sans-serif;margin:0;padding:20px 28px}' +
+      '#cur{font-size:22px;font-weight:600}#next{color:#9aabbc;margin:6px 0 14px}#clock{float:right;font:600 28px ui-monospace,monospace;color:#6cb4ff}' +
+      '#notes{font-size:22px;line-height:1.5;border-top:1px solid #2e3d4c;padding-top:14px}#notes p{margin:0 0 12px}code{background:#1e2a36;padding:1px 5px;border-radius:4px}' +
+      '.hint{color:#6b7d8f;font-size:14px;margin-top:20px}</style>' +
+      '<div id="clock">00:00</div><div id="cur"></div><div id="next"></div><div id="notes"></div>' +
+      '<div class="hint">←/→ to move (focus either window) · the timer starts when this window first opens</div>');
+    d.close();
+    d.addEventListener('keydown', key);
+    const tick = () => {
+      if (presenter.closed) return;
+      const s = Math.floor((Date.now() - started) / 1000);
+      d.getElementById('clock').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+      setTimeout(tick, 1000);
+    };
+    tick();
+    renderPresenter();
+  }
+  function toggleOverview() {
+    const on = document.body.classList.toggle('overview');
+    if (on) { stage.style.transform = 'none'; slides[cur].scrollIntoView({ block: 'center' }); } else fit();
+  }
+  function key(e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key;
+    if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'].includes(k)) { e.preventDefault(); go(cur + 1); }
+    else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(k)) { e.preventDefault(); go(cur - 1); }
+    else if (k === 'Home') go(0);
+    else if (k === 'End') go(total - 1);
+    else if (k === 'n' || k === 'N') openPresenter();
+    else if (k === 'o' || k === 'O' || k === 'Escape') toggleOverview();
+    else if (k === 'p' || k === 'P') window.print();
+    else if (k === 'f' || k === 'F') { if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); }
+  }
+  slides.forEach((s, i) => s.addEventListener('click', () => {
+    if (document.body.classList.contains('overview')) { toggleOverview(); go(i); }
+  }));
+  document.addEventListener('keydown', key);
+  window.addEventListener('resize', fit);
+  window.addEventListener('hashchange', () => go(fromHash(), false));
+  fit();
+  go(fromHash(), false);
+  if (new URLSearchParams(location.search).has('print')) setTimeout(() => window.print(), 300);
+})();
+
+</script>
+</body>
+</html>
